@@ -7,7 +7,7 @@ type: software
 authors:
   - given-names: Michael
     family-names: Awuah
-repository-code: "https://github.com/<you>/hmm-homologue-finder"
+repository-code: "https://github.com/mbaffour/hmm-homologue-finder"
 abstract: >-
   A reproducible, one-command pipeline that discovers distant homologues of a
   protein family across public phage/viral databases using profile HMM search

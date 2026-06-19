@@ -7,7 +7,7 @@ The only prerequisite you install by hand is **conda** (via Miniforge). Then
 
 ## 1. Get the code
 ```bash
-git clone https://github.com/<you>/hmm-homologue-finder.git
+git clone https://github.com/mbaffour/hmm-homologue-finder.git
 cd hmm-homologue-finder
 ```
 (or download the ZIP from GitHub and unzip it).

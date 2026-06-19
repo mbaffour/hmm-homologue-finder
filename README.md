@@ -30,7 +30,7 @@ first run.
 
 ```bash
 # macOS / Linux / Windows-WSL2
-git clone https://github.com/<you>/hmm-homologue-finder.git
+git clone https://github.com/mbaffour/hmm-homologue-finder.git
 cd hmm-homologue-finder
 bash setup.sh                 # one-time: creates the conda env, installs all tools
 bash run.sh                   # interactive: prompts for your seed FASTA, runs everything
