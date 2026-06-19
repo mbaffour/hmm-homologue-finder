@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ project_name }} — HMM Discovery Report</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8f9fa; }
+    .hero { background: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%); color: white; padding: 2.5rem 2rem; }
+    .stat-box { background: white; border-radius: 12px; padding: 1rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .tier-badge { display: inline-block; padding: .25rem .6rem; border-radius: 20px; font-size: .8rem; font-weight: 600; }
+    .tier-high { background: #d1fae5; color: #065f46; }
+    .tier-putative { background: #dbeafe; color: #1e40af; }
+    .tier-divergent { background: #ffedd5; color: #9a3412; }
+    .tier-fp { background: #fee2e2; color: #991b1b; }
+    .methods-box { background: #f0f4ff; border-left: 4px solid #3b82f6; padding: 1rem 1.5rem; border-radius: 0 8px 8px 0; font-size: .9rem; }
+    table.summary { width: 100%; border-collapse: collapse; }
+    table.summary th { background: #e9ecef; padding: .5rem .75rem; text-align: left; }
+    table.summary td { padding: .5rem .75rem; border-bottom: 1px solid #f0f0f0; }
+    .section-title { font-size: 1.2rem; font-weight: 700; margin: 2rem 0 1rem; padding-bottom: .5rem; border-bottom: 2px solid #dee2e6; }
+    footer { margin-top: 3rem; padding: 1.5rem 0; text-align: center; color: #6c757d; font-size: .85rem; border-top: 1px solid #dee2e6; }
+  </style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="container">
+    <h1 class="h2 mb-1">🧬 {{ project_name }}</h1>
+    <p class="mb-0 opacity-75">Profile HMM Discovery Report · Generated {{ generated_at }}</p>
+  </div>
+</div>
+
+<!-- Key numbers -->
+<div class="container mt-4">
+  <div class="row g-3">
+    <div class="col-6 col-md-2">
+      <div class="stat-box">
+        <div class="h3 text-success mb-0">{{ hit_stats.get('high_confidence', 0) }}</div>
+        <div class="small text-muted">High confidence</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="stat-box">
+        <div class="h3 text-primary mb-0">{{ hit_stats.get('putative', 0) }}</div>
+        <div class="small text-muted">Putative</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="stat-box">
+        <div class="h3 text-warning mb-0">{{ hit_stats.get('divergent', 0) }}</div>
+        <div class="small text-muted">Divergent</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="stat-box">
+        <div class="h3 text-danger mb-0">{{ hit_stats.get('likely_fp', 0) }}</div>
+        <div class="small text-muted">Likely FP</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="stat-box">
+        <div class="h3 text-dark mb-0">{{ hit_stats.get('total', 0) }}</div>
+        <div class="small text-muted">Total hits</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="stat-box">
+        <div class="h3 text-info mb-0">{{ hit_stats.get('n_genomes', 0) }}</div>
+        <div class="small text-muted">Genomes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Databases searched -->
+  <div class="section-title">Databases Searched</div>
+  <table class="summary">
+    <thead><tr><th>Database</th><th>Type</th><th>Hits</th><th>High-confidence</th></tr></thead>
+    <tbody>
+    {% for db in databases_searched %}
+    <tr>
+      <td>{{ db.name }}</td>
+      <td><span class="badge bg-light text-dark">{{ db.type }}</span></td>
+      <td>{{ db.hits }}</td>
+      <td>{{ db.high_confidence }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Tool versions -->
+  <div class="section-title">Tool Versions</div>
+  <table class="summary">
+    <thead><tr><th>Tool</th><th>Version</th><th>Role</th></tr></thead>
+    <tbody>
+    {% for tool, info in tool_versions.items() %}
+    {% if info.available %}
+    <tr>
+      <td><code>{{ tool }}</code></td>
+      <td>{{ info.version or 'unknown' }}</td>
+      <td>{{ info.description }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Methods paragraph -->
+  <div class="section-title">Methods (auto-generated)</div>
+  <div class="methods-box">
+    {{ methods_text | replace('\n', '<br>') | safe }}
+  </div>
+
+  <!-- Figures -->
+  {% if key_figures %}
+  <div class="section-title">Key Figures</div>
+  <div class="row g-3">
+    {% for fig in key_figures %}
+    <div class="col-12 col-md-6">
+      <div class="card">
+        <div class="card-header small text-muted">{{ fig.title }}</div>
+        {% if fig.path %}
+        <img src="{{ fig.path }}" class="card-img-bottom" alt="{{ fig.title }}" style="max-height:300px;object-fit:contain;padding:.5rem;">
+        {% else %}
+        <div class="card-body text-muted small">Figure not yet generated</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+
+<footer>
+  <div class="container">
+    Generated by HMM Discovery App &mdash; Profile HMM-based protein family discovery platform
+  </div>
+</footer>
+
+</body>
+</html>

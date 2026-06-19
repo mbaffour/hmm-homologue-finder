@@ -1,0 +1,20 @@
+shiny>=1.5.0
+shinyswatch>=0.10.0
+plotly>=5.0.0
+jinja2>=3.0.0
+faicons>=0.2.0
+aiohttp>=3.9.0
+aiofiles>=23.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+biopython>=1.81
+openpyxl>=3.1.0
+urllib3<2
+scipy>=1.10.0
+toytree>=3.0.0,<3.0.11
+toyplot>=1.0.0
+pygenomeviz>=0.4.0
+kaleido>=0.2.1
+# Synteny visualization tools (optional — app works without them)
+clinker>=0.0.28

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pipeline outputs & working data (generated; don't commit)
+*_discovery/
+*_discovery/
+PACKAGE/
+run1/
+run2/
+run3/
+runA/
+runB/
+runC/
+downstream/
+*.log
+pipeline.log
+
+# Streamed/cached databases & large indexes (regenerated on run)
+_shared/
+db_setup/
+cache/
+*.h3m
+*.h3i
+*.h3f
+*.h3p
+*.tar.gz
+*.fasta.gz
+*.fna.gz
+*.faa.gz
+
+# Conda env (created by setup.sh, not committed)
+envs/

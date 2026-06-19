@@ -1,0 +1,21 @@
+name: hmm-discovery
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.10,<3.13
+  - pip
+  - hmmer
+  - mafft
+  - trimal
+  - prodigal
+  - seqkit
+  - cd-hit
+  - mmseqs2
+  - meme
+  - iqtree
+  - ghostscript
+  - curl
+  - git
+  - pip:
+      - -r requirements.txt

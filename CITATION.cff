@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+title: HMM Homologue Finder
+message: >-
+  If you use this software in your research, please cite it, along with the
+  underlying tools and databases it relies on.
+type: software
+authors:
+  - given-names: Michael
+    family-names: Awuah
+repository-code: "https://github.com/<you>/hmm-homologue-finder"
+abstract: >-
+  A reproducible, one-command pipeline that discovers distant homologues of a
+  protein family across public phage/viral databases using profile HMM search
+  with six-frame translation, validates each hit as a genuine ORF, iterates to
+  convergence, and produces sequences, tables, synteny figures, a phylogenetic
+  tree, motifs, and a publication-ready package.
+keywords:
+  - bioinformatics
+  - bacteriophage
+  - profile HMM
+  - HMMER
+  - homology search
+  - six-frame translation
+license: MIT
+version: "1.0.0"
+date-released: "2026-06-19"
+references:
+  - type: software
+    title: HMMER
+    notes: Eddy SR (2011) Accelerated Profile HMM Searches. PLoS Comput Biol.
+  - type: software
+    title: MAFFT
+    notes: Katoh & Standley (2013) Mol Biol Evol.
+  - type: software
+    title: IQ-TREE
+    notes: Nguyen et al. (2015) Mol Biol Evol.

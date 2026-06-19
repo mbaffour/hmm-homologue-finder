@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HMM Homologue Finder — Guide</title>
+<style>
+  :root{--bg:#0f1116;--card:#1a1d27;--ink:#e8eaf0;--muted:#9aa3b2;--accent:#5b9dff;--green:#3ddc97;--amber:#ffc15e;--line:#2a2f3d;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
+  header{padding:48px 24px 28px;text-align:center;background:radial-gradient(1200px 300px at 50% -50%,#22304d,transparent)}
+  h1{margin:0 0 6px;font-size:2.1rem;letter-spacing:.3px}
+  .sub{color:var(--muted);font-size:1.05rem;max-width:760px;margin:0 auto}
+  main{max-width:920px;margin:0 auto;padding:0 20px 80px}
+  section{margin:34px 0}
+  h2{font-size:1.35rem;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:16px}
+  h3{font-size:1.08rem;margin:18px 0 8px}
+  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  code{background:#11141c;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#cfe1ff;font-size:.92em}
+  pre{background:#0b0d13;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;color:#d7e3ff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .pill{display:inline-block;background:#1d2740;color:#bcd2ff;border:1px solid #2c3a5e;border-radius:999px;padding:2px 10px;font-size:.8rem;margin:2px}
+  .flow{display:flex;flex-direction:column;gap:0}
+  .step{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+  .step:last-child{border-bottom:none}
+  .num{flex:0 0 34px;height:34px;width:34px;border-radius:50%;background:var(--accent);color:#06203f;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .step .body{flex:1}
+  .step .body b{color:#fff}
+  details{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden}
+  details>summary{cursor:pointer;padding:14px 18px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
+  details>summary::after{content:"+";color:var(--accent);font-size:1.4rem}
+  details[open]>summary::after{content:"−"}
+  details .inner{padding:0 18px 16px}
+  table{width:100%;border-collapse:collapse;margin:8px 0}
+  td,th{border:1px solid var(--line);padding:7px 10px;text-align:left;font-size:.92rem;vertical-align:top}
+  th{background:#161a24;color:#cdd6e6}
+  .ok{color:var(--green)} .warn{color:var(--amber)}
+  a{color:var(--accent)}
+  .note{border-left:3px solid var(--accent);background:#121723;padding:10px 14px;border-radius:0 8px 8px 0;color:#cdd9ef}
+  footer{color:var(--muted);text-align:center;padding:30px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧬 HMM Homologue Finder</h1>
+  <p class="sub">A reproducible pipeline that finds distant homologues of a protein family across public phage/viral databases — including genes that standard annotation misses — and returns validated sequences, tables, trees, synteny maps, and a publication-ready package. Give it a seed FASTA; it does the rest.</p>
+  <div style="margin-top:14px">
+    <span class="pill">HMMER profile search</span>
+    <span class="pill">six-frame translation</span>
+    <span class="pill">ORF validation</span>
+    <span class="pill">iterative convergence</span>
+    <span class="pill">NT + AA output</span>
+    <span class="pill">works for any protein</span>
+  </div>
+</header>
+
+<main>
+
+<section>
+  <h2>What it does</h2>
+  <div class="card">
+    It builds a profile HMM from your seed sequences, searches ten public
+    databases (translating genome databases in all six reading frames so it can
+    reach unannotated genes), reconstructs and <b>validates the exact ORF</b> each
+    hit came from, then uses the discovered sequences to re-seed the search and
+    repeat until the family stops growing (convergence). It finishes by
+    clustering the homologues, drawing synteny figures and a phylogenetic tree,
+    and assembling everything into a labelled folder.
+    <div class="note" style="margin-top:12px">It is named for the project it
+    was built on, but it is general: point it at <i>any</i> protein family's seed
+    FASTA. Output files keep the <code>family_</code> name prefix (cosmetic).</div>
+  </div>
+</section>
+
+<section>
+  <h2>How to run</h2>
+
+  <h3>Option 1 — double-click (easiest)</h3>
+  <div class="card">
+    In Finder, open <code>scripts/</code> and double-click
+    <code>Run HMM Homologue Finder.command</code>. It checks the software
+    (installing anything missing the first time), then asks for your seed FASTA
+    and runs everything.
+  </div>
+
+  <h3>Option 2 — terminal, interactive</h3>
+  <pre>conda activate hmm-discovery
+python3 scripts/hmm_finder.py
+#   → it prompts:  seed FASTA &gt;   (drag your file in, press Enter)</pre>
+
+  <h3>Option 3 — terminal, explicit</h3>
+  <pre>python3 scripts/hmm_finder.py --fasta my_seeds.faa --iterations 3 --cpu 8</pre>
+
+  <h3>Useful flags</h3>
+  <div class="card">
+    <table>
+      <tr><th>Flag</th><th>What it does</th></tr>
+      <tr><td><code>--name LABEL</code></td><td>Labels the output folder for your protein (default: from the FASTA name).</td></tr>
+      <tr><td><code>--databases "A,B,…"</code></td><td>Choose which databases to search (must exist in the deployable repo's <code>databases.json</code>). Default = the 10 phage/viral databases.</td></tr>
+      <tr><td><code>--iterations N</code></td><td>Number of seeding rounds (default 3).</td></tr>
+      <tr><td><code>--smoke</code></td><td><b>Fast self-test:</b> 1 round against a single small database — proves the install works on your input in minutes.</td></tr>
+    </table>
+    <div class="note">Try a self-test first on any new machine/protein:
+    <code>python3 scripts/hmm_finder.py --fasta my_seeds.faa --smoke --name myprotein</code></div>
+  </div>
+
+  <div class="note">First time on a new machine? Run <code>bash setup.sh</code> once.
+  It creates the <code>hmm-discovery</code> environment and installs every
+  required tool. The pipeline also checks software at startup and refuses to
+  begin a long run if anything is missing.</div>
+</section>
+
+<section>
+  <h2>The workflow, step by step</h2>
+  <div class="card flow">
+    <div class="step"><div class="num">1</div><div class="body"><b>Build the HMM.</b> Align the seeds (MAFFT), trim (trimAl), build a profile HMM (hmmbuild), and confirm it recovers its own seeds.</div></div>
+    <div class="step"><div class="num">2</div><div class="body"><b>Search 10 databases.</b> hmmsearch at E ≤ 1e-5. Genome databases are translated in all six frames (min ORF 30 aa) so unannotated genes are reachable.</div></div>
+    <div class="step"><div class="num">3</div><div class="body"><b>Extract &amp; validate each hit.</b> Reconstruct the exact ORF from genomic coordinates, delimit the domain by the HMM envelope, and confirm it is a real ORF (no internal stops; sits in a coding locus). Save <b>nucleotide and amino-acid</b> sequence + a 35-column evidence table.</div></div>
+    <div class="step"><div class="num">4</div><div class="body"><b>Iterate.</b> Deduplicate the hit sequences and use them to re-seed the search; repeat (default 3 rounds). Stable counts = converged.</div></div>
+    <div class="step"><div class="num">5</div><div class="body"><b>Characterise.</b> CD-HIT clustering, clinker synteny figures, an IQ-TREE phylogeny, MEME/FIMO motifs, GFF3 tracks, and real-sequence GenBank files (named by organism).</div></div>
+    <div class="step"><div class="num">6</div><div class="body"><b>Package.</b> Assemble a labelled, self-contained output folder with all data, figures, sequences, and a methods write-up.</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>The scripts (click to expand)</h2>
+
+  <details open><summary>hmm_finder.py — the one-command driver</summary>
+  <div class="inner">
+    The entry point. Prompts for the seed FASTA (or takes <code>--fasta</code>),
+    runs the software preflight, then orchestrates every step below and assembles
+    the output package. <b>This is the only script you normally run.</b>
+    <pre>python3 scripts/hmm_finder.py            # interactive
+python3 scripts/hmm_finder.py --fasta seeds.faa --iterations 3</pre>
+  </div></details>
+
+  <details><summary>check_tools.py / setup.sh — environment check &amp; install</summary>
+  <div class="inner">
+    <code>check_tools.py</code> verifies every required program and Python package
+    and prints a ✓/✗ table. <code>setup.sh</code> creates the
+    <code>hmm-discovery</code> conda environment and installs anything missing
+    (HMMER, MAFFT, trimAl, Prodigal, seqkit, CD-HIT, IQ-TREE, MEME/FIMO, clinker).
+    The pipeline calls the check at startup.
+  </div></details>
+
+  <details><summary>extract_validated_hits.py — the core step</summary>
+  <div class="inner">
+    For every hit, reconstructs the ORF from its genomic coordinates
+    (1-based, strand/frame-correct), finds the domain via the HMM envelope, and
+    validates it (internal-stop count, ORF coverage, Prodigal overlap). Writes
+    <code>hits.tsv</code> (with a <code>source_type</code> column), the AA and
+    NT FASTAs, full-ORF FASTAs, and the deduplicated seed set for the next round.
+    <b>Hits from protein databases</b> (SwissProt, RefSeq/INPHARED proteins, Pfam)
+    are also captured — their amino-acid sequence is fetched from NCBI and marked
+    <code>source_type=annotated_protein</code> — so no hits are dropped, whatever
+    the protein.
+  </div></details>
+
+  <details><summary>annotate_organism.py — add phage names</summary>
+  <div class="inner">
+    Adds an <code>organism</code> column to the hit table (e.g. “Escherichia
+    phage vB_EcoP_G7C”), fetched from NCBI; uncultured metagenomic genomes are
+    marked “uncultured virus (database)”.
+  </div></details>
+
+  <details><summary>cluster_and_clinker_corrected.py — clusters &amp; synteny</summary>
+  <div class="inner">
+    Clusters the validated domains with CD-HIT (40% id, 80% cov) and builds
+    clinker gene-neighbourhood figures grouped by cluster, with the genuine
+    homologue ORF as the central gene.
+  </div></details>
+
+  <details><summary>build_real_genbanks.py — viewable GenBank files</summary>
+  <div class="inner">
+    Fetches each hit genome (NCBI efetch / catalogue stream) and writes
+    neighbourhood GenBank files with <b>real sequence</b> + the homologue and
+    flanking genes — open directly in Artemis / Geneious / UGENE. Files are named
+    by phage where the name is known.
+  </div></details>
+
+  <details><summary>build_tree_of_hits.py — phylogeny</summary>
+  <div class="inner">
+    Aligns the unique domains (MAFFT), trims (trimAl <code>-gt 0.5</code>), and
+    infers a maximum-likelihood tree (IQ-TREE, ModelFinder, 1000 ultrafast
+    bootstrap).
+  </div></details>
+
+  <details><summary>assemble_publication_v2.py — package builder</summary>
+  <div class="inner">
+    Collects all outputs into the labelled, numbered folder layout with a
+    convergence analysis and READMEs.
+  </div></details>
+</section>
+
+<section>
+  <h2>What you get (outputs)</h2>
+  <div class="card">
+  <table>
+    <tr><th>Output</th><th>What it is / opens in</th></tr>
+    <tr><td><code>hits.tsv</code> (per run)</td><td>35-column evidence table: genome, <b>organism</b>, coords, ORF validation, HMM stats, NT + AA sequence. Excel / R / pandas.</td></tr>
+    <tr><td><code>hits_aa.faa</code> / <code>hits_nt.fna</code></td><td>Homologue protein / DNA sequences. Jalview, MEGA, BLAST, aligners.</td></tr>
+    <tr><td><code>hits.gff3</code></td><td>Genome-browser track of every hit. IGV / JBrowse / Artemis.</td></tr>
+    <tr><td><code>genbank_with_sequence/*.gbk</code></td><td>Neighbourhoods with real sequence, named by phage. Artemis / Geneious / UGENE.</td></tr>
+    <tr><td>clinker figures (HTML)</td><td>Interactive synteny comparison per cluster. Any browser.</td></tr>
+    <tr><td><code>hits.treefile</code> + PNG/SVG</td><td>Phylogenetic tree. iTOL / FigTree / ggtree.</td></tr>
+    <tr><td>profile <code>.hmm</code></td><td>The model — submit to Pfam / NCBI CDD / VOGDB.</td></tr>
+    <tr><td><code>CONVERGENCE_ANALYSIS.md</code>, <code>REPORT.md</code></td><td>Results report + per-round hit counts.</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Why “ORF validation” matters</h2>
+  <div class="card">
+    A profile HMM can light up on a stretch of translated DNA that isn't a real
+    gene. To avoid reporting noise, every hit must (a) come from a clean
+    stop-to-stop ORF with <b>no internal stop codons</b>, and (b) sit inside a
+    genuine coding locus (it overlaps a Prodigal-predicted gene). Interestingly,
+    these homologues are usually <i>antisense or in a different frame</i> to the
+    predicted gene — which is exactly why standard annotation missed them. Each
+    hit's evidence is recorded in the table, so nothing is taken on faith.
+  </div>
+</section>
+
+<section>
+  <h2>Requirements</h2>
+  <div class="card">
+    <b>One-time:</b> the <code>hmm-discovery</code> conda environment
+    (run <code>bash setup.sh</code>). It needs conda/mamba — install
+    <a href="https://conda-forge.org/download/">Miniforge</a> first if you don't
+    have it. Tools: HMMER 3.4, MAFFT v7.526, trimAl v1.5, Prodigal V2.6.3,
+    seqkit v2.13.0, CD-HIT 4.8.1, IQ-TREE 3.1.2, MEME/FIMO 5.5.9, clinker v0.0.32,
+    plus Biopython &amp; pandas. The search engine
+    (<code>run_all_database_benchmark.py</code>) lives in the HMM-Discovery
+    deployable repo, which the pipeline calls automatically.
+    <div class="note" style="margin-top:12px"><b>Runtime &amp; internet:</b> a full
+    3-iteration run streams several GB of databases and takes hours — run it and
+    walk away (it keeps the Mac awake and is resumable).</div>
+  </div>
+</section>
+
+</main>
+<footer>HMM Homologue Finder · interactive guide · open <code>scripts/</code> to run.</footer>
+</body>
+</html>
