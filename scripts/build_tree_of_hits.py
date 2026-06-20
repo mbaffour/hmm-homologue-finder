@@ -79,27 +79,67 @@ def run(cmd: list[str], **kw) -> None:
         raise subprocess.CalledProcessError(r.returncode, cmd)
 
 
-def _combine_with_seeds(hits_faa: Path, seeds_faa: Path, out_path: Path) -> int:
-    """Write discovered hits + seeds to one FASTA so the seeds are placed *within*
-    the homolog tree. Seed record IDs are prefixed ``SEED_`` so they are visibly
-    marked in the alignment, the figure, and the Newick tip labels. Returns the
-    combined (de-duplicated by ID) sequence count."""
+def _safe(s: str, n: int = 55) -> str:
+    """Newick/MAFFT-safe label: keep alnum . _ - ; everything else -> '_'."""
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in str(s)).strip("_")[:n] or "x"
+
+
+def _short_acc(rec_id: str) -> str:
+    """Extract a compact accession from a record id: 'sp|P49861|NAME' -> 'P49861',
+    otherwise the id unchanged."""
+    parts = str(rec_id).split("|")
+    return parts[1] if len(parts) >= 2 and parts[0] in ("sp", "tr") else str(rec_id)
+
+
+def _organism_from_desc(desc: str) -> str:
+    """Best-effort organism name from a FASTA description.
+    Handles UniProt ('... OS=Escherichia phage T5 OX=...'), NCBI bracket
+    ('... [Escherichia phage phiKT]'), and NCBI genome titles
+    ('NC_019520.1:.. Escherichia phage phiKT, complete genome'). '' if unknown."""
+    d = str(desc or "")
+    m = re.search(r"OS=(.+?)(?:\s+(?:OX|GN|PE|SV)=|$)", d)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"\[([^\]]+)\]", d)
+    if m:
+        return m.group(1).strip()
+    # strip leading accession / accession:coords tokens, then trailing genome boilerplate
+    d = re.sub(r"^(?:[A-Za-z]{1,5}[_0-9][\w.]*(?::\d+-\d+)?\s+)+", "", d)
+    d = re.sub(r",?\s*(complete genome|complete sequence|genomic sequence|complete cds|"
+               r"genome assembly.*|DNA, complete.*)\s*$", "", d, flags=re.I)
+    return d.strip().strip(",").strip()
+
+
+def _uniquify(label: str, used: set) -> str:
+    """Ensure a tip label is unique (Newick requires it) by appending _2, _3 …."""
+    base, k, out = label, 2, label
+    while out in used:
+        out = f"{base}_{k}"
+        k += 1
+    used.add(out)
+    return out
+
+
+def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> int:
+    """Write the alignment/tree input FASTA with ORGANISM-FIRST tip labels so every
+    figure shows readable names (accession only as a fallback). Discovered hits are
+    labelled 'Organism_accession' (from hits.tsv); seeds are labelled
+    'Organism_accession_seed' (organism parsed from the seed header) and so are
+    placed, and visibly marked, within the same tree. Returns the sequence count."""
     from Bio import SeqIO
-    seen: set[str] = set()
+    hit_map = _organism_labels(hits_tsv) if (hits_tsv and Path(hits_tsv).exists()) else {}
+    used: set = set()
     recs = []
     for rec in SeqIO.parse(str(hits_faa), "fasta"):
-        if rec.id in seen:
-            continue
-        seen.add(rec.id)
+        label = hit_map.get(rec.id) or _safe(rec.id)        # organism_genomeid, else id
+        rec.id = _uniquify(label, used); rec.name = rec.id; rec.description = ""
         recs.append(rec)
     if seeds_faa and Path(seeds_faa).exists():
         for rec in SeqIO.parse(str(seeds_faa), "fasta"):
-            rec.id = f"SEED_{rec.id}"
-            rec.name = rec.id
-            rec.description = ""
-            if rec.id in seen:
-                continue
-            seen.add(rec.id)
+            acc = _short_acc(rec.id)
+            org = _organism_from_desc(rec.description)
+            label = f"{_safe(org)}_{_safe(acc)}_seed" if org else f"{_safe(acc)}_seed"
+            rec.id = _uniquify(label, used); rec.name = rec.id; rec.description = ""
             recs.append(rec)
     SeqIO.write(recs, str(out_path), "fasta")
     return len(recs)
@@ -155,16 +195,14 @@ def main() -> None:
     trim = out / "hits.aln.trim.faa"
     prefix = out / "hits"
 
-    # Optionally fold the seeds into the alignment/tree (marked 'SEED_*') so the
-    # reader can see where the starting sequences fall among discovered homologs.
-    if args.seeds and args.seeds.exists():
-        input_faa = out / "tree_input.faa"
-        n = _combine_with_seeds(args.faa, args.seeds, input_faa)
-        print(f"Aligning {n} sequences (discovered homologs + seeds, marked SEED_*): {input_faa}")
-    else:
-        input_faa = args.faa
-        n = sum(1 for ln in args.faa.read_text().splitlines() if ln.startswith(">"))
-        print(f"Aligning {n} sequences: {args.faa}")
+    # Build the alignment/tree input with ORGANISM-FIRST tip labels (hits from
+    # hits.tsv; optional seeds parsed from their headers, marked '*_seed'). Doing
+    # this up front means BOTH the alignment figure and the tree show readable
+    # organism names, with accession only as a fallback.
+    input_faa = out / "tree_input.faa"
+    n = _build_tree_input(args.faa, args.seeds, args.hits_tsv, input_faa)
+    extra = " (+ seeds, marked *_seed)" if (args.seeds and args.seeds.exists()) else ""
+    print(f"Aligning {n} organism-labelled sequences{extra}: {input_faa}")
     if n < 2:
         print("Fewer than 2 sequences; nothing to align.")
         return
@@ -209,19 +247,12 @@ def main() -> None:
          "-T", "AUTO", "-ntmax", str(args.cpu), "-seed", "12345",
          "--prefix", str(prefix), "-redo"])
 
-    # 3b. Organism-labelled tree (readable figure): rewrite cryptic ORF tip IDs
-    # to 'Organism_accession'. Keep the original treefile untouched.
+    # Tip labels are already organism-first (set when the input was built), so the
+    # Newick tree, the alignment, and the figure all carry readable names directly.
     treefile = Path(str(prefix) + ".treefile")
     render_tree = treefile
-    if args.hits_tsv and args.hits_tsv.exists() and treefile.exists():
-        mp = _organism_labels(args.hits_tsv)
-        if mp:
-            labeled = out / "hits.labeled.treefile"
-            labeled.write_text(_relabel_newick(treefile.read_text(), mp))
-            render_tree = labeled
-            print(f"  wrote organism-labelled tree: {labeled}")
 
-    # 4. Optional rendering (uses the labelled tree when available). Emit editable
+    # 4. Optional rendering. Emit editable
     # vector formats (SVG for Inkscape, PDF for Illustrator) plus a 300-dpi PNG
     # preview. toyplot SVG keeps text as real text elements (editable, not paths).
     try:

@@ -95,5 +95,24 @@ if H.convergence_check:
     check("convergence: growing hits -> False", H.convergence_check(100, 200, 150, 160) is False)
     check("convergence: growing model -> False", H.convergence_check(100, 101, 150, 160) is False)
 
+# --- organism-first label parsing for tree/alignment tips -------------------
+import build_tree_of_hits as BT  # noqa: E402
+check("organism OS= (UniProt)",
+      BT._organism_from_desc("Major capsid protein OS=Escherichia phage T5 OX=2695836 GN=D20")
+      == "Escherichia phage T5")
+check("organism [bracket] (NCBI protein)",
+      BT._organism_from_desc("hypothetical protein [Escherichia phage phiKT]")
+      == "Escherichia phage phiKT")
+check("organism NCBI genome title",
+      BT._organism_from_desc("NC_019520.1 NC_019520.1:37102-37269 Escherichia phage phiKT, complete genome")
+      == "Escherichia phage phiKT")
+check("organism unknown -> ''", BT._organism_from_desc("ABC123 hypothetical") != "")  # returns something, not crash
+check("short_acc UniProt", BT._short_acc("sp|P49861|CAPSD_BPHK7") == "P49861")
+check("short_acc plain", BT._short_acc("NC_019520.1") == "NC_019520.1")
+_uu = set()
+check("uniquify dedups labels",
+      BT._uniquify("Escherichia_phage_X", _uu) == "Escherichia_phage_X"
+      and BT._uniquify("Escherichia_phage_X", _uu) == "Escherichia_phage_X_2")
+
 print(f"\n{len(fails)} FAILURE(S): {fails}" if fails else "\nALL TESTS PASSED")
 sys.exit(1 if fails else 0)
