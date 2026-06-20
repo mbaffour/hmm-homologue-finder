@@ -21,6 +21,19 @@ from pathlib import Path
 import pandas as pd
 
 
+def _canonical_organism(name: str, fallback: str = "") -> str:
+    """Canonical key for counting UNIQUE ORGANISMS. Collapses host-genus aliases of
+    the same phage ('Enterobacteria phage N4' == 'Escherichia phage N4' -> 'n4');
+    unnamed/metagenomic entries fall back to the genome accession so distinct
+    genomes still count once. Mirrors build_tree_of_hits._canonical_organism."""
+    s = re.sub(r"^(UNVERIFIED:?|MAG:?|TPA(?:_asm)?:?)\s*", "", str(name or "").strip(), flags=re.I).strip()
+    if (not s) or re.search(r"uncultured|unclassified|metagenom|environmental", s, re.I):
+        return (str(fallback).strip() or s).lower()
+    m = re.search(r"\b(?:phage|virus)\b\s+(.+)$", s, flags=re.I)
+    key = m.group(1).strip() if (m and m.group(1).strip()) else s
+    return re.sub(r"\s+", " ", key).strip().lower()
+
+
 def _host_from_organism(org: str) -> str:
     """'Escherichia phage X' / 'Klebsiella virus Y' -> host genus 'Escherichia'."""
     m = re.match(r"^([A-Z][a-z]+)\s+(phage|virus)\b", str(org or ""))
@@ -87,7 +100,12 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
         dbs = _uniq(g.get("db_name", pd.Series(dtype=str)))
         runs = _uniq(g.get("run_label", pd.Series(dtype=str)))
         genomes = _uniq(g.get("genome_id", pd.Series(dtype=str)))
-        orgs = _uniq(g.get("organism", pd.Series(dtype=str)))
+        orgs = _uniq(g.get("organism", pd.Series(dtype=str)))   # raw names (display)
+        # unique organisms by canonical identity (host-genus aliases collapsed;
+        # metagenomic/unnamed fall back to genome accession)
+        canon = {_canonical_organism(r.get("organism", ""), r.get("genome_id", ""))
+                 for _, r in g.iterrows()}
+        canon.discard("")
         rows.append({
             "representative_organism": rep.get("organism", ""),
             "representative_genome": rep.get("genome_id", ""),
@@ -96,7 +114,7 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
             # breadth = how many UNIQUE ORGANISMS carry this exact sequence (the
             # headline discovery metric; immune to the same phage appearing in
             # several databases under different accessions)
-            "n_organisms": len(orgs), "organisms": ";".join(orgs),
+            "n_organisms": len(canon), "organisms": ";".join(orgs),
             "n_databases": len(dbs), "databases": ";".join(dbs),
             "n_genomes": len(genomes), "n_runs": len(runs), "runs": ";".join(runs),
             "n_copies": len(g),

@@ -110,6 +110,20 @@ def _organism_from_desc(desc: str) -> str:
     return d.strip().strip(",").strip()
 
 
+def _canonical_organism(name: str, fallback: str = "") -> str:
+    """Canonical key for COUNTING unique organisms. Collapses host-genus aliases of
+    the same phage — 'Enterobacteria phage N4' and 'Escherichia phage N4' both ->
+    'n4' — by keying on the name after 'phage'/'virus'. Unnamed/metagenomic entries
+    ('uncultured virus', blank) are NOT collapsed: they fall back to the genome
+    accession so each distinct genome still counts once. Returns '' if nothing."""
+    s = re.sub(r"^(UNVERIFIED:?|MAG:?|TPA(?:_asm)?:?)\s*", "", str(name or "").strip(), flags=re.I).strip()
+    if (not s) or re.search(r"uncultured|unclassified|metagenom|environmental", s, re.I):
+        return (str(fallback).strip() or s).lower()
+    m = re.search(r"\b(?:phage|virus)\b\s+(.+)$", s, flags=re.I)
+    key = m.group(1).strip() if (m and m.group(1).strip()) else s
+    return re.sub(r"\s+", " ", key).strip().lower()
+
+
 def _uniquify(label: str, used: set) -> str:
     """Ensure a tip label is unique (Newick requires it) by appending _2, _3 …."""
     base, k, out = label, 2, label
@@ -140,8 +154,8 @@ def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> in
             with Path(hits_tsv).open(newline="") as fh:
                 for row in csv.DictReader(fh, delimiter="\t"):
                     s = row.get("aa_sequence", "")
-                    org = (row.get("organism", "").strip()
-                           or row.get("genome_id", "").strip())  # fallback if unnamed
+                    org = _canonical_organism(row.get("organism", ""),
+                                              row.get("genome_id", ""))
                     if s and org:
                         per_seq.setdefault(s, set()).add(org)
             occ = {s: len(g) for s, g in per_seq.items()}

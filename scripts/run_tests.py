@@ -109,6 +109,13 @@ check("organism NCBI genome title",
 check("organism unknown -> ''", BT._organism_from_desc("ABC123 hypothetical") != "")  # returns something, not crash
 check("short_acc UniProt", BT._short_acc("sp|P49861|CAPSD_BPHK7") == "P49861")
 check("short_acc plain", BT._short_acc("NC_019520.1") == "NC_019520.1")
+check("canon collapses host-genus alias",
+      BT._canonical_organism("Enterobacteria phage N4") == BT._canonical_organism("Escherichia phage N4") == "n4")
+check("canon virus form", BT._canonical_organism("Shigella virus Moo19") == "moo19")
+check("canon metagenomic -> genome fallback",
+      BT._canonical_organism("uncultured virus", "GPD_0001") == "gpd_0001")
+check("canon distinct phages stay distinct",
+      BT._canonical_organism("Escherichia phage T5") != BT._canonical_organism("Escherichia phage T7"))
 _uu = set()
 check("uniquify dedups labels",
       BT._uniquify("Escherichia_phage_X", _uu) == "Escherichia_phage_X"
