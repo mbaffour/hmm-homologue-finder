@@ -123,13 +123,15 @@ def _uniquify(label: str, used: set) -> str:
 def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> int:
     """Write the alignment/tree input FASTA with ORGANISM-FIRST tip labels so every
     figure shows readable names (accession only as a fallback). Discovered hits are
-    labelled 'Organism_accession_xN' where N is how many distinct genomes carry
+    labelled 'Organism_accession_xN' where N is how many distinct ORGANISMS carry
     that EXACT domain sequence (so a single tip honestly conveys how widespread the
     gene is — the tree is deduplicated by sequence, but the occurrence count is
-    not lost). Seeds are labelled 'Organism_accession_seed'. Returns the count."""
+    not lost). Counting unique organisms (by name) rather than genome accessions
+    avoids double-counting the same phage that appears in several databases under
+    different accessions. Seeds are labelled 'Organism_accession_seed'."""
     from Bio import SeqIO
     hit_map = _organism_labels(hits_tsv) if (hits_tsv and Path(hits_tsv).exists()) else {}
-    # How many distinct genomes carry each exact domain sequence — recovers the
+    # How many distinct ORGANISMS carry each exact domain sequence — recovers the
     # discovery breadth that exact-sequence dedup would otherwise hide on the tree.
     occ: dict = {}
     if hits_tsv and Path(hits_tsv).exists():
@@ -138,9 +140,10 @@ def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> in
             with Path(hits_tsv).open(newline="") as fh:
                 for row in csv.DictReader(fh, delimiter="\t"):
                     s = row.get("aa_sequence", "")
-                    if s:
-                        per_seq.setdefault(s, set()).add(
-                            row.get("genome_id", "") or row.get("organism", ""))
+                    org = (row.get("organism", "").strip()
+                           or row.get("genome_id", "").strip())  # fallback if unnamed
+                    if s and org:
+                        per_seq.setdefault(s, set()).add(org)
             occ = {s: len(g) for s, g in per_seq.items()}
         except Exception:
             occ = {}
@@ -149,7 +152,7 @@ def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> in
     for rec in SeqIO.parse(str(hits_faa), "fasta"):
         base = hit_map.get(rec.id) or _safe(rec.id)         # organism_genomeid, else id
         n = occ.get(str(rec.seq), 1)
-        label = f"{base}_x{n}" if n > 1 else base           # _xN = carried by N genomes
+        label = f"{base}_x{n}" if n > 1 else base           # _xN = carried by N organisms
         rec.id = _uniquify(label, used); rec.name = rec.id; rec.description = ""
         recs.append(rec)
     if seeds_faa and Path(seeds_faa).exists():
@@ -163,11 +166,12 @@ def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> in
     return len(recs)
 
 
-def _organism_labels(hits_tsv: Path) -> dict:
-    """Map hit_id -> 'Organism_accession' (newick-safe) from a hits.tsv."""
+def _organism_labels(hits_tsv) -> dict:
+    """Map hit_id -> 'Organism_accession' (newick-safe) from a hits.tsv.
+    Accepts a str or Path."""
     mp = {}
     try:
-        with hits_tsv.open(newline="") as fh:
+        with Path(hits_tsv).open(newline="") as fh:
             for row in csv.DictReader(fh, delimiter="\t"):
                 hid = (row.get("hit_id") or "").strip()
                 org = (row.get("organism") or "").strip()

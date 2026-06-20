@@ -93,9 +93,13 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
             "representative_genome": rep.get("genome_id", ""),
             "representative_db": rep.get("db_name", ""),
             "source_type": rep.get("source_type", ""),
+            # breadth = how many UNIQUE ORGANISMS carry this exact sequence (the
+            # headline discovery metric; immune to the same phage appearing in
+            # several databases under different accessions)
+            "n_organisms": len(orgs), "organisms": ";".join(orgs),
             "n_databases": len(dbs), "databases": ";".join(dbs),
-            "n_runs": len(runs), "runs": ";".join(runs),
-            "n_copies": len(g), "n_genomes": len(genomes), "n_organisms": len(orgs),
+            "n_genomes": len(genomes), "n_runs": len(runs), "runs": ";".join(runs),
+            "n_copies": len(g),
             "domain_aa_len": rep.get("domain_aa_len", ""),
             "best_evalue": "" if pd.isna(g["_ev"].min()) else f"{g['_ev'].min():.2g}",
             "best_bit_score": "" if pd.isna(g["_bs"].max()) else round(float(g["_bs"].max()), 1),
@@ -104,7 +108,8 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
         })
     out = pd.DataFrame(rows)
     if not out.empty:
-        out = out.sort_values("best_bit_score", ascending=False, na_position="last").reset_index(drop=True)
+        # Order by breadth (most widespread variant first) — the discovery story.
+        out = out.sort_values("n_organisms", ascending=False, kind="stable").reset_index(drop=True)
         out.insert(0, "homolog_id", [f"H{i:04d}" for i in range(1, len(out) + 1)])
     return out
 
