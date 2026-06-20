@@ -123,15 +123,33 @@ def _uniquify(label: str, used: set) -> str:
 def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> int:
     """Write the alignment/tree input FASTA with ORGANISM-FIRST tip labels so every
     figure shows readable names (accession only as a fallback). Discovered hits are
-    labelled 'Organism_accession' (from hits.tsv); seeds are labelled
-    'Organism_accession_seed' (organism parsed from the seed header) and so are
-    placed, and visibly marked, within the same tree. Returns the sequence count."""
+    labelled 'Organism_accession_xN' where N is how many distinct genomes carry
+    that EXACT domain sequence (so a single tip honestly conveys how widespread the
+    gene is — the tree is deduplicated by sequence, but the occurrence count is
+    not lost). Seeds are labelled 'Organism_accession_seed'. Returns the count."""
     from Bio import SeqIO
     hit_map = _organism_labels(hits_tsv) if (hits_tsv and Path(hits_tsv).exists()) else {}
+    # How many distinct genomes carry each exact domain sequence — recovers the
+    # discovery breadth that exact-sequence dedup would otherwise hide on the tree.
+    occ: dict = {}
+    if hits_tsv and Path(hits_tsv).exists():
+        per_seq: dict = {}
+        try:
+            with Path(hits_tsv).open(newline="") as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    s = row.get("aa_sequence", "")
+                    if s:
+                        per_seq.setdefault(s, set()).add(
+                            row.get("genome_id", "") or row.get("organism", ""))
+            occ = {s: len(g) for s, g in per_seq.items()}
+        except Exception:
+            occ = {}
     used: set = set()
     recs = []
     for rec in SeqIO.parse(str(hits_faa), "fasta"):
-        label = hit_map.get(rec.id) or _safe(rec.id)        # organism_genomeid, else id
+        base = hit_map.get(rec.id) or _safe(rec.id)         # organism_genomeid, else id
+        n = occ.get(str(rec.seq), 1)
+        label = f"{base}_x{n}" if n > 1 else base           # _xN = carried by N genomes
         rec.id = _uniquify(label, used); rec.name = rec.id; rec.description = ""
         recs.append(rec)
     if seeds_faa and Path(seeds_faa).exists():
