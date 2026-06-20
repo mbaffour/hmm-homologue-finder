@@ -72,23 +72,21 @@ from collections import OrderedDict
 from pathlib import Path
 
 import io
+import socket
 import time
 import pandas as pd
 from Bio import BiopythonWarning, Entrez, SeqIO
 from Bio.Seq import Seq
+
+socket.setdefaulttimeout(60)  # bound NCBI calls so unattended runs can't hang
 
 warnings.simplefilter("ignore", BiopythonWarning)
 
 # Ensure the conda env's tools (hmmsearch, prodigal) are on PATH even when this
 # script is invoked from a process that did not `conda activate`. Robustly find
 # the hmm-discovery env: the active CONDA_PREFIX first, then common installers.
-_cand = ([Path(os.environ["CONDA_PREFIX"]) / "bin"] if os.environ.get("CONDA_PREFIX") else []) \
-    + [Path.home() / _n / "envs" / "hmm-discovery" / "bin"
-       for _n in ("miniforge3", "mambaforge", "miniconda3", "anaconda3")]
-for _b in _cand:
-    if _b.is_dir():
-        os.environ["PATH"] = f"{_b}{os.pathsep}{os.environ.get('PATH', '')}"
-        break
+from env_paths import ensure_env_on_path  # noqa: E402  (sibling helper in scripts/)
+ensure_env_on_path()
 
 # ----------------------------------------------------------------------------
 # Coordinate-correct ORF reconstruction
@@ -232,13 +230,13 @@ def prodigal_overlap(genes, start_1, end_1, strand):
 # ----------------------------------------------------------------------------
 # Domain-envelope detection (hmmsearch --domtblout on the ORF set)
 # ----------------------------------------------------------------------------
-def domain_envelopes(orf_faa: Path, hmm: Path) -> dict[str, tuple[int, int]]:
+def domain_envelopes(orf_faa: Path, hmm: Path, cpu: int = 8) -> dict[str, tuple[int, int]]:
     """Map ORF id -> (env_from, env_to) of its best family domain hit."""
     with tempfile.NamedTemporaryFile(suffix=".domtbl", delete=False) as tf:
         domtbl = tf.name
     subprocess.run(
         ["hmmsearch", "--domtblout", domtbl, "-E", "1e-3", "--domE", "1e-3",
-         "--cpu", "8", "--noali", str(hmm), str(orf_faa)],
+         "--cpu", str(cpu), "--noali", str(hmm), str(orf_faa)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
     )
     best: dict[str, tuple[int, int, float]] = {}
@@ -264,8 +262,16 @@ def main():
     ap.add_argument("--hmm", type=Path, required=True)
     ap.add_argument("--run-label", required=True)
     ap.add_argument("--out-dir", type=Path, required=True)
-    ap.add_argument("--email", default="researcher@example.com",
-                    help="NCBI Entrez email for protein-database hit retrieval")
+    ap.add_argument("--email", default="",
+                    help="NCBI Entrez email for protein-database hit retrieval. "
+                         "If omitted, protein-DB hits are kept but their sequences are "
+                         "not fetched (offline). Never assume an address.")
+    ap.add_argument("--cpu", type=int, default=8,
+                    help="CPU threads for the domain-envelope hmmsearch")
+    ap.add_argument("--prodigal-gate", action="store_true",
+                    help="also require six-frame hits to overlap a Prodigal-predicted "
+                         "gene (in_coding_locus) to pass — stricter / higher specificity. "
+                         "Default off: keeps genuine antisense/alternate-frame homologs.")
     args = ap.parse_args()
 
     out = args.out_dir
@@ -342,14 +348,30 @@ def main():
                     if not re.search(r"coords=([^:]+):(\d+)-(\d+)\(([+-])\)", str(row.get("description", "")))]
     if protein_rows:
         accs = sorted({clean_accession(r.get("protein_id", r.get("target_name", ""))) for r in protein_rows})
-        print(f"  fetching {len(accs)} protein-database hit sequences from NCBI…")
-        prot_seqs = fetch_protein_seqs(accs, args.email)
+        # Offline (no real email): keep the protein-DB hits in the table but skip the
+        # NCBI fetch rather than sending a placeholder address (NCBI policy).
+        if args.email and args.email != "researcher@example.com":
+            print(f"  fetching {len(accs)} protein-database hit sequences from NCBI…")
+            prot_seqs = fetch_protein_seqs(accs, args.email)
+        else:
+            print(f"  (offline: skipping NCBI fetch of {len(accs)} protein-database hit "
+                  f"sequences — no --email provided)")
+            prot_seqs = {}
+        missing_protein = []
         with orf_aa_path.open("a") as faa:
             for row in protein_rows:
                 tname = str(row.get("protein_id", row.get("target_name", "")))
                 acc = clean_accession(tname)
                 aa = prot_seqs.get(acc) or prot_seqs.get(acc.split(".")[0])
                 if not aa:
+                    # Do NOT silently drop a protein-DB hit whose sequence couldn't
+                    # be fetched — record it so the loss is visible and recoverable.
+                    missing_protein.append({
+                        "hit_id": tname, "accession": acc,
+                        "db_name": row.get("db_name", ""),
+                        "evalue": row.get("evalue", ""),
+                        "bit_score": row.get("bit_score", ""),
+                    })
                     continue
                 faa.write(f">{tname}\n{aa}\n")
                 records.append({
@@ -370,6 +392,12 @@ def main():
                     "bias_score": row.get("bias_score", ""),
                     "_orf_nt": "", "_orf_aa": aa, "_fna_path": "",
                 })
+        if missing_protein:
+            pd.DataFrame(missing_protein).to_csv(
+                out / "protein_hits_unfetched.tsv", sep="\t", index=False)
+            print(f"  WARNING: {len(missing_protein)} protein-DB hit(s) could not be fetched "
+                  f"from NCBI and are NOT in the validated table — listed in "
+                  f"{out / 'protein_hits_unfetched.tsv'} (re-run to retry).")
 
     if not records:
         # Zero hits is a valid outcome — write empty outputs so the pipeline
@@ -382,7 +410,7 @@ def main():
         return
 
     # ---- Pass 2: domain envelopes via hmmsearch on the ORF set -------------
-    envs = domain_envelopes(orf_aa_path, args.hmm)
+    envs = domain_envelopes(orf_aa_path, args.hmm, cpu=args.cpu)
 
     # ---- Pass 3: per-hit validation + domain slicing -----------------------
     cls_tier = dict(zip(cls.get("target_name", []), cls.get("confidence_tier", []))) if not cls.empty else {}
@@ -421,19 +449,30 @@ def main():
             r["in_coding_locus"] = "NA"
             r["passes_orf_filter"] = (internal_stops == 0)
         else:
-            # Six-frame ORF: validate against a genuine ORF (no internal stops)
-            # sitting in a real coding locus (overlaps a Prodigal gene).
+            # Six-frame ORF: validate on SIX-FRAME evidence — a stop-bounded ORF
+            # with no internal stops that matched the profile HMM. Prodigal overlap
+            # is recorded for information but is NOT exclusionary: these homologues
+            # are by design genes that standard annotation (Prodigal) misses
+            # (antisense / alternate-frame), so requiring overlap with a predicted
+            # gene would discard true positives — the discovery goal of this tool.
             r["has_start_M"] = orf_aa.startswith("M")
             r["ends_at_stop"] = True  # six-frame ORFs are stop-bounded by construction
             genes = prodigal_genes(fna_path)
             same, any_ = prodigal_overlap(genes, r["nt_start"], r["nt_end"], r["strand"])
             r["prodigal_same_strand_pct"] = round(same * 100, 1)
             r["prodigal_any_strand_pct"] = round(any_ * 100, 1)
-            r["prodigal_concordant"] = same >= 0.50          # same-strand predicted gene
-            r["in_coding_locus"] = any_ >= 0.50              # overlaps any predicted gene
-            # domain_coverage is reported but NOT exclusionary: a domain embedded
-            # in a longer ORF is still a real homolog; we seed with the slice.
-            r["passes_orf_filter"] = (internal_stops == 0) and r["in_coding_locus"]
+            r["prodigal_concordant"] = same >= 0.50          # informational
+            r["in_coding_locus"] = any_ >= 0.50              # informational (gate only if --prodigal-gate)
+            # Gate on six-frame ORF quality (no internal stops). By default the
+            # Prodigal in_coding_locus check is informational, NOT exclusionary —
+            # requiring it would discard genuine antisense/alternate-frame homologs
+            # (the discovery target). Pass --prodigal-gate to additionally require it
+            # for a stricter, higher-specificity set. domain_coverage is likewise
+            # reported but not exclusionary (a domain in a longer ORF is still real).
+            passes = (internal_stops == 0)
+            if args.prodigal_gate:
+                passes = passes and r["in_coding_locus"]
+            r["passes_orf_filter"] = passes
 
         r["confidence_tier"] = cls_tier.get(pid, "")
         r["qc_flags"] = cls_qc.get(pid, "")

@@ -24,6 +24,23 @@ except ImportError:
 # Alignment
 # ---------------------------------------------------------------------------
 
+def accuracy_flags(n_seqs: int, max_linsi: int = 500) -> "tuple[list, str]":
+    """MAFFT flags for the most accurate strategy that stays computationally
+    tractable for the given sequence count.
+
+    L-INS-i (``--localpair --maxiterate 1000``) is the gold-standard MAFFT
+    strategy for aligning homologous domains embedded in variable-length context
+    — the situation here. It is O(N^2) in pairwise comparisons, so it is used up
+    to ``max_linsi`` sequences and the pipeline falls back to MAFFT's ``--auto``
+    (which selects FFT-NS-2 / PartTree) for larger sets to stay practical.
+
+    Returns ``(extra_flags, human_label)``.
+    """
+    if 2 <= n_seqs <= max_linsi:
+        return (["--maxiterate", "1000", "--localpair"], f"L-INS-i (accurate, n={n_seqs})")
+    return ([], f"auto/FFT-NS-2 (n={n_seqs} > {max_linsi})")
+
+
 def run_mafft(
     faa_path: Path,
     out_path: Path,
@@ -41,7 +58,11 @@ def run_mafft(
     cpu : int
         Number of threads (``--thread``).
     extra_flags : list, optional
-        Additional MAFFT flags, e.g. ``["--localpair", "--maxiterate", "1000"]``.
+        Explicit MAFFT strategy flags, e.g. ``["--localpair", "--maxiterate",
+        "1000"]`` (L-INS-i). When given, these REPLACE ``--auto`` so the requested
+        accurate strategy is honoured (passing both ``--auto`` and ``--localpair``
+        lets ``--auto`` silently override the accurate choice). When omitted,
+        ``--auto`` is used.
 
     Returns
     -------
@@ -62,10 +83,8 @@ def run_mafft(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cmd = [mafft_bin, "--auto", "--thread", str(cpu)]
-    if extra_flags:
-        cmd.extend(extra_flags)
-    cmd.append(str(faa_path))
+    strategy = list(extra_flags) if extra_flags else ["--auto"]
+    cmd = [mafft_bin, "--thread", str(cpu), *strategy, str(faa_path)]
 
     result = run_cmd(cmd)
     if result.returncode != 0:

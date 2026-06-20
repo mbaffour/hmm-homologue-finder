@@ -25,22 +25,37 @@ esac
 
 echo "=== HMM Homologue Finder — environment setup ($(uname -s)) ==="
 
-# 1. conda / mamba present?
-if ! command -v conda >/dev/null 2>&1; then
-  # try common install locations
-  for base in "$HOME/miniforge3" "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/mambaforge"; do
-    [ -f "$base/bin/activate" ] && source "$base/bin/activate" && break
-  done
+# 1. conda / mamba present?  Load a conda *shell hook* (etc/profile.d/conda.sh)
+# rather than bin/activate, so that `conda activate` works later even when conda
+# is only reachable via condabin (which otherwise errors "Run 'conda init' first").
+for base in "$HOME/miniforge3" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anaconda3" \
+            "$HOME/opt/miniconda3" "$HOME/opt/anaconda3" \
+            "/opt/homebrew/Caskroom/miniforge/base" "/usr/local/Caskroom/miniforge/base" \
+            "/opt/miniconda3" "/opt/anaconda3" "/opt/conda"; do
+  if [ -f "$base/etc/profile.d/conda.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$base/etc/profile.d/conda.sh"
+    break
+  fi
+done
+# Fall back: conda on PATH but hook not found above — derive its base and source it.
+if ! type conda 2>/dev/null | grep -q 'function'; then
+  if command -v conda >/dev/null 2>&1; then
+    _cbase="$(conda info --base 2>/dev/null || true)"
+    [ -n "$_cbase" ] && [ -f "$_cbase/etc/profile.d/conda.sh" ] && source "$_cbase/etc/profile.d/conda.sh"
+  fi
 fi
 if ! command -v conda >/dev/null 2>&1; then
-  cat <<'MSG'
-conda/mamba was not found. Install Miniforge first (one time):
-
-  curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-$(uname -m).sh
-  bash Miniforge3-MacOSX-$(uname -m).sh
-  # then close & reopen the terminal and re-run:  bash setup.sh
-
-MSG
+  case "$(uname -s)" in
+    Darwin*) _mf="Miniforge3-MacOSX-$(uname -m).sh" ;;
+    *)       _mf="Miniforge3-Linux-$(uname -m).sh" ;;
+  esac
+  echo "conda/mamba was not found. Install Miniforge first (one time):"
+  echo
+  echo "  curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/$_mf"
+  echo "  bash $_mf"
+  echo "  # then close & reopen the terminal and re-run:  bash setup.sh"
+  echo
   exit 1
 fi
 echo "conda found: $(command -v conda)"
@@ -58,7 +73,12 @@ if ! conda env list | grep -qE "^\s*${ENV_NAME}\s"; then
 fi
 
 # 3. activate and verify; install any stragglers
-source activate "$ENV_NAME" 2>/dev/null || conda activate "$ENV_NAME"
+conda activate "$ENV_NAME"
+if [ "${CONDA_DEFAULT_ENV:-}" != "$ENV_NAME" ]; then
+  echo "ERROR: could not activate the '$ENV_NAME' environment (CONDA_DEFAULT_ENV='${CONDA_DEFAULT_ENV:-}')." >&2
+  echo "Try: conda activate $ENV_NAME   — or re-run after 'conda init bash' && restarting the shell." >&2
+  exit 1
+fi
 echo "Active env: ${CONDA_DEFAULT_ENV:-?}"
 
 need=""

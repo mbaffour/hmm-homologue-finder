@@ -35,6 +35,7 @@ import gzip
 import io
 import os
 import re
+import socket
 import subprocess
 import tempfile
 import time
@@ -43,19 +44,16 @@ from pathlib import Path
 
 import pandas as pd
 from Bio import Entrez, SeqIO
+
+socket.setdefaulttimeout(60)  # bound NCBI calls so unattended runs can't hang
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import SeqFeature, FeatureLocation
 
-_cand = ([Path(os.environ["CONDA_PREFIX"]) / "bin"] if os.environ.get("CONDA_PREFIX") else []) \
-    + [Path.home() / _n / "envs" / "hmm-discovery" / "bin"
-       for _n in ("miniforge3", "mambaforge", "miniconda3", "anaconda3")]
-for _b in _cand:
-    if _b.is_dir():
-        os.environ["PATH"] = f"{_b}{os.pathsep}{os.environ.get('PATH', '')}"
-        break
+from env_paths import ensure_env_on_path  # noqa: E402  (sibling helper in scripts/)
+ensure_env_on_path()
 
-FLANKS = 5
+FLANKS = 7  # ORFs each side of the family gene (publication default for phage neighbourhoods)
 # Source catalogues for metagenomic genomes (id prefix -> URL)
 CATALOGUES = {
     "GutCatV1_": "https://zenodo.org/records/11426065/files/AVrC_allrepresentatives.fasta.gz",  # GVD-AVrC
@@ -228,6 +226,20 @@ def main() -> None:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_csv(args.hits_tsv, sep="\t")
+    # Genome neighbourhoods apply only to six-frame ORF hits (which carry genomic
+    # coordinates). Protein-DB hits (e.g. RefSeq YP_ accessions) have no genome
+    # here — skip them rather than failing to fetch them as nuccore. (Their parent
+    # genome could be resolved via the protein record's coded_by; future work.)
+    if "source_type" in df.columns:
+        before = len(df)
+        df = df[df["source_type"] == "six_frame_orf"].copy()
+        skipped = before - len(df)
+        if skipped:
+            print(f"Skipping {skipped} protein-DB hit(s) without genomic coordinates "
+                  "(no neighbourhood to draw)")
+    if df.empty:
+        print("No six-frame hits with coordinates; no GenBank neighbourhoods to build.")
+        return
     by_genome = {gid: sub for gid, sub in df.groupby("genome_id")}
     genome_ids = list(by_genome)
     print(f"{len(genome_ids)} genomes ({len(df)} hits)")

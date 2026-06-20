@@ -1,0 +1,47 @@
+{
+  "calibration": {
+    "false_positive_rate": 0.0,
+    "sensitivity": 1.0,
+    "specificity": 1.0
+  },
+  "hit_summary": [
+    {
+      "passed_filter": "6",
+      "protein_db_hits": "2",
+      "run": "1",
+      "six_frame_hits": "4",
+      "total_hits": "6",
+      "unique_sequences": "2"
+    },
+    {
+      "passed_filter": "6",
+      "protein_db_hits": "2",
+      "run": "2",
+      "six_frame_hits": "4",
+      "total_hits": "6",
+      "unique_sequences": "2"
+    }
+  ],
+  "orf_invariants": {
+    "all_pass_filter": true,
+    "n_kept": 12,
+    "six_frame_internal_stops_max": 0
+  },
+  "paper_table": {
+    "YP_007006611.1": {
+      "bit": 144.3,
+      "tier": "high_confidence"
+    },
+    "YP_009795477.1": {
+      "bit": 145.2,
+      "tier": "high_confidence"
+    }
+  },
+  "stop_reason": "converged at run2 (hits 2\u21922, HMM length 56\u219256)",
+  "tree_tips": [
+    "JN882298_sixframe_orf03295502",
+    "MG201401_sixframe_orf02886510",
+    "SEED_NC_019520.1",
+    "SEED_NC_047890.1"
+  ]
+}

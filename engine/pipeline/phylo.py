@@ -121,12 +121,34 @@ def run_iqtree(
     except Exception as _exc:
         print(f"WARNING: ID sanitisation failed ({_exc}), using original file", file=sys.stderr)
 
+    # IQ-TREE needs >=3 sequences to infer an (unrooted) tree. With 1-2 seeds
+    # (common for small/novel families) skip gracefully rather than aborting with
+    # a scary "Alignment must have at least 3 sequences" error in unattended logs.
+    try:
+        n_seqs = sum(1 for ln in Path(aln_path).read_text(errors="replace").splitlines()
+                     if ln.startswith(">"))
+    except Exception:
+        n_seqs = 0
+    if n_seqs < 3:
+        result["error"] = f"skipped: only {n_seqs} sequence(s) (IQ-TREE needs ≥3)"
+        print(f"INFO: {result['error']}", file=sys.stderr)
+        return result
+
     prefix = str(out_dir / "iqtree")
+    # -T AUTO lets IQ-TREE pick a thread count <= physical cores; -ntmax caps it at
+    # the requested cpu. A fixed -T greater than the core count aborts the run
+    # ("more threads than CPU cores available"). -seed makes the search reproducible.
+    try:
+        _ntmax = max(1, int(cpu))
+    except (TypeError, ValueError):
+        _ntmax = 1
     cmd = [
         binary,
         "-s", str(aln_path),
         "-m", model,
-        "-T", str(cpu),
+        "-T", "AUTO",
+        "-ntmax", str(_ntmax),
+        "-seed", "12345",
         "--prefix", prefix,
         "-redo",
     ]

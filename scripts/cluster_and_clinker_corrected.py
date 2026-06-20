@@ -39,28 +39,27 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import socket
 import subprocess
 import tempfile
 from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
-from Bio import SeqIO
+from Bio import Entrez, SeqIO
 from Bio.Seq import Seq
+
+socket.setdefaulttimeout(60)  # bound NCBI coded_by/genome fetches; never hang a run
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import SeqFeature, FeatureLocation
 
 # Ensure conda env tools (prodigal, cd-hit, clinker) are on PATH regardless of
 # how this script was invoked.
-_cand = ([Path(os.environ["CONDA_PREFIX"]) / "bin"] if os.environ.get("CONDA_PREFIX") else []) \
-    + [Path.home() / _n / "envs" / "hmm-discovery" / "bin"
-       for _n in ("miniforge3", "mambaforge", "miniconda3", "anaconda3")]
-for _b in _cand:
-    if _b.is_dir():
-        os.environ["PATH"] = f"{_b}{os.pathsep}{os.environ.get('PATH', '')}"
-        break
+from env_paths import ensure_env_on_path  # noqa: E402  (sibling helper in scripts/)
+ensure_env_on_path()
 
-FLANKS = 5
+FLANKS = 7  # ORFs each side of the family gene (publication default for phage neighbourhoods)
 
 
 # ----------------------------------------------------------------------------
@@ -125,6 +124,103 @@ def prodigal_genes(fna: Path):
 
 
 # ----------------------------------------------------------------------------
+# Protein-DB hits: resolve parent genome + CDS coords via the GenPept coded_by,
+# fetch the genome into the synteny cache so they get a real neighbourhood too.
+# ----------------------------------------------------------------------------
+def _parse_coded_by(genpept_text: str):
+    """'…coded_by="complement(NC_019520.1:37102..37269)"…' -> (acc, start, end, strand)."""
+    m = re.search(r'coded_by="?(complement\()?([A-Za-z0-9_.]+):[<>]?(\d+)\.\.[<>]?(\d+)',
+                  genpept_text)
+    if not m:
+        return None
+    return m.group(2), int(m.group(3)), int(m.group(4)), ("-" if m.group(1) else "+")
+
+
+def resolve_protein_neighborhoods(hits, cache_dir: Path, email: str) -> int:
+    """For protein-DB hits, look up the parent genome + CDS coords (coded_by) and
+    fetch the genome into cache_dir, filling in coords so build_genbank can draw a
+    neighbourhood. Mutates `hits` in place. Degrades gracefully (skips on any
+    NCBI/parse failure); returns the count resolved."""
+    if "source_type" not in hits.columns:
+        return 0
+    Entrez.email = email
+    resolved = 0
+    for i in hits.index[hits["source_type"] == "annotated_protein"]:
+        acc = str(hits.at[i, "genome_id"]).strip()
+        if not acc:
+            continue
+        try:
+            gb = Entrez.efetch(db="protein", id=acc, rettype="gb", retmode="text").read()
+        except Exception:
+            continue
+        cb = _parse_coded_by(gb)
+        if not cb:
+            continue
+        gacc, gs, ge, strand = cb
+        fna = cache_dir / f"{gacc}.fna"
+        if not (fna.exists() and fna.stat().st_size > 0):
+            try:
+                fna.write_text(Entrez.efetch(db="nuccore", id=gacc,
+                                             rettype="fasta", retmode="text").read())
+            except Exception:
+                continue
+        if not (fna.exists() and fna.stat().st_size > 0):
+            continue
+        hits.at[i, "contig"] = gacc
+        hits.at[i, "nt_start"] = gs
+        hits.at[i, "nt_end"] = ge
+        hits.at[i, "strand"] = strand
+        resolved += 1
+    if resolved:
+        print(f"Resolved {resolved} protein-DB hit(s) to genome neighbourhoods via coded_by")
+    return resolved
+
+
+def dedup_synteny_loci(hits) -> set:
+    """Indices to KEEP for synteny: collapse hits mapping to the SAME genomic
+    locus (same parent accession, overlapping coordinates) — e.g. a six-frame ORF
+    and the RefSeq protein of the same gene (resolved via coded_by). Prefer the
+    six-frame ORF, then higher bit score. Genuine paralogs (non-overlapping loci
+    on one genome) are kept separate. Hits without coordinates are left untouched
+    (they build nothing anyway)."""
+    rows = []
+    for i in hits.index:
+        contig = str(hits.at[i, "contig"]).split(".")[0].strip()
+        try:
+            s, e = int(hits.at[i, "nt_start"]), int(hits.at[i, "nt_end"])
+        except (ValueError, TypeError):
+            continue
+        if not contig:
+            continue
+        try:
+            bs = float(hits.at[i, "bit_score"])
+        except (ValueError, TypeError):
+            bs = 0.0
+        rows.append((i, contig, min(s, e), max(s, e),
+                     str(hits.at[i, "source_type"]), bs))
+    keep = set()
+    by_contig = defaultdict(list)
+    for r in rows:
+        by_contig[r[1]].append(r)
+    for _contig, rs in by_contig.items():
+        rs.sort(key=lambda r: r[2])
+        clusters = []  # [lo, hi, [members]]
+        for r in rs:
+            lo, hi = r[2], r[3]
+            for c in clusters:
+                if lo <= c[1] and hi >= c[0]:        # overlapping -> same locus
+                    c[0], c[1] = min(c[0], lo), max(c[1], hi)
+                    c[2].append(r)
+                    break
+            else:
+                clusters.append([lo, hi, [r]])
+        for c in clusters:
+            best = max(c[2], key=lambda r: (r[4] == "six_frame_orf", r[5]))
+            keep.add(best[0])
+    return keep
+
+
+# ----------------------------------------------------------------------------
 # Build a GenBank neighbourhood with the real family ORF as the central gene
 # ----------------------------------------------------------------------------
 def build_genbank(row, cache: Path, out_dir: Path) -> Path | None:
@@ -150,11 +246,16 @@ def build_genbank(row, cache: Path, out_dir: Path) -> Path | None:
 
     window_lo = min([h_start] + [g[0] for g in nearby])
     window_hi = max([h_end] + [g[1] for g in nearby])
+    genome_id = str(row["genome_id"])
+    organism = str(row.get("organism", "") or "").strip()
+    label = f"{organism} ({genome_id})" if organism else genome_id
+    locus = "".join(c if c.isalnum() or c in "._-" else "_" for c in genome_id)[:16]  # GenBank LOCUS limit
     rec = SeqRecord(Seq("N" * (window_hi - window_lo + 1)),
-                    id=str(row["genome_id"])[:16],
-                    name=str(row["genome_id"])[:16],
-                    description=f"{row['genome_id']} family neighbourhood",
-                    annotations={"molecule_type": "DNA", "topology": "linear"})
+                    id=locus,
+                    name=locus,
+                    description=label,
+                    annotations={"molecule_type": "DNA", "topology": "linear",
+                                 "organism": organism or genome_id})
 
     feats = []
     # flanking genes
@@ -164,16 +265,20 @@ def build_genbank(row, cache: Path, out_dir: Path) -> Path | None:
             "product": ["flanking CDS"],
             "translation": [aa or "X"],
         }))
-    # central family gene (the real ORF)
+    # central family gene (the real ORF) — consistent name so clinker colours and
+    # links it identically across every locus, making the family gene easy to spot.
     loc = FeatureLocation(h_start - window_lo, h_end - window_lo, strand=h_strand)
     feats.append(SeqFeature(loc, type="CDS", qualifiers={
-        "product": ["homologue (HMM hit)"],
-        "gene": ["family"],
+        "product": ["FAMILY HOMOLOGUE (HMM hit)"],
+        "gene": ["family_homologue"],
         "translation": [str(row["aa_sequence"]).rstrip("*") or "X"],
     }))
     rec.features = sorted(feats, key=lambda f: int(f.location.start))
 
-    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in str(row["genome_id"]))[:40]
+    # File name drives the clinker track label — use the organism so tracks read
+    # as phage names, not bare accessions.
+    safe = "".join(c if c.isalnum() or c in "._- " else "_" for c in label).strip()
+    safe = "_".join(safe.split())[:60] or genome_id
     out = out_dir / f"{safe}.gbk"
     SeqIO.write(rec, str(out), "genbank")
     return out
@@ -185,6 +290,9 @@ def main() -> None:
     ap.add_argument("--validated-dir", type=Path, required=True)
     ap.add_argument("--cache-dir", type=Path, required=True)
     ap.add_argument("--out-dir", type=Path, required=True)
+    ap.add_argument("--email", default="",
+                    help="NCBI email; if set, protein-DB hits are resolved to genome "
+                         "neighbourhoods via coded_by")
     args = ap.parse_args()
 
     out = args.out_dir
@@ -194,6 +302,15 @@ def main() -> None:
 
     hits = pd.read_csv(args.validated_dir / "hits.tsv", sep="\t")
     unique_faa = args.validated_dir / "hits_unique_aa.faa"
+
+    # Give protein-DB hits a neighbourhood too: resolve their parent genome +
+    # CDS coords via coded_by and fetch the genome into the synteny cache.
+    args.cache_dir.mkdir(parents=True, exist_ok=True)
+    if args.email and "annotated_protein" in set(hits.get("source_type", [])):
+        try:
+            resolve_protein_neighborhoods(hits, args.cache_dir, args.email)
+        except Exception as e:
+            print(f"(protein coded_by resolution skipped: {e})")
 
     # 1. cluster the correct domains
     clusters = cdhit(unique_faa, out / "clusters")
@@ -213,9 +330,18 @@ def main() -> None:
     # write cluster membership table
     mem_rows = []
 
-    # 3. build GenBanks, grouped by cluster
+    # 3. build GenBanks, grouped by cluster. First collapse hits that map to the
+    #    same genomic locus (e.g. a six-frame ORF and the RefSeq protein of the
+    #    same gene) so a locus is drawn once, not double-counted.
+    keep_idx = dedup_synteny_loci(hits)
+    n_coord = sum(1 for i in hits.index
+                  if str(hits.at[i, "nt_start"]).strip() not in ("", "nan"))
+    if keep_idx and len(keep_idx) < n_coord:
+        print(f"Synteny dedup: {n_coord} coordinate hits -> {len(keep_idx)} distinct loci")
     by_cluster: dict[int, list[Path]] = defaultdict(list)
-    for _, row in hits.iterrows():
+    for idx, row in hits.iterrows():
+        if keep_idx and idx not in keep_idx:
+            continue
         seq = str(row["aa_sequence"])
         cid = seq_to_cluster.get(seq)
         if cid is None:
@@ -231,22 +357,34 @@ def main() -> None:
 
     pd.DataFrame(mem_rows).to_csv(out / "cluster_membership.tsv", sep="\t", index=False)
 
-    # 4. clinker per cluster
+    # 4. clinker per cluster. Cap the number of tracks per figure so it stays
+    #    legible: a figure with 30-80 genome tracks is unreadable. When a cluster
+    #    is larger, evenly sample MAX_LOCI loci across it (the representative is
+    #    first, so it is always kept) for a readable, diverse figure.
+    MAX_LOCI = 16
     figdir = out / "clinker_figures"
     figdir.mkdir(exist_ok=True)
     produced = {}
+    shown_counts = {}
     for cid in sorted(by_cluster):
-        gbks = sorted(set(by_cluster[cid]))
-        if len(gbks) < 2:
+        gbks_all = sorted(set(by_cluster[cid]))
+        if len(gbks_all) < 2:
             continue
+        if len(gbks_all) > MAX_LOCI:
+            step = len(gbks_all) / MAX_LOCI
+            gbks = [gbks_all[int(i * step)] for i in range(MAX_LOCI)]
+        else:
+            gbks = gbks_all
         html = figdir / f"cluster_{cid}.html"
         try:
-            subprocess.run(["clinker", *[str(g) for g in gbks[:30]],
+            subprocess.run(["clinker", *[str(g) for g in gbks],
                             "-p", str(html), "-i", "0.3", "-j", "4"],
                            capture_output=True, text=True, timeout=600)
             if html.exists() and html.stat().st_size > 100:
                 produced[cid] = html
-                print(f"  cluster_{cid}: {len(gbks)} loci -> {html.stat().st_size//1024} KB")
+                shown_counts[cid] = (len(gbks), len(gbks_all))
+                note = f"showing {len(gbks)} of {len(gbks_all)}" if len(gbks) < len(gbks_all) else f"{len(gbks)} loci"
+                print(f"  cluster_{cid}: {note} -> {html.stat().st_size // 1024} KB")
         except Exception as e:
             print(f"  cluster_{cid}: clinker failed: {e}")
 
@@ -254,12 +392,17 @@ def main() -> None:
     idx = ["<!DOCTYPE html><html><head><meta charset='utf-8'>",
            "<title>family clinker (corrected)</title>",
            "<style>body{font-family:sans-serif;margin:2em}td,th{border:1px solid #ddd;padding:6px 12px}</style>",
-           "</head><body><h1>family synteny by corrected cluster</h1><table>",
-           "<tr><th>Cluster</th><th>Loci</th><th>Figure</th></tr>"]
+           "</head><body><h1>family synteny by corrected cluster</h1>",
+           "<p>The central <b>FAMILY HOMOLOGUE</b> gene is named identically in every "
+           "track so clinker colours/links it consistently. Tracks are labelled by "
+           "organism. Large clusters show an evenly-sampled, readable subset.</p><table>",
+           "<tr><th>Cluster</th><th>Loci shown / total</th><th>Figure</th></tr>"]
     for cid in sorted(by_cluster):
         n = len(set(by_cluster[cid]))
+        shown = shown_counts.get(cid, (0, n))[0]
+        cell = f"{shown} / {n}" if cid in produced else f"&mdash; / {n}"
         link = f'<a href="clinker_figures/cluster_{cid}.html">open</a>' if cid in produced else "&mdash;"
-        idx.append(f"<tr><td>{cid}</td><td>{n}</td><td>{link}</td></tr>")
+        idx.append(f"<tr><td>{cid}</td><td>{cell}</td><td>{link}</td></tr>")
     idx.append("</table></body></html>")
     (out / "index.html").write_text("\n".join(idx))
     print(f"Done. {len(produced)} clinker figures. Index: {out/'index.html'}")

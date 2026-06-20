@@ -550,7 +550,10 @@ def download_control_sequences(
     import urllib.request
     import time
 
-    UNIPROT_BASE = "https://rest.uniprot.org/uniprotkb/stream"
+    # Use /search (size = exact page cap, max 500) NOT /stream (which ignores
+    # size and returns the ENTIRE reviewed proteome — tens of thousands of seqs,
+    # bloating the bundle and making every calibration run scan ~150k negatives).
+    UNIPROT_BASE = "https://rest.uniprot.org/uniprotkb/search"
 
     groups = [
         ("fungi_500.faa",      "taxonomy_id:4751 AND reviewed:true",           500),
@@ -572,13 +575,21 @@ def download_control_sequences(
             import urllib.parse
             url = (
                 f"{UNIPROT_BASE}?query={urllib.parse.quote(query)}"
-                f"&format=fasta&size={n}"
+                f"&format=fasta&size={min(n, 500)}"
             )
             print(f"  Downloading {fname} ...", file=sys.stderr)
             with urllib.request.urlopen(url, timeout=60) as resp:
                 content = resp.read().decode("utf-8", errors="replace")
-            out_faa.write_text(content)
-            n_seqs = content.count(">")
+            # Belt-and-suspenders: keep at most n records even if the API over-returns.
+            try:
+                from io import StringIO
+                from Bio import SeqIO
+                recs = list(SeqIO.parse(StringIO(content), "fasta"))[:n]
+                SeqIO.write(recs, str(out_faa), "fasta")
+                n_seqs = len(recs)
+            except Exception:
+                out_faa.write_text(content)
+                n_seqs = content.count(">")
             downloaded[fname] = n_seqs
             print(f"  {fname}: {n_seqs} sequences", file=sys.stderr)
             time.sleep(1)  # be polite to UniProt

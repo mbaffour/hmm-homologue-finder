@@ -21,11 +21,15 @@ from __future__ import annotations
 
 import argparse
 import re
+import socket
 import time
 from pathlib import Path
 
 import pandas as pd
 from Bio import Entrez
+
+# Never let a stalled NCBI connection freeze an unattended run.
+socket.setdefaulttimeout(60)
 
 
 def is_ncbi(s: str) -> bool:
@@ -37,26 +41,65 @@ def clean_title(t: str) -> str:
     return re.split(r",\s*(complete|partial|whole|genome assembly|DNA)\b", t, 1)[0].strip().rstrip(",").strip()
 
 
-def fetch_names(accessions: list[str], email: str) -> dict[str, str]:
-    """Return {accession: phage_name} from NCBI (with/without version key)."""
-    Entrez.email = email
-    names: dict[str, str] = {}
-    for i in range(0, len(accessions), 40):
-        chunk = accessions[i:i + 40]
-        for attempt in range(3):
+_PROTEIN_PREFIXES = ("NP_", "YP_", "WP_", "XP_", "AP_", "QNP", "ADV", "AGT")
+
+
+def _is_protein_acc(acc: str) -> bool:
+    return any(str(acc).upper().startswith(p) for p in _PROTEIN_PREFIXES)
+
+
+def _org_from_title(title: str) -> str:
+    """Protein esummary Title is '<product> [<organism>]' -> the organism."""
+    m = re.search(r"\[([^\]]+)\]\s*$", title or "")
+    return m.group(1).strip() if m else ""
+
+
+def _esummary_into(ids: list[str], db: str, namer, names: dict) -> None:
+    """esummary `ids` against `db`; on batch error, resolve each id individually
+    so one bad accession can't poison the whole batch. Quiet (no retry spam)."""
+    for i in range(0, len(ids), 40):
+        chunk = ids[i:i + 40]
+        groups = [chunk]
+        try:
+            h = Entrez.esummary(db=db, id=",".join(chunk))
+            for rec in Entrez.read(h):
+                acc = rec.get("AccessionVersion") or rec.get("Caption", "")
+                nm = namer(rec)
+                if acc and nm:
+                    names[acc] = nm
+                    names[str(acc).split(".")[0]] = nm
+            groups = []
+        except Exception:
+            groups = [[one] for one in chunk]  # fall back to per-accession
+        for one in (g for grp in groups for g in grp):
             try:
-                h = Entrez.esummary(db="nuccore", id=",".join(chunk))
+                h = Entrez.esummary(db=db, id=one)
                 for rec in Entrez.read(h):
-                    acc = rec.get("AccessionVersion", "")
-                    nm = clean_title(rec.get("Title", ""))
+                    acc = rec.get("AccessionVersion") or rec.get("Caption", "")
+                    nm = namer(rec)
                     if acc and nm:
                         names[acc] = nm
-                        names[acc.split(".")[0]] = nm
-                break
-            except Exception as e:
-                print(f"  esummary retry {attempt+1}: {e}")
-                time.sleep(4)
-        time.sleep(0.4)
+                        names[str(acc).split(".")[0]] = nm
+            except Exception:
+                pass
+            time.sleep(0.34)
+        time.sleep(0.34)
+
+
+def fetch_names(accessions: list[str], email: str) -> dict[str, str]:
+    """Return {accession: name} from NCBI. Nucleotide accessions resolve to the
+    genome title (phage name); protein accessions (YP_/NP_/WP_/…) are routed to
+    the protein DB and resolve to their parent organism — so protein-DB hits and
+    genome hits both get a proper organism, and a protein id never breaks a
+    nuccore batch."""
+    Entrez.email = email
+    names: dict[str, str] = {}
+    nuc = [a for a in accessions if not _is_protein_acc(a)]
+    prot = [a for a in accessions if _is_protein_acc(a)]
+    if nuc:
+        _esummary_into(nuc, "nuccore", lambda r: clean_title(r.get("Title", "")), names)
+    if prot:
+        _esummary_into(prot, "protein", lambda r: _org_from_title(r.get("Title", "")), names)
     return names
 
 

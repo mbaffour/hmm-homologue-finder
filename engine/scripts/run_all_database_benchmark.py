@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 from core.env_setup import check_environment  # noqa: E402
 from databases.builtin import BUILTIN_DATABASES  # noqa: E402
 from databases.downloader import check_ncbi_ftp_files, format_bytes  # noqa: E402
-from pipeline.alignment import alignment_quality, run_mafft, run_trimal  # noqa: E402
+from pipeline.alignment import accuracy_flags, alignment_quality, run_mafft, run_trimal  # noqa: E402
 from pipeline.clustering import cluster_cdhit, cluster_summary  # noqa: E402
 from pipeline.confidence import add_qc_flags, classify_hits  # noqa: E402
 from pipeline.hmm_builder import run_hmmbuild, self_search_recovery  # noqa: E402
@@ -294,7 +294,12 @@ class Benchmark:
         if summary.get("seq_count", 0) <= 0:
             raise RuntimeError(f"No sequences parsed from {copied}")
         self.log(f"Input summary: {summary}")
-        aln = run_mafft(copied, self.alignments / "seed.mafft.faa", cpu=self.args.cpu)
+        # High-quality seed alignment: L-INS-i for tractable seed counts (gold
+        # standard for homologous domains), auto/FFT-NS-2 only for very large sets.
+        _aln_flags, _aln_strat = accuracy_flags(int(summary.get("seq_count", 0) or 0))
+        self.log(f"Seed alignment strategy: MAFFT {_aln_strat}")
+        aln = run_mafft(copied, self.alignments / "seed.mafft.faa",
+                        cpu=self.args.cpu, extra_flags=_aln_flags)
         if not aln or not aln.exists():
             raise RuntimeError("MAFFT failed")
         trimmed = run_trimal(aln, self.alignments / "seed.mafft.trimmed.faa")
@@ -592,6 +597,39 @@ class Benchmark:
                 msg = (proc.stderr or proc.stdout or "").strip()
             return faa, part_gff, msg
 
+        # --- six-frame ORF translation cache ---------------------------------
+        # The six-frame translation of a database depends only on the DB file and
+        # the min-ORF length, NOT on the seed/HMM. So translate once, persist the
+        # ORFs next to the cached DB, and reuse them on later iterations / runs.
+        min_aa = max(1, int(self.args.min_orf_aa))
+        cached_orfs = cache_file.parent / f"{cache_file.name}.sixframe.min{min_aa}.faa"
+        agg_orfs = cached_orfs.with_name(cached_orfs.name + ".building")
+        use_orf_cache = (nt_mode == "sixframe" and bool(getattr(self.args, "keep_cache", False)))
+        if (use_orf_cache and cached_orfs.exists() and cached_orfs.stat().st_size > 0
+                and cached_orfs.stat().st_mtime >= cache_file.stat().st_mtime):
+            self.log(f"{tbl.stem}: reusing cached six-frame ORFs "
+                     f"({format_bytes(cached_orfs.stat().st_size)}); skipping re-translation")
+            search_cmd = (
+                f"{q(hmmsearch)} --tblout {q(tbl)} -E {self.args.evalue} "
+                f"--cpu {cpu} --noali {q(hmm)} {q(cached_orfs)}"
+            )
+            rc, _, _, stderr = run_cmd(
+                search_cmd, desc=f"search_{safe_name(tbl.stem)}_cachedorfs",
+                cwd=self.out, logs_dir=self.logs, timeout=self.args.search_timeout,
+            )
+            if rc != 0:
+                tail = stderr.read_text(errors="replace")[-1600:] if stderr.exists() else ""
+                raise RuntimeError(f"nucleotide hmmsearch (cached ORFs) failed: {tail}")
+            total_hits = count_tblout_hits(tbl)
+            self.log(f"{tbl.stem}: {total_hits} hits (from cached ORFs)")
+            shutil.rmtree(work, ignore_errors=True)
+            gff.write_text(
+                "##gff-version 3\n"
+                "# Exhaustive six-frame benchmark does not retain all-ORF GFF files.\n"
+                "# Hit coordinates are stored in hits_main.tsv from tblout descriptions.\n"
+            )
+            return total_hits, time.monotonic() - start
+
         if seqkit:
             parts = max(cpu, 1)
             split_cmd = (
@@ -624,6 +662,8 @@ class Benchmark:
         if nt_mode == "sixframe":
             total_hits = 0
             tbl.write_text("")
+            if use_orf_cache:
+                agg_orfs.unlink(missing_ok=True)
             total_chunks = len(chunk_files)
             for chunk_idx, chunk in enumerate(chunk_files, start=1):
                 try:
@@ -670,6 +710,9 @@ class Benchmark:
                         f"{tbl.stem} chunk {chunk_idx}/{total_chunks}: "
                         f"{chunk_hits} hits, {total_hits} cumulative"
                     )
+                    if use_orf_cache:
+                        with open(agg_orfs, "ab") as _af, open(faa, "rb") as _sf:
+                            shutil.copyfileobj(_sf, _af)
                     faa.unlink(missing_ok=True)
                     part_tbl.unlink(missing_ok=True)
                     chunk.unlink(missing_ok=True)
@@ -678,6 +721,10 @@ class Benchmark:
                     raise
             if total_hits == 0 and failures:
                 self.log("WARNING: six-frame nucleotide search completed with no hits; " + "; ".join(failures[-3:]))
+            if use_orf_cache and agg_orfs.exists() and agg_orfs.stat().st_size > 0:
+                agg_orfs.replace(cached_orfs)
+                self.log(f"{tbl.stem}: cached six-frame ORFs for reuse "
+                         f"({format_bytes(cached_orfs.stat().st_size)})")
             elapsed = time.monotonic() - start
             if not self.args.keep_translation_chunks:
                 shutil.rmtree(work, ignore_errors=True)
@@ -1302,9 +1349,13 @@ class Benchmark:
             if isinstance(fimo, pd.DataFrame):
                 fimo.to_csv(self.results / "fimo_hits.tsv", sep="\t", index=False)
 
-        phy = run_iqtree(trimmed_alignment, self.out / "trees", model="MFP", bootstrap=1000, cpu=self.args.cpu)
-        if phy.get("success") and phy.get("treefile"):
-            render_tree(Path(phy["treefile"]), hits, self.figures)
+        if getattr(self.args, "skip_tree", False):
+            self.log("Skipping internal IQ-TREE (--skip-tree); the orchestrator builds the "
+                     "final ML tree from validated hits.")
+        else:
+            phy = run_iqtree(trimmed_alignment, self.out / "trees", model="MFP", bootstrap=1000, cpu=self.args.cpu)
+            if phy.get("success") and phy.get("treefile"):
+                render_tree(Path(phy["treefile"]), hits, self.figures)
 
         nt_hits = hits[hits.get("db_type", pd.Series(dtype=str)).eq("nucleotide")].copy() if not hits.empty else hits
         syn_df, placement_df = build_synteny_table(
@@ -1532,6 +1583,12 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Expand DB URLs only")
     parser.add_argument("--force", action="store_true", help="Re-run completed steps")
     parser.add_argument("--keep-cache", action="store_true", help="Keep downloaded DB cache files")
+    parser.add_argument("--skip-tree", action="store_true",
+                        help="Skip the internal per-run IQ-TREE (ML tree + bootstrap). The "
+                             "orchestrator (hmm_finder.py) builds one ML tree once at the end "
+                             "from the validated hits, so the per-iteration tree is wasted work "
+                             "(can be several minutes per round). Search/extraction outputs are "
+                             "unaffected.")
     parser.add_argument(
         "--keep-translation-chunks",
         action="store_true",
