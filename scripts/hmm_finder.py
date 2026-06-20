@@ -677,10 +677,7 @@ def main() -> None:
                 "--max-synteny-genomes", "200", "--min-recovery", "0.70", "--skip-tree"],
                cwd=str(DEPLOY))
         except subprocess.CalledProcessError as e:
-            # Fail cleanly (no Python traceback) with an actionable diagnosis — an
-            # unattended run shouldn't crash with a stack trace. The most common
-            # run-1 failure is HMM self-recovery: the seeds don't form one coherent
-            # homologous family, so the model can't even recover its own seeds.
+            # Read the engine's fatal reason (most often HMM self-recovery).
             reason = ""
             man = bench / "benchmark_manifest.json"
             if man.exists():
@@ -688,8 +685,26 @@ def main() -> None:
                     reason = (json.loads(man.read_text()).get("fatal_error", "") or "")
                 except Exception:
                     reason = ""
-            if "recovery" in reason.lower():
-                log(f"RUN {i}: HMM self-validation failed — {reason}")
+            is_recovery = "recovery" in reason.lower()
+
+            # i > 1: a LATER round failing must NOT discard the earlier successful
+            # rounds. Iterative refinement naturally broadens the family, so the
+            # expanded seed set can dip below the self-recovery gate — that just
+            # means we've gone as far as we usefully can. Stop iterating, drop the
+            # partial failed round, and proceed to downstream with the best run so far.
+            if i > 1:
+                stop_reason = (f"stopped at run{i}: the expanded seed set failed HMM "
+                               f"self-validation ({reason or 'search failed'}); kept the "
+                               f"run{i - 1} results")
+                log(f"RUN {i}: {reason or 'search failed'}")
+                log(f"RUN {i}: not fatal — keeping run{i - 1}'s validated hits and proceeding "
+                    f"to downstream (iterative refinement reached its useful limit).")
+                shutil.rmtree(run_dir, ignore_errors=True)  # discard the partial round
+                break
+
+            # i == 1: nothing to fall back to → fail cleanly (no traceback) with guidance.
+            if is_recovery:
+                log(f"RUN 1: HMM self-validation failed — {reason}")
                 sys.exit(
                     "\nThe profile HMM failed self-validation: too few seed sequences are "
                     "recovered by the model built from them (this is the --min-recovery gate, "
@@ -698,7 +713,7 @@ def main() -> None:
                     "unrelated proteins. Fixes: use a tighter single-family seed set, drop "
                     "outlier seeds, or — only for a deliberately divergent superfamily — relax "
                     "the recovery requirement. (Run aborted before wasting time on the search.)")
-            sys.exit(f"\nRUN {i} search failed (exit {e.returncode}); reason: "
+            sys.exit(f"\nRUN 1 search failed (exit {e.returncode}); reason: "
                      f"{reason or 'see the log above'}. Output dir: {bench}")
 
         # 2. ORF-validated extraction (NT + AA + TSV + next-seed FASTA).
