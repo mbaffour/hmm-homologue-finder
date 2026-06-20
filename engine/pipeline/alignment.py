@@ -411,11 +411,21 @@ def alignment_figure(
             r, g, b = mcolors.to_rgb(hex_c)
             color_mat[i, j] = [r, g, b, 1.0 if aa != "-" else 0.0]
 
-    # ── Figure layout ───────────────────────────────────────────────────────
-    cell_w  = 0.10   # inch per column — gives ~30mm per 300 cols
-    cell_h  = 0.14   # inch per row
-    fig_w   = max(8.0,  min(aln_len  * cell_w + 3.0, 24.0))
-    fig_h   = max(3.0,  min(n_seqs   * cell_h + 1.8, 20.0))
+    # ── Per-column conservation (CLC-style abundance track): fraction of
+    #    sequences sharing the most common residue in each column. ────────────
+    from collections import Counter
+    conservation = np.zeros(aln_len)
+    for j in range(aln_len):
+        col = [str(rec.seq)[j] if j < len(rec.seq) else "-" for rec in records]
+        non_gap = [c for c in col if c != "-"]
+        if non_gap:
+            conservation[j] = Counter(non_gap).most_common(1)[0][1] / n_seqs
+
+    # ── Figure layout: alignment (top) + conservation bar chart (bottom) ─────
+    cell_w  = 0.11   # inch per column
+    cell_h  = 0.16   # inch per row
+    fig_w   = max(8.0,  min(aln_len  * cell_w + 3.2, 26.0))
+    fig_h   = max(3.8,  min(n_seqs   * cell_h + 3.4, 22.0))
 
     plt.rcParams.update({
         "font.family": "monospace",
@@ -424,26 +434,54 @@ def alignment_figure(
         "svg.fonttype": "none",
     })
 
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    fig = plt.figure(figsize=(fig_w, fig_h))
+    gs  = fig.add_gridspec(2, 1, height_ratios=[max(n_seqs, 6), 4], hspace=0.05)
+    ax  = fig.add_subplot(gs[0])                 # alignment
+    axc = fig.add_subplot(gs[1], sharex=ax)      # conservation / abundance bars
+
     ax.imshow(color_mat, aspect="auto", interpolation="none",
               origin="upper", extent=[0, aln_len, n_seqs, 0])
 
-    # Sequence ID labels on left
+    # Amino-acid LETTERS overlaid on the cells (CLC-style). Drawn when the grid is
+    # legible; vector outputs (SVG/PDF) stay zoomable in Inkscape regardless.
+    draw_letters = aln_len <= 200 and n_seqs <= 70
+    if draw_letters:
+        lfs = max(3.0, min(7.5, 110.0 / aln_len))
+        for i, rec in enumerate(records):
+            s = str(rec.seq)
+            for j in range(aln_len):
+                aa = s[j] if j < len(s) else "-"
+                if aa != "-":
+                    ax.text(j + 0.5, i + 0.5, aa, ha="center", va="center",
+                            fontsize=lfs, color="#1a1a1a")
+
+    # Sequence ID labels on the left
     ax.set_yticks([i + 0.5 for i in range(n_seqs)])
-    ax.set_yticklabels([r.id[:28] for r in records], fontsize=5.5)
-    ax.set_ylabel("", fontsize=7)
-
-    # Column position tick marks every 50 columns
-    tick_positions = list(range(0, aln_len, 50)) + [aln_len]
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels([str(p + 1) for p in tick_positions], fontsize=6)
-    ax.set_xlabel("Alignment column", fontsize=7)
-
+    ax.set_yticklabels([r.id[:38] for r in records], fontsize=5.5)
+    ax.set_xlim(0, aln_len)
+    plt.setp(ax.get_xticklabels(), visible=False)   # x-axis lives on the bottom panel
     ax.set_title(
-        f"Multiple Sequence Alignment  ({n_seqs} sequences × {aln_len} columns)",
+        f"Multiple Sequence Alignment  ({n_seqs} sequences × {aln_len} columns"
+        + ("" if draw_letters else "; residues shown as colour blocks — zoom the SVG for letters")
+        + ")",
         fontsize=8, fontweight="bold", pad=5,
     )
     ax.tick_params(axis="both", which="both", length=2, width=0.5)
+
+    # Conservation / abundance bar chart, one bar per column, shaded by level.
+    cmap = plt.cm.YlGn
+    axc.bar(np.arange(aln_len) + 0.5, conservation, width=1.0,
+            color=[cmap(0.25 + 0.75 * float(c)) for c in conservation], edgecolor="none")
+    axc.set_ylim(0, 1.0)
+    axc.set_ylabel("Conservation\n(per column)", fontsize=6)
+    axc.set_yticks([0, 0.5, 1.0])
+    axc.tick_params(labelsize=5)
+    tick_positions = list(range(0, aln_len, 50)) + [aln_len]
+    axc.set_xticks(tick_positions)
+    axc.set_xticklabels([str(p + 1) for p in tick_positions], fontsize=6)
+    axc.set_xlabel("Alignment column", fontsize=7)
+    for sp in ("top", "right"):
+        axc.spines[sp].set_visible(False)
 
     # Colour legend
     legend_aa_groups = [
@@ -466,8 +504,6 @@ def alignment_figure(
         ncol=3, fontsize=5, framealpha=0.9, edgecolor="#cccccc",
         handlelength=1.0, borderpad=0.4, columnspacing=0.6,
     )
-
-    plt.tight_layout(pad=0.8)
 
     import io as _io
     buf = _io.BytesIO()
