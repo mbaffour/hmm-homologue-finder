@@ -20,18 +20,15 @@ from pathlib import Path
 
 import pandas as pd
 
+from canonical import canonical_organism as _canonical_organism  # shared source of truth
 
-def _canonical_organism(name: str, fallback: str = "") -> str:
-    """Canonical key for counting UNIQUE ORGANISMS. Collapses host-genus aliases of
-    the same phage ('Enterobacteria phage N4' == 'Escherichia phage N4' -> 'n4');
-    unnamed/metagenomic entries fall back to the genome accession so distinct
-    genomes still count once. Mirrors build_tree_of_hits._canonical_organism."""
-    s = re.sub(r"^(UNVERIFIED:?|MAG:?|TPA(?:_asm)?:?)\s*", "", str(name or "").strip(), flags=re.I).strip()
-    if (not s) or re.search(r"uncultured|unclassified|metagenom|environmental", s, re.I):
-        return (str(fallback).strip() or s).lower()
-    m = re.search(r"\b(?:phage|virus)\b\s+(.+)$", s, flags=re.I)
-    key = m.group(1).strip() if (m and m.group(1).strip()) else s
-    return re.sub(r"\s+", " ", key).strip().lower()
+
+def _canon_org_set(g) -> set:
+    """Set of canonical organisms in a hit group (collapses same-phage accessions;
+    metagenomic genomes kept distinct). Used for every 'unique organisms' count."""
+    s = {_canonical_organism(r.get("organism", ""), r.get("genome_id", "")) for _, r in g.iterrows()}
+    s.discard("")
+    return s
 
 
 def _host_from_organism(org: str) -> str:
@@ -63,7 +60,7 @@ def _paper_table(df: pd.DataFrame) -> pd.DataFrame:
             "accession": rep.get("genome_id", ""),
             "database": rep.get("db_name", ""),
             "copies": len(g),
-            "n_organisms": int(g[g["organism"] != ""]["organism"].nunique()),
+            "n_organisms": len(_canon_org_set(g)),
             "domain_aa_len": "" if pd.isna(rep["_dl"]) else int(rep["_dl"]),
             "domain_coverage": rep.get("domain_coverage", ""),
             "best_evalue": "" if pd.isna(g["_ev"].min()) else f"{g['_ev'].min():.2g}",
@@ -130,12 +127,6 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
         out = out.sort_values("n_organisms", ascending=False, kind="stable").reset_index(drop=True)
         out.insert(0, "homolog_id", [f"H{i:04d}" for i in range(1, len(out) + 1)])
     return out
-
-
-def _canon_org_set(g) -> set:
-    s = {_canonical_organism(r.get("organism", ""), r.get("genome_id", "")) for _, r in g.iterrows()}
-    s.discard("")
-    return s
 
 
 def _db_hit_summary(hits: pd.DataFrame, dbsum: pd.DataFrame) -> pd.DataFrame:
@@ -308,7 +299,7 @@ def export(discovery: Path) -> list[str]:
                 "six_frame_hits": int((g["source_type"] == "six_frame_orf").sum()),
                 "protein_db_hits": int((g["source_type"] == "annotated_protein").sum()),
                 "unique_sequences": int(g["aa_sequence"].nunique()),
-                "unique_organisms": int(g[g["organism"] != ""]["organism"].nunique()),
+                "unique_organisms": len(_canon_org_set(g)),
                 "databases": ";".join(sorted(x for x in g["db_name"].unique() if x)),
             })
         pd.DataFrame(rows).to_csv(discovery / "hit_summary.csv", index=False)

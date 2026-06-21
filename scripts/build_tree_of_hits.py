@@ -29,6 +29,7 @@ from pathlib import Path
 
 # Ensure conda env tools (mafft, trimal, iqtree) are on PATH regardless of caller.
 from env_paths import ensure_env_on_path  # noqa: E402  (sibling helper in scripts/)
+from canonical import canonical_organism as _canonical_organism  # noqa: E402  (shared)
 ensure_env_on_path()
 
 # Reuse the engine's alignment quality + publication-figure helpers (and the
@@ -109,19 +110,6 @@ def _organism_from_desc(desc: str) -> str:
                r"genome assembly.*|DNA, complete.*)\s*$", "", d, flags=re.I)
     return d.strip().strip(",").strip()
 
-
-def _canonical_organism(name: str, fallback: str = "") -> str:
-    """Canonical key for COUNTING unique organisms. Collapses host-genus aliases of
-    the same phage — 'Enterobacteria phage N4' and 'Escherichia phage N4' both ->
-    'n4' — by keying on the name after 'phage'/'virus'. Unnamed/metagenomic entries
-    ('uncultured virus', blank) are NOT collapsed: they fall back to the genome
-    accession so each distinct genome still counts once. Returns '' if nothing."""
-    s = re.sub(r"^(UNVERIFIED:?|MAG:?|TPA(?:_asm)?:?)\s*", "", str(name or "").strip(), flags=re.I).strip()
-    if (not s) or re.search(r"uncultured|unclassified|metagenom|environmental", s, re.I):
-        return (str(fallback).strip() or s).lower()
-    m = re.search(r"\b(?:phage|virus)\b\s+(.+)$", s, flags=re.I)
-    key = m.group(1).strip() if (m and m.group(1).strip()) else s
-    return re.sub(r"\s+", " ", key).strip().lower()
 
 
 def _uniquify(label: str, used: set) -> str:

@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import csv
 import difflib
+import re
 import subprocess
 import tempfile
 from collections import Counter, defaultdict
@@ -40,6 +41,7 @@ from matplotlib.patches import Polygon, Patch
 from Bio import SeqIO
 
 from env_paths import ensure_env_on_path  # noqa: E402
+from canonical import canonical_organism  # noqa: E402  (shared source of truth)
 import annotate_genes  # noqa: E402
 ensure_env_on_path()
 
@@ -122,6 +124,23 @@ def categorize(func: str, vog_cat: str = "") -> str:
                 return cat
     # keyword mapping didn't resolve -> fall back to VOGDB's own category if unambiguous
     return _VOG_CAT.get((vog_cat or "").strip(), HYPO_CAT)
+
+
+def _dedup_loci_by_organism(loci: list) -> list:
+    """Keep one locus per canonical organism — collapse the SAME phage that appears
+    under multiple database accessions (e.g. an INPHARED id and a RefSeq NC_ id) so
+    it is drawn once, not as two near-identical tracks. Prefer the most complete
+    neighbourhood, then a RefSeq (NC_) accession."""
+    best: dict = {}
+    for loc in loci:
+        key = canonical_organism(loc.get("organism", ""), loc.get("genome_id", ""))
+        score = (len(loc.get("genes", [])),
+                 1 if str(loc.get("genome_id", "")).startswith(("NC_", "NZ_")) else 0)
+        if key not in best or score > best[key][0]:
+            best[key] = (score, loc)
+    # preserve input order of the kept representatives
+    kept = {id(v[1]) for v in best.values()}
+    return [loc for loc in loci if id(loc) in kept]
 
 
 def parse_locus(gbk: Path) -> dict | None:
@@ -440,6 +459,11 @@ def main() -> None:
         if cid in (None, ""):
             continue
         by_cluster.setdefault(int(cid), []).append(loc)
+
+    # collapse the same phage appearing under multiple database accessions to one
+    # track per cluster (cross-database accession redundancy), then subsample.
+    for cid in list(by_cluster):
+        by_cluster[cid] = _dedup_loci_by_organism(by_cluster[cid])
 
     # subsample each cluster to a readable, representative set (0 = keep all)
     cap = args.max_loci

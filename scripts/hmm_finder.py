@@ -576,13 +576,9 @@ def main() -> None:
         args.databases = pick_databases(DEPLOY, DATABASES.split(","))
         print(f"Selected databases: {args.databases}")
 
-    # Interactive: offer the optional synteny gene-name labels (off by default).
-    if sys.stdin.isatty() and not args.smoke and not args.synteny_gene_labels:
-        try:
-            _ans = input("Label neighbour genes in the synteny figures? (y/N): ").strip().lower()
-        except EOFError:
-            _ans = ""
-        args.synteny_gene_labels = _ans in ("y", "yes")
+    # (Synteny gene-name labels are opt-in via --synteny-gene-labels only — off by
+    # default and not prompted, since they overlap on dense neighbourhoods; the
+    # functional colours + legend already convey gene function.)
 
     # Preflight: refuse to start a multi-hour run if required software is missing.
     if not args.skip_tool_check:
