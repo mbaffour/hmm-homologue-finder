@@ -11,6 +11,36 @@ python3 scripts/hmm_finder.py [--fasta FILE] [--name LABEL] [--databases "A,B,�
 
 Always `conda activate hmm-discovery` first (the launchers do this for you).
 
+> Prefer a point-and-click reference? Open **[guide.html](guide.html)** — it has a
+> live command builder that writes the exact command for you.
+
+## Complete flag reference
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--fasta FILE` | — | **Only required arg.** Seed protein (or nucleotide) FASTA. |
+| `--name LABEL` | FASTA stem | Output-folder label. |
+| `--out-dir DIR` | `<fasta>_discovery/` | Output root; re-running resumes finished rounds. |
+| `--iterations N` | 3 | Max re-seeding rounds (stops early on convergence / 0 hits). |
+| `--cpu N` | 8 | Threads; auto-clamped to available cores. |
+| `--email ADDR` | none | NCBI email. Precedence `--email` > `$NCBI_EMAIL` > TTY prompt > offline. Never hardcoded. |
+| `--no-annotate` | off | Fully offline; skip all NCBI lookups (tables still build). |
+| `--input-type {auto,protein,nucleotide}` | auto | Seed type; nucleotide seeds are translated first. |
+| `--trans-table N` | 11 | Genetic code for translating a nucleotide seed. |
+| `--databases "A,B,…"` | full set | Exact catalog names. On a TTY without this → interactive picker. |
+| `--all-databases` | off | Full default set without the picker (even on a TTY). |
+| `--pick-databases` | off | Force the interactive database picker. |
+| `--list-databases` | — | Print the catalog and exit (no FASTA needed). |
+| `--smoke` | off | Fast self-test: 1 round vs one small DB; skips heavy downstream. |
+| `--no-controls` | off | Skip threshold-calibration controls. |
+| `--biology-mode {generic,phage,bacterial}` | phage | Which control panel to calibrate against. |
+| `--download-controls` | off | One-time fetch of UniProt unrelated-proteome negatives. |
+| `--prodigal-gate` | off | Stricter: require six-frame hits to overlap a Prodigal gene. |
+| `--no-seed-tree` | off | Skip the pre-run seed-only QC tree + alignment. |
+| `--synteny-gene-labels` | off | Label neighbour genes with function in synteny figures. |
+| `--skip-tool-check` | off | Skip the startup software preflight. |
+| `--db-cache DIR` | `~/.cache/hmm-homologue-finder` | Persistent shared DB cache (download once, ever). |
+
 ---
 
 ## Case 1 — Interactive (no flags)

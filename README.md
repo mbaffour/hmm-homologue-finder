@@ -107,6 +107,30 @@ Scientific detail: **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
 
 ---
 
+## Documentation
+
+Start with the **interactive guide** — a single self-contained HTML page (works
+offline) with a live command builder, the full method, outputs reference, and
+tool versions:
+
+> **[docs/guide.html](docs/guide.html)** — open in any browser.
+> A tabbed quickstart is also at **[docs/HOW_TO_RUN.html](docs/HOW_TO_RUN.html)**.
+
+Reference docs (Markdown):
+
+| Doc | What's in it |
+|-----|--------------|
+| [docs/INSTALL.md](docs/INSTALL.md) | Install per platform (incl. Apple-Silicon `CONDA_SUBDIR`). |
+| [docs/USAGE.md](docs/USAGE.md) | Every run case + the complete flag reference. |
+| [docs/METHODOLOGY.md](docs/METHODOLOGY.md) | The scientific method, step by step, with tool versions. |
+| [docs/OUTPUTS.md](docs/OUTPUTS.md) | `PACKAGE/` layout + `hits.tsv` schema + which tool opens what. |
+| [docs/DATABASES.md](docs/DATABASES.md) | The database catalog + how to add your own. |
+| [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) | Provenance, pinned env, determinism. |
+| [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | The `hmm-discovery` conda environment. |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common errors and fixes. |
+
+---
+
 ## Repository layout
 ```
 hmm-homologue-finder/
@@ -126,10 +150,23 @@ hmm-homologue-finder/
 
 ## Requirements
 - **conda / mamba** (install [Miniforge](https://conda-forge.org/download/) if you don't have it).
-- The `hmm-discovery` conda environment — created automatically by `setup.sh`
-  (HMMER 3.4, MAFFT, trimAl, Prodigal, seqkit, CD-HIT, IQ-TREE, MEME/FIMO,
-  clinker, Biopython, pandas).
-- Internet access (databases are streamed; NCBI is queried for organism names).
+- The `hmm-discovery` conda environment — created automatically by `setup.sh`.
+  Pinned tool versions (`environment.lock.yml`; each run also records the live
+  versions it used in `run_manifest.json` / `METHODS.md`):
+
+  | Tool | Version | | Tool | Version |
+  |------|---------|-|------|---------|
+  | HMMER | 3.4 | | CD-HIT | 4.8.1 |
+  | MAFFT | v7.526 | | IQ-TREE | 3.1.2 |
+  | trimAl | v1.5.1 | | MEME / FIMO | 5.5.9 |
+  | Prodigal | V2.6.3 | | clinker | v0.0.32 |
+  | seqkit | v2.13.0 | | Python | 3.12.13 |
+  | Biopython | 1.87 | | pandas | 3.0.3 |
+  | NumPy | 2.4.6 | | matplotlib | 3.11.0 |
+
+- Internet access for database streaming and NCBI organism lookups — **optional**:
+  with no email / `--no-annotate` the pipeline runs fully offline (six-frame
+  discovery is unaffected; only NCBI lookups are skipped).
 
 ---
 

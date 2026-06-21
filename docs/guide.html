@@ -1,246 +1,535 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HMM Homologue Finder — Guide</title>
+<title>HMM Homologue Finder — Interactive Guide</title>
 <style>
-  :root{--bg:#0f1116;--card:#1a1d27;--ink:#e8eaf0;--muted:#9aa3b2;--accent:#5b9dff;--green:#3ddc97;--amber:#ffc15e;--line:#2a2f3d;}
+  :root{
+    --bg:#0f1116;--card:#1a1d27;--card2:#161a24;--ink:#e8eaf0;--muted:#9aa3b2;
+    --accent:#5b9dff;--accent2:#3ddc97;--amber:#ffc15e;--red:#ff7a7a;--line:#2a2f3d;
+    --codebg:#0b0d13;--codeink:#d7e3ff;--pill:#1d2740;--pillink:#bcd2ff;--pillline:#2c3a5e;
+    --shadow:0 6px 24px rgba(0,0,0,.35);
+  }
+  html[data-theme="light"]{
+    --bg:#f6f8fc;--card:#ffffff;--card2:#eef2f9;--ink:#1c2330;--muted:#5a6678;
+    --accent:#2563eb;--accent2:#0a9d6e;--amber:#b9770a;--red:#c0392b;--line:#dde3ee;
+    --codebg:#0b0d13;--codeink:#d7e3ff;--pill:#e6efff;--pillink:#1d4ed8;--pillline:#c5d8ff;
+    --shadow:0 6px 24px rgba(20,40,80,.10);
+  }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
-  header{padding:48px 24px 28px;text-align:center;background:radial-gradient(1200px 300px at 50% -50%,#22304d,transparent)}
-  h1{margin:0 0 6px;font-size:2.1rem;letter-spacing:.3px}
-  .sub{color:var(--muted);font-size:1.05rem;max-width:760px;margin:0 auto}
-  main{max-width:920px;margin:0 auto;padding:0 20px 80px}
-  section{margin:34px 0}
-  h2{font-size:1.35rem;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:16px}
-  h3{font-size:1.08rem;margin:18px 0 8px}
-  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  code{background:#11141c;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#cfe1ff;font-size:.92em}
-  pre{background:#0b0d13;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;color:#d7e3ff}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-  .pill{display:inline-block;background:#1d2740;color:#bcd2ff;border:1px solid #2c3a5e;border-radius:999px;padding:2px 10px;font-size:.8rem;margin:2px}
-  .flow{display:flex;flex-direction:column;gap:0}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.62}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,pre,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  code{background:var(--card2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--accent);font-size:.9em}
+  kbd{background:var(--card2);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:.85em}
+  pre{position:relative;background:var(--codebg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;color:var(--codeink);font-size:.88rem}
+  pre code{background:none;border:none;color:var(--codeink);padding:0}
+  .copybtn{position:absolute;top:8px;right:8px;background:var(--pill);color:var(--pillink);border:1px solid var(--pillline);border-radius:6px;padding:3px 9px;font-size:.72rem;cursor:pointer;opacity:.85}
+  .copybtn:hover{opacity:1}
+  .copybtn.copied{background:var(--accent2);color:#06281c;border-color:var(--accent2)}
+
+  /* layout */
+  header{padding:46px 24px 26px;text-align:center;background:radial-gradient(1200px 320px at 50% -60%,rgba(91,157,255,.22),transparent)}
+  h1{margin:0 0 6px;font-size:2.05rem;letter-spacing:.3px}
+  .sub{color:var(--muted);font-size:1.04rem;max-width:780px;margin:0 auto}
+  .pill{display:inline-block;background:var(--pill);color:var(--pillink);border:1px solid var(--pillline);border-radius:999px;padding:2px 10px;font-size:.78rem;margin:2px}
+  .wrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;max-width:1180px;margin:0 auto;padding:0 22px 90px}
+  nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:18px 0;font-size:.92rem}
+  nav.toc a{display:block;color:var(--muted);padding:5px 12px;border-left:2px solid transparent;border-radius:0 6px 6px 0}
+  nav.toc a:hover{color:var(--ink);text-decoration:none;background:var(--card2)}
+  nav.toc a.active{color:var(--accent);border-left-color:var(--accent);background:var(--card2)}
+  nav.toc .g{font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);opacity:.7;margin:14px 12px 4px}
+  main{min-width:0}
+  section{margin:30px 0;scroll-margin-top:14px}
+  h2{font-size:1.4rem;border-bottom:1px solid var(--line);padding-bottom:8px;margin:0 0 14px}
+  h3{font-size:1.06rem;margin:18px 0 8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0;box-shadow:var(--shadow)}
+  .note{border-left:3px solid var(--accent);background:var(--card2);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+  .warn{border-left-color:var(--amber)}
+  .danger{border-left-color:var(--red)}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:.9rem}
+  td,th{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--card2);color:var(--ink)}
+  .ok{color:var(--accent2)} .am{color:var(--amber)}
+  details{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden}
+  details>summary{cursor:pointer;padding:13px 18px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::after{content:"+";color:var(--accent);font-size:1.35rem;line-height:1}
+  details[open]>summary::after{content:"\2212"}
+  details .inner{padding:0 18px 16px}
+  /* step flow */
+  .flow{display:flex;flex-direction:column}
   .step{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
   .step:last-child{border-bottom:none}
-  .num{flex:0 0 34px;height:34px;width:34px;border-radius:50%;background:var(--accent);color:#06203f;font-weight:700;display:flex;align-items:center;justify-content:center}
-  .step .body{flex:1}
-  .step .body b{color:#fff}
-  details{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden}
-  details>summary{cursor:pointer;padding:14px 18px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
-  details>summary::after{content:"+";color:var(--accent);font-size:1.4rem}
-  details[open]>summary::after{content:"−"}
-  details .inner{padding:0 18px 16px}
-  table{width:100%;border-collapse:collapse;margin:8px 0}
-  td,th{border:1px solid var(--line);padding:7px 10px;text-align:left;font-size:.92rem;vertical-align:top}
-  th{background:#161a24;color:#cdd6e6}
-  .ok{color:var(--green)} .warn{color:var(--amber)}
-  a{color:var(--accent)}
-  .note{border-left:3px solid var(--accent);background:#121723;padding:10px 14px;border-radius:0 8px 8px 0;color:#cdd9ef}
-  footer{color:var(--muted);text-align:center;padding:30px;border-top:1px solid var(--line)}
+  .num{flex:0 0 32px;height:32px;width:32px;border-radius:50%;background:var(--accent);color:#06203f;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.95rem}
+  html[data-theme="light"] .num{color:#fff}
+  /* command builder */
+  .builder label{display:block;font-size:.82rem;color:var(--muted);margin:10px 0 3px}
+  .builder input[type=text],.builder input[type=number],.builder select{
+    width:100%;background:var(--card2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font-size:.9rem}
+  .builder .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+  .builder .chk{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:.9rem;color:var(--ink)}
+  .builder .chk input{width:16px;height:16px}
+  .out{margin-top:14px}
+  /* topbar */
+  .topbar{position:fixed;top:12px;right:14px;z-index:20;display:flex;gap:8px}
+  .btn{background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 11px;font-size:.82rem;cursor:pointer;box-shadow:var(--shadow)}
+  .btn:hover{border-color:var(--accent)}
+  footer{color:var(--muted);text-align:center;padding:30px;border-top:1px solid var(--line);margin-top:30px}
+  @media (max-width:880px){.wrap{grid-template-columns:1fr}nav.toc{position:static;max-height:none;border-bottom:1px solid var(--line)}}
+  @media print{.topbar,nav.toc,.copybtn{display:none}.wrap{display:block}details[open] .inner,details .inner{display:block}body{background:#fff;color:#000}}
 </style>
 </head>
 <body>
+
+<div class="topbar">
+  <button class="btn" id="themeBtn" title="Toggle light/dark">🌓 Theme</button>
+  <button class="btn" onclick="window.print()" title="Print / save as PDF">🖨 Print</button>
+</div>
+
 <header>
   <h1>🧬 HMM Homologue Finder</h1>
-  <p class="sub">A reproducible pipeline that finds distant homologues of a protein family across public phage/viral databases — including genes that standard annotation misses — and returns validated sequences, tables, trees, synteny maps, and a publication-ready package. Give it a seed FASTA; it does the rest.</p>
+  <p class="sub">A reproducible, one-command pipeline that discovers distant homologues of a protein
+  family across public phage/viral databases — <b>including genes standard annotation misses</b> —
+  and returns ORF-validated sequences, evidence tables, a calibrated profile HMM, alignments, a
+  phylogenetic tree, synteny maps, and a publication-ready package. You provide one seed FASTA; it does the rest.</p>
   <div style="margin-top:14px">
-    <span class="pill">HMMER profile search</span>
+    <span class="pill">profile-HMM search</span>
     <span class="pill">six-frame translation</span>
     <span class="pill">ORF validation</span>
     <span class="pill">iterative convergence</span>
+    <span class="pill">FDR / threshold calibration</span>
     <span class="pill">NT + AA output</span>
-    <span class="pill">works for any protein</span>
+    <span class="pill">runs unattended</span>
+    <span class="pill">any protein family</span>
   </div>
 </header>
 
+<div class="wrap">
+<nav class="toc" id="toc">
+  <div class="g">Start here</div>
+  <a href="#overview">What it does</a>
+  <a href="#install">Install (one-time)</a>
+  <a href="#quickstart">Quick start</a>
+  <a href="#builder">Command builder</a>
+  <div class="g">Reference</div>
+  <a href="#flags">Every flag</a>
+  <a href="#databases">Databases</a>
+  <a href="#method">How it works (methods)</a>
+  <a href="#controls">Calibration &amp; controls</a>
+  <a href="#outputs">Outputs</a>
+  <a href="#repro">Reproducibility</a>
+  <a href="#versions">Tool versions</a>
+  <div class="g">Help</div>
+  <a href="#troubleshoot">Troubleshooting</a>
+  <a href="#cite">How to cite</a>
+</nav>
+
 <main>
 
-<section>
+<section id="overview">
   <h2>What it does</h2>
   <div class="card">
-    It builds a profile HMM from your seed sequences, searches ten public
-    databases (translating genome databases in all six reading frames so it can
-    reach unannotated genes), reconstructs and <b>validates the exact ORF</b> each
-    hit came from, then uses the discovered sequences to re-seed the search and
-    repeat until the family stops growing (convergence). It finishes by
-    clustering the homologues, drawing synteny figures and a phylogenetic tree,
-    and assembling everything into a labelled folder.
-    <div class="note" style="margin-top:12px">It is named for the project it
-    was built on, but it is general: point it at <i>any</i> protein family's seed
-    FASTA. Output files keep the <code>family_</code> name prefix (cosmetic).</div>
+    It builds a profile HMM from your seed sequences, searches a set of public databases
+    (<b>translating genome databases in all six reading frames</b> so it can reach unannotated genes),
+    reconstructs and <b>validates the exact ORF</b> each hit came from (frame/strand-correct, no internal
+    stop codons, in a genuine coding locus), then re-seeds the search with the discovered sequences and
+    repeats until the family stops growing (<b>convergence</b>). It calibrates the score thresholds against
+    built-in positive and negative controls, then clusters the homologues, aligns them, builds an ML tree,
+    draws synteny figures, and assembles everything — with a full methods record and provenance — into a
+    labelled folder.
+    <div class="note">It is general: point <code>--fasta</code> at <i>any</i> protein family's seed FASTA.
+    The bundled example is a phage protein, but nothing is hard-wired to it.</div>
+  </div>
+  <div class="grid2">
+    <div class="card"><b>Finds the unfindable.</b> Six-frame translation + ORF validation recovers homologues
+    encoded antisense or out-of-frame to predicted genes — exactly what BLAST-on-annotation misses.</div>
+    <div class="card"><b>Honest by construction.</b> Every hit carries its evidence (coords, ORF stats,
+    provenance); thresholds are calibrated with controls; nothing is taken on faith.</div>
+    <div class="card"><b>Walk-away.</b> One command, no prompts in unattended mode, can't hang on NCBI,
+    resumable, keeps the machine awake.</div>
+    <div class="card"><b>Reproducible.</b> Pinned environment, recorded tool versions, database URLs +
+    SHA-256 + access dates, fixed RNG seeds — all in <code>run_manifest.json</code> + <code>METHODS.md</code>.</div>
   </div>
 </section>
 
-<section>
-  <h2>How to run</h2>
-
-  <h3>Option 1 — double-click (easiest)</h3>
+<section id="install">
+  <h2>Install (one-time)</h2>
   <div class="card">
-    In Finder, open <code>scripts/</code> and double-click
-    <code>Run HMM Homologue Finder.command</code>. It checks the software
-    (installing anything missing the first time), then asks for your seed FASTA
-    and runs everything.
+    The only thing you install by hand is <b>conda</b> (via
+    <a href="https://conda-forge.org/download/">Miniforge</a>). Then <code>setup.sh</code> creates the
+    <code>hmm-discovery</code> environment with every tool. <b>No Docker.</b> Runs on Linux, macOS, and
+    Windows (inside WSL2 — the bioinformatics tools have no native Windows builds).
+    <h3>macOS / Linux / WSL2</h3>
+<pre><code>bash setup.sh        # creates the hmm-discovery env, installs all tools, verifies</code></pre>
+    <div class="note warn"><b>Apple Silicon (M1/M2/M3):</b> several tools have no native <code>osx-arm64</code>
+    conda build. <code>setup.sh</code> auto-sets <code>CONDA_SUBDIR=osx-64</code> so the env builds for
+    x86-64 under Rosetta&nbsp;2 (install once with
+    <code>softwareupdate --install-rosetta --agree-to-license</code>). Override by exporting
+    <code>CONDA_SUBDIR</code> yourself first.</div>
+    <div class="note"><b>Windows:</b> install WSL2 once (<code>wsl --install -d Ubuntu</code> in an
+    Administrator PowerShell, then reboot), open Ubuntu, and run <code>bash setup.sh</code>. Or
+    double-click <code>run.bat</code>, which launches the tool inside WSL2 for you.</div>
   </div>
+</section>
 
-  <h3>Option 2 — terminal, interactive</h3>
-  <pre>conda activate hmm-discovery
-python3 scripts/hmm_finder.py
-#   → it prompts:  seed FASTA &gt;   (drag your file in, press Enter)</pre>
-
-  <h3>Option 3 — terminal, explicit</h3>
-  <pre>python3 scripts/hmm_finder.py --fasta my_seeds.faa --iterations 3 --cpu 8</pre>
-
-  <h3>Useful flags</h3>
+<section id="quickstart">
+  <h2>Quick start</h2>
+  <h3>Easiest — guided wizard</h3>
   <div class="card">
-    <table>
-      <tr><th>Flag</th><th>What it does</th></tr>
-      <tr><td><code>--name LABEL</code></td><td>Labels the output folder for your protein (default: from the FASTA name).</td></tr>
-      <tr><td><code>--databases "A,B,…"</code></td><td>Choose which databases to search (must exist in the deployable repo's <code>databases.json</code>). Default = the 10 phage/viral databases.</td></tr>
-      <tr><td><code>--iterations N</code></td><td>Number of seeding rounds (default 3).</td></tr>
-      <tr><td><code>--smoke</code></td><td><b>Fast self-test:</b> 1 round against a single small database — proves the install works on your input in minutes.</td></tr>
-    </table>
-    <div class="note">Try a self-test first on any new machine/protein:
-    <code>python3 scripts/hmm_finder.py --fasta my_seeds.faa --smoke --name myprotein</code></div>
+    <pre><code>bash start.sh</code></pre>
+    Walks you through the seed FASTA, run mode, databases, and options, then launches the run. On macOS you
+    can instead double-click <code>scripts/Run HMM Homologue Finder.command</code> in Finder.
   </div>
-
-  <div class="note">First time on a new machine? Run <code>bash setup.sh</code> once.
-  It creates the <code>hmm-discovery</code> environment and installs every
-  required tool. The pipeline also checks software at startup and refuses to
-  begin a long run if anything is missing.</div>
+  <h3>Interactive — drag your FASTA in</h3>
+  <div class="card">
+    <pre><code>bash run.sh
+#   seed FASTA &gt;   (drag your .fasta into the terminal, press Enter)</code></pre>
+    <code>run.sh</code> activates the environment, verifies the software, then prompts for your seed.
+  </div>
+  <h3>Explicit — fully unattended</h3>
+  <div class="card">
+    <pre><code>conda activate hmm-discovery
+python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</code></pre>
+    The <b>only required argument is <code>--fasta</code></b>. With no TTY (cron/nohup/pipe) it never
+    prompts — it uses the full default database set and runs to completion.
+  </div>
+  <div class="note"><b>Always try a self-test first</b> on a new machine or new protein — minutes, not hours:
+    <pre><code>python3 scripts/hmm_finder.py --fasta my_seeds.faa --smoke --name my_protein</code></pre></div>
 </section>
 
-<section>
-  <h2>The workflow, step by step</h2>
-  <div class="card flow">
-    <div class="step"><div class="num">1</div><div class="body"><b>Build the HMM.</b> Align the seeds (MAFFT), trim (trimAl), build a profile HMM (hmmbuild), and confirm it recovers its own seeds.</div></div>
-    <div class="step"><div class="num">2</div><div class="body"><b>Search 10 databases.</b> hmmsearch at E ≤ 1e-5. Genome databases are translated in all six frames (min ORF 30 aa) so unannotated genes are reachable.</div></div>
-    <div class="step"><div class="num">3</div><div class="body"><b>Extract &amp; validate each hit.</b> Reconstruct the exact ORF from genomic coordinates, delimit the domain by the HMM envelope, and confirm it is a real ORF (no internal stops; sits in a coding locus). Save <b>nucleotide and amino-acid</b> sequence + a 35-column evidence table.</div></div>
-    <div class="step"><div class="num">4</div><div class="body"><b>Iterate.</b> Deduplicate the hit sequences and use them to re-seed the search; repeat (default 3 rounds). Stable counts = converged.</div></div>
-    <div class="step"><div class="num">5</div><div class="body"><b>Characterise.</b> CD-HIT clustering, clinker synteny figures, an IQ-TREE phylogeny, MEME/FIMO motifs, GFF3 tracks, and real-sequence GenBank files (named by organism).</div></div>
-    <div class="step"><div class="num">6</div><div class="body"><b>Package.</b> Assemble a labelled, self-contained output folder with all data, figures, sequences, and a methods write-up.</div></div>
+<section id="builder">
+  <h2>Command builder</h2>
+  <div class="card builder">
+    Fill this in; the command updates live. Copy it into your terminal (after
+    <code>conda activate hmm-discovery</code>).
+    <div class="row">
+      <div><label>Seed FASTA path (--fasta)</label><input type="text" id="b_fasta" value="my_seeds.faa"></div>
+      <div><label>Output label (--name)</label><input type="text" id="b_name" value="my_protein"></div>
+    </div>
+    <div class="row">
+      <div><label>Run mode</label>
+        <select id="b_mode"><option value="full">Full run</option><option value="smoke">Smoke (fast self-test)</option></select></div>
+      <div><label>Iterations (--iterations)</label><input type="number" id="b_iter" value="3" min="1" max="10"></div>
+      <div><label>CPU threads (--cpu)</label><input type="number" id="b_cpu" value="8" min="1" max="256"></div>
+    </div>
+    <div class="row">
+      <div><label>NCBI email (--email; blank = offline)</label><input type="text" id="b_email" value=""></div>
+      <div><label>Databases</label>
+        <select id="b_db"><option value="default">Default set (10)</option><option value="pick">Choose interactively</option><option value="custom">Custom list…</option></select></div>
+    </div>
+    <div id="b_dbcustom_wrap" style="display:none"><label>Custom databases (--databases, comma-separated)</label>
+      <input type="text" id="b_dbcustom" value="INPHARED genomes,RefSeq viral genomes"></div>
+    <div class="chk"><input type="checkbox" id="b_offline"><label style="margin:0">Offline / skip NCBI organism lookups (<code>--no-annotate</code>)</label></div>
+    <div class="chk"><input type="checkbox" id="b_nocontrols"><label style="margin:0">Skip threshold-calibration controls (<code>--no-controls</code>)</label></div>
+    <div class="chk"><input type="checkbox" id="b_prodigal"><label style="margin:0">Strict: require Prodigal coding-locus overlap (<code>--prodigal-gate</code>)</label></div>
+    <div class="chk"><input type="checkbox" id="b_noseed"><label style="margin:0">Skip the pre-run seed QC tree (<code>--no-seed-tree</code>)</label></div>
+    <div class="chk"><input type="checkbox" id="b_nt"><label style="margin:0">Seed is nucleotide DNA (translate; <code>--input-type nucleotide</code>)</label></div>
+    <div class="out"><pre><code id="b_out"></code></pre></div>
   </div>
 </section>
 
-<section>
-  <h2>The scripts (click to expand)</h2>
-
-  <details open><summary>hmm_finder.py — the one-command driver</summary>
-  <div class="inner">
-    The entry point. Prompts for the seed FASTA (or takes <code>--fasta</code>),
-    runs the software preflight, then orchestrates every step below and assembles
-    the output package. <b>This is the only script you normally run.</b>
-    <pre>python3 scripts/hmm_finder.py            # interactive
-python3 scripts/hmm_finder.py --fasta seeds.faa --iterations 3</pre>
-  </div></details>
-
-  <details><summary>check_tools.py / setup.sh — environment check &amp; install</summary>
-  <div class="inner">
-    <code>check_tools.py</code> verifies every required program and Python package
-    and prints a ✓/✗ table. <code>setup.sh</code> creates the
-    <code>hmm-discovery</code> conda environment and installs anything missing
-    (HMMER, MAFFT, trimAl, Prodigal, seqkit, CD-HIT, IQ-TREE, MEME/FIMO, clinker).
-    The pipeline calls the check at startup.
-  </div></details>
-
-  <details><summary>extract_validated_hits.py — the core step</summary>
-  <div class="inner">
-    For every hit, reconstructs the ORF from its genomic coordinates
-    (1-based, strand/frame-correct), finds the domain via the HMM envelope, and
-    validates it (internal-stop count, ORF coverage, Prodigal overlap). Writes
-    <code>hits.tsv</code> (with a <code>source_type</code> column), the AA and
-    NT FASTAs, full-ORF FASTAs, and the deduplicated seed set for the next round.
-    <b>Hits from protein databases</b> (SwissProt, RefSeq/INPHARED proteins, Pfam)
-    are also captured — their amino-acid sequence is fetched from NCBI and marked
-    <code>source_type=annotated_protein</code> — so no hits are dropped, whatever
-    the protein.
-  </div></details>
-
-  <details><summary>annotate_organism.py — add phage names</summary>
-  <div class="inner">
-    Adds an <code>organism</code> column to the hit table (e.g. “Escherichia
-    phage vB_EcoP_G7C”), fetched from NCBI; uncultured metagenomic genomes are
-    marked “uncultured virus (database)”.
-  </div></details>
-
-  <details><summary>cluster_and_clinker_corrected.py — clusters &amp; synteny</summary>
-  <div class="inner">
-    Clusters the validated domains with CD-HIT (40% id, 80% cov) and builds
-    clinker gene-neighbourhood figures grouped by cluster, with the genuine
-    homologue ORF as the central gene.
-  </div></details>
-
-  <details><summary>build_real_genbanks.py — viewable GenBank files</summary>
-  <div class="inner">
-    Fetches each hit genome (NCBI efetch / catalogue stream) and writes
-    neighbourhood GenBank files with <b>real sequence</b> + the homologue and
-    flanking genes — open directly in Artemis / Geneious / UGENE. Files are named
-    by phage where the name is known.
-  </div></details>
-
-  <details><summary>build_tree_of_hits.py — phylogeny</summary>
-  <div class="inner">
-    Aligns the unique domains (MAFFT), trims (trimAl <code>-gt 0.5</code>), and
-    infers a maximum-likelihood tree (IQ-TREE, ModelFinder, 1000 ultrafast
-    bootstrap).
-  </div></details>
-
-  <details><summary>assemble_publication_v2.py — package builder</summary>
-  <div class="inner">
-    Collects all outputs into the labelled, numbered folder layout with a
-    convergence analysis and READMEs.
-  </div></details>
-</section>
-
-<section>
-  <h2>What you get (outputs)</h2>
+<section id="flags">
+  <h2>Every flag</h2>
   <div class="card">
   <table>
-    <tr><th>Output</th><th>What it is / opens in</th></tr>
-    <tr><td><code>hits.tsv</code> (per run)</td><td>35-column evidence table: genome, <b>organism</b>, coords, ORF validation, HMM stats, NT + AA sequence. Excel / R / pandas.</td></tr>
-    <tr><td><code>hits_aa.faa</code> / <code>hits_nt.fna</code></td><td>Homologue protein / DNA sequences. Jalview, MEGA, BLAST, aligners.</td></tr>
-    <tr><td><code>hits.gff3</code></td><td>Genome-browser track of every hit. IGV / JBrowse / Artemis.</td></tr>
-    <tr><td><code>genbank_with_sequence/*.gbk</code></td><td>Neighbourhoods with real sequence, named by phage. Artemis / Geneious / UGENE.</td></tr>
-    <tr><td>clinker figures (HTML)</td><td>Interactive synteny comparison per cluster. Any browser.</td></tr>
-    <tr><td><code>hits.treefile</code> + PNG/SVG</td><td>Phylogenetic tree. iTOL / FigTree / ggtree.</td></tr>
-    <tr><td>profile <code>.hmm</code></td><td>The model — submit to Pfam / NCBI CDD / VOGDB.</td></tr>
-    <tr><td><code>CONVERGENCE_ANALYSIS.md</code>, <code>REPORT.md</code></td><td>Results report + per-round hit counts.</td></tr>
+    <tr><th>Flag</th><th>Default</th><th>What it does</th></tr>
+    <tr><td><code>--fasta FILE</code></td><td>—</td><td><b>The only required argument.</b> Seed protein (or nucleotide) FASTA. Omitted on a terminal → prompts; omitted unattended → exits.</td></tr>
+    <tr><td><code>--name LABEL</code></td><td>FASTA stem</td><td>Labels the output folder (<code>LABEL_discovery/</code>).</td></tr>
+    <tr><td><code>--out-dir DIR</code></td><td><code>&lt;fasta&gt;_discovery/</code></td><td>Where outputs go. Re-running the same dir resumes (skips finished rounds).</td></tr>
+    <tr><td><code>--iterations N</code></td><td>3</td><td>Max re-seeding rounds. Stops early on convergence or a 0-hit round.</td></tr>
+    <tr><td><code>--cpu N</code></td><td>8</td><td>Threads. Auto-clamped to available cores (prevents IQ-TREE/MEME oversubscription).</td></tr>
+    <tr><td><code>--email ADDR</code></td><td>none</td><td>NCBI Entrez email for organism/sequence lookups. Precedence: <code>--email</code> &gt; <code>$NCBI_EMAIL</code> &gt; TTY prompt &gt; offline. <b>Never hardcoded.</b></td></tr>
+    <tr><td><code>--no-annotate</code></td><td>off</td><td>Fully offline: skip all NCBI lookups. Hit tables still build (generic organism labels).</td></tr>
+    <tr><td><code>--input-type {auto,protein,nucleotide}</code></td><td>auto</td><td>Seed type. <code>auto</code> detects nucleotide vs protein; nucleotide seeds are translated first.</td></tr>
+    <tr><td><code>--trans-table N</code></td><td>11</td><td>Genetic code for translating a nucleotide seed (11 = bacterial/archaeal/phage).</td></tr>
+    <tr><td><code>--databases "A,B,…"</code></td><td>full set</td><td>Exact catalog names (see Databases). Omitted on a TTY → interactive picker; unattended → full default set.</td></tr>
+    <tr><td><code>--all-databases</code></td><td>off</td><td>Take the full default set without the interactive picker (even on a TTY).</td></tr>
+    <tr><td><code>--pick-databases</code></td><td>off</td><td>Force the interactive database picker.</td></tr>
+    <tr><td><code>--list-databases</code></td><td>—</td><td>Print the catalog (sizes/times) and exit. No FASTA needed.</td></tr>
+    <tr><td><code>--smoke</code></td><td>off</td><td>Fast self-test: 1 round vs one small DB. Skips heavy downstream. Proves the install works.</td></tr>
+    <tr><td><code>--no-controls</code></td><td>off</td><td>Skip threshold-calibration controls (otherwise run automatically; a few seconds, no network for the shuffled negative).</td></tr>
+    <tr><td><code>--biology-mode {generic,phage,bacterial}</code></td><td>phage</td><td>Which control panel to calibrate against.</td></tr>
+    <tr><td><code>--download-controls</code></td><td>off</td><td>One-time fetch of the UniProt unrelated-proteome negative controls (fungi/mammalian/archaea).</td></tr>
+    <tr><td><code>--prodigal-gate</code></td><td>off</td><td>Stricter: require six-frame hits to overlap a Prodigal gene. Off by default to keep genuine antisense/alternate-frame homologues.</td></tr>
+    <tr><td><code>--no-seed-tree</code></td><td>off</td><td>Skip the pre-run seed-only QC tree + alignment.</td></tr>
+    <tr><td><code>--synteny-gene-labels</code></td><td>off</td><td>Label neighbour genes with functional annotation in synteny figures (can clutter dense regions).</td></tr>
+    <tr><td><code>--skip-tool-check</code></td><td>off</td><td>Skip the startup software preflight.</td></tr>
+    <tr><td><code>--db-cache DIR</code></td><td><code>~/.cache/hmm-homologue-finder</code></td><td>Persistent shared cache — each database downloads once, ever, across all runs.</td></tr>
   </table>
   </div>
 </section>
 
-<section>
-  <h2>Why “ORF validation” matters</h2>
+<section id="databases">
+  <h2>Databases</h2>
   <div class="card">
-    A profile HMM can light up on a stretch of translated DNA that isn't a real
-    gene. To avoid reporting noise, every hit must (a) come from a clean
-    stop-to-stop ORF with <b>no internal stop codons</b>, and (b) sit inside a
-    genuine coding locus (it overlaps a Prodigal-predicted gene). Interestingly,
-    these homologues are usually <i>antisense or in a different frame</i> to the
-    predicted gene — which is exactly why standard annotation missed them. Each
-    hit's evidence is recorded in the table, so nothing is taken on faith.
+    Run <code>python3 scripts/hmm_finder.py --list-databases</code> to see live sizes and time estimates.
+    The <b>default set</b> (used when you don't choose) is the ten phage/viral databases marked ★ below;
+    <code>RefSeq bacterial proteins</code> and <code>PHROGs</code> are available but off by default.
+    <table>
+      <tr><th>Name</th><th>Type</th><th>Role</th></tr>
+      <tr><td>★ INPHARED genomes</td><td>nucleotide</td><td>Curated phage genomes — six-frame discovery core.</td></tr>
+      <tr><td>★ INPHARED proteins</td><td>protein</td><td>Fast curated proteome baseline.</td></tr>
+      <tr><td>★ SwissProt</td><td>protein</td><td>Specificity control — are hits family-specific or generic?</td></tr>
+      <tr><td>★ RefSeq viral proteins</td><td>protein</td><td>Annotated RefSeq viral protein evidence.</td></tr>
+      <tr><td>★ RefSeq viral genomes</td><td>nucleotide</td><td>Unannotated ORFs in NCBI viral genomes.</td></tr>
+      <tr><td>★ Gut Phage Database (GPD)</td><td>nucleotide</td><td>Gut-phage breadth/diversity.</td></tr>
+      <tr><td>★ GVD-AVrC</td><td>nucleotide</td><td>Large gut/environmental viral catalogue (viral dark matter).</td></tr>
+      <tr><td>★ Pfam (sequences)</td><td>protein</td><td>Domain-family context.</td></tr>
+      <tr><td>★ Pfam (domain scan)</td><td>protein</td><td>Conserved-domain annotation of hits.</td></tr>
+      <tr><td>★ VOGDB VFAM (annotation)</td><td>protein</td><td>Preferred viral-ortholog family/function/category.</td></tr>
+      <tr><td>RefSeq bacterial proteins</td><td>protein</td><td>Host/background specificity check (~80 GB).</td></tr>
+      <tr><td>PHROGs (annotation)</td><td>protein</td><td>Viral protein-family / function annotation.</td></tr>
+    </table>
+    <div class="note">Adding your own database is just a gzipped FASTA over HTTPS — see <code>docs/DATABASES.md</code>.</div>
   </div>
 </section>
 
-<section>
-  <h2>Requirements</h2>
+<section id="method">
+  <h2>How it works (methods)</h2>
+  <div class="card flow">
+    <div class="step"><div class="num">1</div><div><b>Build the HMM.</b> Align seeds with <b>MAFFT</b> (accuracy-first <b>L-INS-i</b>, <code>--localpair --maxiterate 1000</code>, for ≤500 seqs; else <code>--auto</code>), trim with <b>trimAl</b> (<code>automated1</code>), build the profile with <b>hmmbuild</b>, and require the model to recover ≥70% of its own seeds before proceeding.</div></div>
+    <div class="step"><div class="num">2</div><div><b>Search.</b> <b>hmmsearch</b> at E ≤ 1×10⁻⁵ over the selected databases. Each download is SHA-256-checked with its URL + access date recorded. <b>Nucleotide databases are translated in all six frames</b> into stop-to-stop ORFs (min 30 aa); large DBs are chunked with <b>seqkit</b> and run in parallel.</div></div>
+    <div class="step"><div class="num">3</div><div><b>Extract &amp; validate each hit.</b> The ORF is reconstructed from genomic coordinates (1-based, strand/frame-correct); the domain is delimited by the HMM envelope (<code>--domtblout</code>). Recorded: ORF/domain length, coverage, internal-stop count (<b>must be 0</b>), and <b>Prodigal</b> overlap. A hit passes if it has no internal stops and sits in a coding locus. Protein-DB hits are captured by accession. <b>Both NT and AA</b> are exported with a per-hit evidence table.</div></div>
+    <div class="step"><div class="num">4</div><div><b>Iterate to convergence.</b> Unique validated domains re-seed the next round. Iteration stops early when the unique-hit count changes &lt;5% <b>and</b> the HMM length changes &lt;3 between rounds (or a round finds nothing). The stopping reason is recorded.</div></div>
+    <div class="step"><div class="num">5</div><div><b>Calibrate thresholds.</b> Positive (seed self-test) + negative (composition-matched shuffled seeds, plus optional unrelated proteomes) controls give per-run sensitivity, specificity, and false-positive rate at the strict bit threshold. <a href="#controls">Details ↓</a></div></div>
+    <div class="step"><div class="num">6</div><div><b>Characterise.</b> <b>CD-HIT</b> clustering (40% id, 80% cov); accuracy-first <b>MAFFT</b> alignment of the unique homologues (a first-class deliverable: full + trimmed MSA, stats, ClustalX figure); <b>trimAl</b> → <b>IQ-TREE</b> ML tree (ModelFinder, 1000 ultrafast bootstrap, fixed seed) with the seeds placed and marked <code>SEED_*</code>; <b>clinker</b> synteny + real-sequence GenBank neighbourhoods; <b>MEME/FIMO</b> motifs; GFF3 tracks.</div></div>
+    <div class="step"><div class="num">7</div><div><b>Package.</b> Everything is assembled into a labelled folder with <code>report.html</code>, <code>METHODS.md</code>, and machine-readable <code>run_manifest.json</code> (parameters, provenance, tool versions, calibration, stop reason).</div></div>
+  </div>
+  <div class="note">The <b>most-complete round</b> (after convergence, the refined final round) is the canonical set used for the figures, the published profile HMM, and the main paper table — so tables and figures always describe the <i>same</i> homolog set.</div>
+</section>
+
+<section id="controls">
+  <h2>Calibration &amp; controls</h2>
   <div class="card">
-    <b>One-time:</b> the <code>hmm-discovery</code> conda environment
-    (run <code>bash setup.sh</code>). It needs conda/mamba — install
-    <a href="https://conda-forge.org/download/">Miniforge</a> first if you don't
-    have it. Tools: HMMER 3.4, MAFFT v7.526, trimAl v1.5, Prodigal V2.6.3,
-    seqkit v2.13.0, CD-HIT 4.8.1, IQ-TREE 3.1.2, MEME/FIMO 5.5.9, clinker v0.0.32,
-    plus Biopython &amp; pandas. The search engine
-    (<code>run_all_database_benchmark.py</code>) lives in the HMM-Discovery
-    deployable repo, which the pipeline calls automatically.
-    <div class="note" style="margin-top:12px"><b>Runtime &amp; internet:</b> a full
-    3-iteration run streams several GB of databases and takes hours — run it and
-    walk away (it keeps the Mac awake and is resumable).</div>
+    The bit-score thresholds that tier hits (<b>strict 45</b>, <b>moderate 30</b>) are calibrated per run on
+    the profile HMM, so you can state that hits above threshold aren't an artefact of amino-acid composition
+    or generic similarity:
+    <ul>
+      <li><b>Positive control</b> — the seed set itself. <i>Sensitivity</i> = fraction of seeds recovered at the strict threshold (expected ≈ 1.0).</li>
+      <li><b>Negative controls</b> — composition-matched shuffled seeds (always available, no network), plus, with <code>--download-controls</code>, curated reviewed Swiss-Prot fungi/mammalian/archaea proteomes. <i>False-positive rate</i> = fraction of negatives scoring ≥ strict.</li>
+    </ul>
+    Results are written to <code>controls/control_report.json</code> + <code>controls_summary.csv</code> and
+    summarised in <code>run_manifest.json</code> (<code>threshold_calibration</code>) and <code>METHODS.md</code>.
+    Disable with <code>--no-controls</code>.
+  </div>
+</section>
+
+<section id="outputs">
+  <h2>Outputs</h2>
+  <div class="card">
+    A run writes to <code>&lt;out-dir&gt;/</code> (default <code>&lt;fasta&gt;_discovery/</code>). The clean,
+    shareable result is assembled under <code>PACKAGE/</code>; per-round working data lives in
+    <code>run1/ run2/ …</code> and <code>downstream/</code>. The run root also holds <code>report.html</code>,
+    <code>METHODS.md</code>, <code>run_manifest.json</code>, <code>pipeline.log</code>, and the CSV exports.
+<pre><code>PACKAGE/
+├── 00_seed_qc/                     pre-run seed alignment + QC tree
+├── 01_hmm_profile/profile.hmm      the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
+├── 00_tables/                      paper_main_table.csv, hits_deduplicated.csv,
+│                                   database_hit_summary.csv (+ bar chart), genome_metadata.csv,
+│                                   homolog_stats.csv, all_runs_hits.csv
+├── 02_sequences_per_run/runN/
+│     hits.tsv  hits.csv            per-hit evidence table (schema below)
+│     hits.gff3                     genome-browser track
+│     hits_aa.faa  hits_nt.fna      homologue domain: protein / DNA
+│     orfs_aa.faa  orfs_nt.fna      full ORF context: protein / DNA
+│     hits_unique_aa.faa            deduplicated domains (next-round seed)
+├── 03_database_summaries/runN_summary.tsv   per-database hit counts + provenance
+├── 04_synteny_clinker/             clinker figures + publication_figures/ + genbank_with_sequence/
+├── 05_phylogeny/                   ML tree of the homologues (Newick + PNG/SVG/PDF) with seeds marked
+└── 06_scripts/                     a copy of the scripts that produced this run</code></pre>
+  </div>
+  <details><summary><code>hits.tsv</code> — column schema (one row per hit)</summary>
+  <div class="inner">
+    <table>
+      <tr><th>Group</th><th>Columns</th></tr>
+      <tr><td>Identity &amp; provenance</td><td><code>hit_id</code>, <code>genome_id</code>/<code>contig</code>, <code>organism</code>, <code>db_name</code>/<code>db_type</code>, <code>run_label</code>, <code>source_url</code>, <code>source_sha256</code>, <code>accessed_at</code>, <code>source_type</code> (<code>six_frame_orf</code> | <code>annotated_protein</code>)</td></tr>
+      <tr><td>Genomic location (six-frame)</td><td><code>nt_start</code>, <code>nt_end</code>, <code>strand</code>, <code>frame</code>, <code>orf_nt_start</code>, <code>orf_nt_end</code></td></tr>
+      <tr><td>ORF validation</td><td><code>orf_aa_len</code>, <code>domain_aa_len</code>, <code>domain_coverage</code>, <code>has_start_M</code>, <code>ends_at_stop</code>, <code>internal_stops</code> (must be 0), <code>in_coding_locus</code>, <code>prodigal_concordant</code>, <code>prodigal_same_strand_pct</code>, <code>prodigal_any_strand_pct</code>, <code>passes_orf_filter</code></td></tr>
+      <tr><td>HMM statistics</td><td><code>evalue</code>, <code>bit_score</code>, <code>bias_score</code>, <code>env_from</code>, <code>env_to</code>, <code>confidence_tier</code>, <code>qc_flags</code></td></tr>
+      <tr><td>Sequences</td><td><code>aa_sequence</code> (domain), <code>nt_sequence</code> (matching DNA; blank for protein-DB hits)</td></tr>
+    </table>
+  </div></details>
+  <details><summary>Which tool opens what</summary>
+  <div class="inner">
+    <table>
+      <tr><th>File</th><th>Open in</th></tr>
+      <tr><td><code>*.tsv</code> / <code>*.csv</code></td><td>Excel, R, pandas</td></tr>
+      <tr><td><code>*.faa</code> / <code>*.fna</code></td><td>Jalview, MEGA, AliView, BLAST, any aligner</td></tr>
+      <tr><td><code>*.gff3</code></td><td>IGV, JBrowse, Artemis (with a genome FASTA)</td></tr>
+      <tr><td><code>*.gbk</code></td><td>Artemis, Geneious, UGENE, clinker, pyGenomeViz</td></tr>
+      <tr><td>clinker <code>*.html</code></td><td>any browser (interactive; "Save SVG")</td></tr>
+      <tr><td><code>*.treefile</code> (Newick)</td><td>iTOL, FigTree, ggtree, Dendroscope</td></tr>
+      <tr><td><code>*.hmm</code></td><td>HMMER; submit to Pfam / NCBI CDD / VOGDB</td></tr>
+      <tr><td><code>report.html</code></td><td>any browser — one-page summary linking tables, tree, alignment, synteny</td></tr>
+    </table>
+  </div></details>
+  <div class="note"><b>Reading the result.</b> <b>Converged?</b> per-round summaries stop growing. <b>Novel &amp; specific?</b> ~0 hits in SwissProt/Pfam/VOGDB with hits found only via six-frame genome search. <b>Validated?</b> every row is a real ORF — see <code>passes_orf_filter</code>.</div>
+</section>
+
+<section id="repro">
+  <h2>Reproducibility</h2>
+  <div class="card">
+    The whole workflow runs from one command and records everything needed to reproduce it:
+    <ul>
+      <li><b>Pinned environment</b> — <code>environment.lock.yml</code> (exact builds); <code>environment.yml</code> for fresh solves.</li>
+      <li><b>Per-run provenance</b> — <code>run_manifest.json</code> + <code>METHODS.md</code>: command line, parameters, code git commit, conda env, Python version, input SHA-256, per-database URLs + SHA-256 + access dates, per-iteration counts, stop reason, calibration, and <b>tool versions</b>.</li>
+      <li><b>Determinism</b> — IQ-TREE runs with a fixed seed (<code>-seed 12345</code>); MAFFT/trimAl/CD-HIT are deterministic; sorted iteration throughout.</li>
+    </ul>
+    Reproducibility is delivered by the pinned environment + recorded provenance, <b>not</b> containers
+    (no Docker by design).
+  </div>
+</section>
+
+<section id="versions">
+  <h2>Tool versions</h2>
+  <div class="card">
+    The pinned <code>hmm-discovery</code> environment (from <code>environment.lock.yml</code>; every run also
+    records the live versions it actually invoked in <code>run_manifest.json</code> / <code>METHODS.md</code>):
+    <table>
+      <tr><th>Tool</th><th>Version</th><th>Role in the pipeline</th></tr>
+      <tr><td>HMMER (hmmbuild / hmmsearch / hmmscan)</td><td>3.4</td><td>Profile build, search, annotation scans</td></tr>
+      <tr><td>MAFFT</td><td>v7.526</td><td>Seed &amp; homolog alignment (L-INS-i)</td></tr>
+      <tr><td>trimAl</td><td>v1.5.1</td><td>Alignment trimming</td></tr>
+      <tr><td>Prodigal</td><td>V2.6.3</td><td>Gene prediction (ORF-validation &amp; synteny context)</td></tr>
+      <tr><td>seqkit</td><td>v2.13.0</td><td>FASTA manipulation / chunking</td></tr>
+      <tr><td>CD-HIT</td><td>4.8.1</td><td>Clustering homologues</td></tr>
+      <tr><td>IQ-TREE</td><td>3.1.2</td><td>ML phylogeny (ModelFinder, UFBoot2)</td></tr>
+      <tr><td>MEME / FIMO</td><td>5.5.9</td><td>Motif discovery / scanning</td></tr>
+      <tr><td>clinker</td><td>v0.0.32</td><td>Interactive synteny figures</td></tr>
+      <tr><td>Biopython</td><td>1.87</td><td>Sequence I/O, translation, NCBI Entrez</td></tr>
+      <tr><td>pandas</td><td>3.0.3</td><td>Tables / CSV exports</td></tr>
+      <tr><td>NumPy</td><td>2.4.6</td><td>Numerics</td></tr>
+      <tr><td>matplotlib</td><td>3.11.0</td><td>Figures (alignment, trees, bar charts)</td></tr>
+      <tr><td>Python</td><td>3.12.13</td><td>Runtime</td></tr>
+    </table>
+    <div class="note">Verified against the live <code>hmm-discovery</code> environment and the pinned
+    <code>environment.lock.yml</code>.</div>
+  </div>
+</section>
+
+<section id="troubleshoot">
+  <h2>Troubleshooting</h2>
+  <details><summary><code>conda: command not found</code></summary><div class="inner">
+    Install <a href="https://conda-forge.org/download/">Miniforge</a>, then close and reopen the terminal.
+    On macOS/Linux: <code>curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname -s)-$(uname -m).sh" &amp;&amp; bash Miniforge3-*.sh</code>, then re-run <code>bash setup.sh</code>.
+  </div></details>
+  <details><summary>It exits: "The profile HMM failed self-validation"</summary><div class="inner">
+    Too few seeds are recovered by the model built from them (the <code>--min-recovery</code> 0.70 gate). It
+    almost always means the seeds aren't one coherent family (e.g. a broad label like "endolysin" spanning
+    unrelated proteins). Fixes: use a tighter single-family seed set, drop outliers, or relax the recovery
+    requirement only for a deliberately divergent superfamily.
+  </div></details>
+  <details><summary>Apple Silicon: conda can't solve / tools won't install</summary><div class="inner">
+    Bioconda tools have no <code>osx-arm64</code> build. <code>setup.sh</code> sets
+    <code>CONDA_SUBDIR=osx-64</code> automatically; ensure Rosetta 2 is installed
+    (<code>softwareupdate --install-rosetta --agree-to-license</code>). To force it for a manual env,
+    <code>export CONDA_SUBDIR=osx-64</code> before creating it.
+  </div></details>
+  <details><summary>"more threads than CPU cores available" (IQ-TREE)</summary><div class="inner">
+    Already handled: <code>--cpu</code> is auto-clamped to the available core count. If you see this, you're
+    on an old build — update, or pass a smaller <code>--cpu</code>.
+  </div></details>
+  <details><summary>No internet / NCBI is down</summary><div class="inner">
+    Run with <code>--no-annotate</code> (or simply provide no email) — six-frame discovery is unaffected;
+    only NCBI organism names and protein-DB hit sequences are skipped. The run never sends a placeholder
+    address and never hangs on the network.
+  </div></details>
+  <details><summary>Disk space</summary><div class="inner">
+    Databases are cached once in <code>~/.cache/hmm-homologue-finder</code> (several GB across the full set).
+    Inspect or prune with <code>python3 scripts/manage_cache.py</code>. Keep ~20 GB free for a full run.
+  </div></details>
+  <div class="note">More: <code>docs/TROUBLESHOOTING.md</code>, <code>docs/INSTALL.md</code>, <code>docs/USAGE.md</code>.</div>
+</section>
+
+<section id="cite">
+  <h2>How to cite</h2>
+  <div class="card">
+    Cite this tool (see <code>CITATION.cff</code>) plus the tools and databases a run actually used — the
+    exact citation list for your run is written into <code>METHODS.md</code> ("Citations") and
+    <code>CITATIONS.md</code>. Core methods: HMMER (Eddy 2011), MAFFT (Katoh &amp; Standley 2013),
+    trimAl (Capella-Gutiérrez et&nbsp;al. 2009), Prodigal (Hyatt et&nbsp;al. 2010), CD-HIT (Fu et&nbsp;al. 2012),
+    IQ-TREE 2 + ModelFinder + UFBoot2 (Minh/Kalyaanamoorthy/Hoang), MEME (Bailey et&nbsp;al. 2009),
+    clinker (Gilchrist &amp; Chooi 2021), Biopython (Cock et&nbsp;al. 2009), and each database's reference.
   </div>
 </section>
 
 </main>
-<footer>HMM Homologue Finder · interactive guide · open <code>scripts/</code> to run.</footer>
+</div>
+
+<footer>HMM Homologue Finder — interactive guide. Self-contained (works offline). Tool versions verified against the pinned <code>hmm-discovery</code> environment.</footer>
+
+<script>
+// theme toggle (persisted)
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  try{var s=localStorage.getItem('hmm_theme'); if(s) root.setAttribute('data-theme',s);}catch(e){}
+  btn.addEventListener('click',function(){
+    var t=root.getAttribute('data-theme')==='dark'?'light':'dark';
+    root.setAttribute('data-theme',t); try{localStorage.setItem('hmm_theme',t);}catch(e){}
+  });
+})();
+// copy buttons on every <pre>
+document.querySelectorAll('pre').forEach(function(pre){
+  var b=document.createElement('button'); b.className='copybtn'; b.textContent='Copy';
+  b.addEventListener('click',function(){
+    var t=pre.querySelector('code')?pre.querySelector('code').innerText:pre.innerText;
+    navigator.clipboard.writeText(t).then(function(){
+      b.textContent='Copied'; b.classList.add('copied');
+      setTimeout(function(){b.textContent='Copy'; b.classList.remove('copied');},1400);
+    });
+  });
+  pre.appendChild(b);
+});
+// scrollspy TOC
+(function(){
+  var links=[].slice.call(document.querySelectorAll('nav.toc a'));
+  var map={}; links.forEach(function(a){map[a.getAttribute('href').slice(1)]=a;});
+  var obs=new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){
+      links.forEach(function(a){a.classList.remove('active');});
+      if(map[e.target.id]) map[e.target.id].classList.add('active');
+    }});
+  },{rootMargin:'-10% 0px -80% 0px',threshold:0});
+  document.querySelectorAll('main section[id]').forEach(function(s){obs.observe(s);});
+})();
+// command builder
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  var out=$('b_out');
+  var ids=['b_fasta','b_name','b_mode','b_iter','b_cpu','b_email','b_db','b_dbcustom',
+           'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt'];
+  function q(s){ return /[^A-Za-z0-9_.,\-\/=]/.test(s)?('"'+s+'"'):s; }
+  function build(){
+    $('b_dbcustom_wrap').style.display = ($('b_db').value==='custom')?'block':'none';
+    var smoke=$('b_mode').value==='smoke';
+    var p=['python3 scripts/hmm_finder.py'];
+    var f=$('b_fasta').value.trim()||'my_seeds.faa'; p.push('--fasta '+q(f));
+    var n=$('b_name').value.trim(); if(n) p.push('--name '+q(n));
+    if(smoke){ p.push('--smoke'); }
+    else{
+      var it=$('b_iter').value; if(it && it!=='3') p.push('--iterations '+it);
+      var db=$('b_db').value;
+      if(db==='pick') p.push('--pick-databases');
+      else if(db==='custom'){ var d=$('b_dbcustom').value.trim(); if(d) p.push('--databases '+q(d)); }
+    }
+    var cpu=$('b_cpu').value; if(cpu && cpu!=='8') p.push('--cpu '+cpu);
+    var em=$('b_email').value.trim();
+    if($('b_offline').checked) p.push('--no-annotate');
+    else if(em) p.push('--email '+q(em));
+    if($('b_nt').checked) p.push('--input-type nucleotide');
+    if(!smoke && $('b_nocontrols').checked) p.push('--no-controls');
+    if(!smoke && $('b_prodigal').checked) p.push('--prodigal-gate');
+    if(!smoke && $('b_noseed').checked) p.push('--no-seed-tree');
+    out.textContent=p.join(' \\\n    ');
+  }
+  ids.forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',build); el.addEventListener('change',build);} });
+  build();
+})();
+</script>
 </body>
 </html>
