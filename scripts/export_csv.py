@@ -132,6 +132,31 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _db_hit_summary(frame: pd.DataFrame) -> pd.DataFrame:
+    """Per-database hit summary: how many hits, distinct sequences, and unique
+    organisms each scanned database contributed (plus an ALL row deduplicated
+    across databases). Makes cross-database redundancy explicit — the same phage
+    catalogued in several databases counts once per database in 'hits' but once
+    overall in the ALL row."""
+    if frame.empty or "db_name" not in frame.columns:
+        return pd.DataFrame()
+    def _canon_set(g):
+        s = {_canonical_organism(r.get("organism", ""), r.get("genome_id", "")) for _, r in g.iterrows()}
+        s.discard("")
+        return s
+    rows = []
+    for db, g in frame.groupby("db_name", sort=False):
+        rows.append({"database": db, "hits": len(g),
+                     "unique_sequences": int(g["aa_sequence"].nunique()) if "aa_sequence" in g else "",
+                     "unique_organisms": len(_canon_set(g))})
+    out = pd.DataFrame(rows).sort_values("hits", ascending=False, kind="stable")
+    total = pd.DataFrame([{"database": "ALL (deduplicated across databases)",
+                           "hits": len(frame),
+                           "unique_sequences": int(frame["aa_sequence"].nunique()) if "aa_sequence" in frame else "",
+                           "unique_organisms": len(_canon_set(frame))}])
+    return pd.concat([out, total], ignore_index=True)
+
+
 def _write_multifastas(allh: pd.DataFrame, dedup: pd.DataFrame, discovery: Path, pkg: Path) -> list:
     """Write combined multi-FASTAs so the whole hit set is usable in one file by
     other tools (Jalview, MEGA, CD-HIT, BLAST, etc.):
@@ -234,6 +259,13 @@ def export(discovery: Path) -> list[str]:
             paper.to_csv(discovery / "paper_main_table.csv", index=False)
             written.append(str(discovery / "paper_main_table.csv"))
 
+        # Per-database hit summary (hits / unique sequences / unique organisms per
+        # database + a deduplicated ALL row) — makes cross-database redundancy clear.
+        dbsum = _db_hit_summary(best_run)
+        if not dbsum.empty:
+            dbsum.to_csv(discovery / "database_hit_summary.csv", index=False)
+            written.append(str(discovery / "database_hit_summary.csv"))
+
         # Supplementary Table S1 — genome metadata (one row per genome/source)
         meta = []
         for gid, g in allh.groupby("genome_id"):
@@ -269,7 +301,8 @@ def export(discovery: Path) -> list[str]:
     if pkg.exists():
         tables = pkg / "00_tables"
         tables.mkdir(exist_ok=True)
-        for name in ("paper_main_table.csv", "hits_deduplicated.csv", "hit_summary.csv",
+        for name in ("paper_main_table.csv", "hits_deduplicated.csv", "database_hit_summary.csv",
+                     "hit_summary.csv",
                      "database_summary.csv", "genome_metadata.csv", "homolog_stats.csv",
                      "all_runs_hits.csv"):
             src = discovery / name

@@ -255,7 +255,7 @@ def _arrow(ax, g, y, color, h=0.34, lw=0.4, ec="#33373d"):
                          linewidth=lw, zorder=4 if lw > 1 else 3))
 
 
-def draw_cluster(cid, loci, out_dir, color_by="function", suffix=""):
+def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels=False):
     loci = [a for a in (anchor(l) for l in loci) if a]
     if len(loci) < 2:
         return None
@@ -289,6 +289,11 @@ def draw_cluster(cid, loci, out_dir, color_by="function", suffix=""):
             fam = g["fam"]
             _arrow(ax, g, y, color_of(g), h=arrow_h * (1.25 if fam else 1.0),
                    lw=1.8 if fam else 0.4, ec="#1a1a1a" if fam else "#33373d")
+            if gene_labels and not fam:
+                name = (g.get("func") or "").strip()
+                if name and name.lower() not in ("hypothetical protein", "unknown", "uncharacterized protein"):
+                    ax.text((g["s"] + g["e"]) / 2, y - arrow_h * 1.1, name[:26],
+                            ha="right", va="center", rotation=90, fontsize=3.4, color="#555")
         if not big:  # inline "family" tag clutters very tall figures; legend covers it
             fam = next(g for g in l["genes"] if g["fam"])
             ax.text((fam["s"] + fam["e"]) / 2, y + 0.34, "family", ha="center",
@@ -409,6 +414,10 @@ def main() -> None:
     ap.add_argument("--color-by", choices=("function", "conservation", "both"), default="function",
                     help="gene colouring: 'function' (category), 'conservation' "
                          "(core->unique gradient), or 'both'. Links shaded by similarity in all.")
+    ap.add_argument("--gene-labels", action="store_true",
+                    help="write each neighbour gene's functional annotation next to its arrow "
+                         "(off by default — can clutter dense neighbourhoods; colours+legend "
+                         "already convey function)")
     args = ap.parse_args()
 
     gbk_dir = args.clinker_dir / "genbank_files"
@@ -477,7 +486,8 @@ def main() -> None:
         drew = False
         for mode in modes:
             suf = "" if mode == "function" else f"_{mode}"
-            if draw_cluster(cid, loci, args.out_dir, color_by=mode, suffix=suf):
+            if draw_cluster(cid, loci, args.out_dir, color_by=mode, suffix=suf,
+                            gene_labels=args.gene_labels):
                 drew = True
         if drew:
             produced.append(cid)

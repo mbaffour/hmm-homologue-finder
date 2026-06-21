@@ -444,6 +444,10 @@ def main() -> None:
                          "phylogeny/alignment of just the input seeds, for sanity-checking "
                          "the seed set before the discovery runs). The final homolog tree "
                          "always includes the seeds, marked.")
+    ap.add_argument("--synteny-gene-labels", action="store_true",
+                    help="label neighbour genes with their functional annotation in the synteny "
+                         "figures (off by default; an interactive run will ask). Can clutter "
+                         "dense neighbourhoods — colours + legend already convey function.")
     ap.add_argument("--no-controls", action="store_true",
                     help="skip the threshold-calibration controls (sensitivity on the "
                          "seed self-test + false-positive rate on shuffled/unrelated "
@@ -519,6 +523,14 @@ def main() -> None:
         # explicit --pick-databases still forces the prompt even if --databases was set
         args.databases = pick_databases(DEPLOY, DATABASES.split(","))
         print(f"Selected databases: {args.databases}")
+
+    # Interactive: offer the optional synteny gene-name labels (off by default).
+    if sys.stdin.isatty() and not args.smoke and not args.synteny_gene_labels:
+        try:
+            _ans = input("Label neighbour genes in the synteny figures? (y/N): ").strip().lower()
+        except EOFError:
+            _ans = ""
+        args.synteny_gene_labels = _ans in ("y", "yes")
 
     # Preflight: refuse to start a multi-hour run if required software is missing.
     if not args.skip_tool_check:
@@ -810,11 +822,14 @@ def main() -> None:
     # publication-quality static synteny panels (anchored, orthogroup-coloured),
     # built from clinker's GenBank neighbourhoods. Non-fatal if it fails.
     try:
-        sh(["python3", str(SYNTENY),
+        synteny_cmd = ["python3", str(SYNTENY),
             "--clinker-dir", str(down / "clinker"),
             "--out-dir", str(down / "synteny"),
             "--annotation-cache", str(args.db_cache), "--cpu", args.cpu,
-            "--color-by", "both"])
+            "--color-by", "both"]
+        if args.synteny_gene_labels:
+            synteny_cmd.append("--gene-labels")
+        sh(synteny_cmd)
     except Exception as e:
         log(f"  (synteny figures skipped: {e})")
     sh(["python3", str(TREE),
