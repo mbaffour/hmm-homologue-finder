@@ -132,29 +132,92 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _db_hit_summary(frame: pd.DataFrame) -> pd.DataFrame:
-    """Per-database hit summary: how many hits, distinct sequences, and unique
-    organisms each scanned database contributed (plus an ALL row deduplicated
-    across databases). Makes cross-database redundancy explicit — the same phage
-    catalogued in several databases counts once per database in 'hits' but once
-    overall in the ALL row."""
-    if frame.empty or "db_name" not in frame.columns:
+def _canon_org_set(g) -> set:
+    s = {_canonical_organism(r.get("organism", ""), r.get("genome_id", "")) for _, r in g.iterrows()}
+    s.discard("")
+    return s
+
+
+def _db_hit_summary(hits: pd.DataFrame, dbsum: pd.DataFrame) -> pd.DataFrame:
+    """Complete per-database summary over EVERY database searched (including those
+    with zero hits — their absence is informative, e.g. a gene missing from Pfam /
+    Swiss-Prot). `dbsum` is the engine's per-database record for the representative
+    run (database, status, hit_count, strict_count, nt_orf_mode, runtime_seconds);
+    unique sequence/organism counts come from the validated `hits`. A trailing ALL
+    row is deduplicated across databases."""
+    if dbsum is None or dbsum.empty:
         return pd.DataFrame()
-    def _canon_set(g):
-        s = {_canonical_organism(r.get("organism", ""), r.get("genome_id", "")) for _, r in g.iterrows()}
-        s.discard("")
-        return s
+    hit_stats = {}
+    if hits is not None and not hits.empty and "db_name" in hits.columns:
+        for db, g in hits.groupby("db_name", sort=False):
+            useq = int(g["aa_sequence"].nunique()) if "aa_sequence" in g.columns else 0
+            hit_stats[db] = (useq, len(_canon_org_set(g)))
     rows = []
-    for db, g in frame.groupby("db_name", sort=False):
-        rows.append({"database": db, "hits": len(g),
-                     "unique_sequences": int(g["aa_sequence"].nunique()) if "aa_sequence" in g else "",
-                     "unique_organisms": len(_canon_set(g))})
+    for _, d in dbsum.iterrows():
+        db = str(d.get("database", ""))
+        useq, uorg = hit_stats.get(db, (0, 0))
+        try:
+            hc = int(float(d.get("hit_count", 0) or 0))
+            sc = int(float(d.get("strict_count", 0) or 0))
+        except (TypeError, ValueError):
+            hc = sc = 0
+        rows.append({
+            "database": db,
+            "type": "nucleotide (six-frame)" if str(d.get("nt_orf_mode", "")) == "sixframe" else "protein",
+            "status": d.get("status", ""),
+            "hits": hc,
+            "strict_hits": sc,
+            "unique_sequences": useq,
+            "unique_organisms": uorg,
+            "runtime_seconds": d.get("runtime_seconds", ""),
+        })
     out = pd.DataFrame(rows).sort_values("hits", ascending=False, kind="stable")
-    total = pd.DataFrame([{"database": "ALL (deduplicated across databases)",
-                           "hits": len(frame),
-                           "unique_sequences": int(frame["aa_sequence"].nunique()) if "aa_sequence" in frame else "",
-                           "unique_organisms": len(_canon_set(frame))}])
-    return pd.concat([out, total], ignore_index=True)
+    if hits is not None and not hits.empty:
+        out = pd.concat([out, pd.DataFrame([{
+            "database": "ALL (deduplicated across databases)",
+            "type": "", "status": "", "hits": len(hits), "strict_hits": "",
+            "unique_sequences": int(hits["aa_sequence"].nunique()) if "aa_sequence" in hits.columns else 0,
+            "unique_organisms": len(_canon_org_set(hits)), "runtime_seconds": "",
+        }])], ignore_index=True)
+    return out
+
+
+def _db_barplot(dbsum: pd.DataFrame, out_dir: Path) -> list:
+    """Horizontal bar chart of hits per database (every database searched; 0-hit
+    DBs included). Editable SVG + PDF + 300-dpi PNG. Empty list if matplotlib absent."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        matplotlib.rcParams["svg.fonttype"] = "none"
+        matplotlib.rcParams["pdf.fonttype"] = 42
+        import matplotlib.pyplot as plt
+    except Exception:
+        return []
+    rows = dbsum[dbsum["database"] != "ALL (deduplicated across databases)"] if not dbsum.empty else dbsum
+    if rows is None or rows.empty:
+        return []
+    labels = list(rows["database"])
+    vals = [int(v) for v in rows["hits"]]
+    colors = ["#4C72B0" if v > 0 else "#cccccc" for v in vals]
+    fig, ax = plt.subplots(figsize=(8, max(2.2, 0.42 * len(labels) + 1)))
+    y = range(len(labels))
+    ax.barh(list(y), vals, color=colors, edgecolor="#33373d", linewidth=0.4)
+    ax.set_yticks(list(y)); ax.set_yticklabels(labels, fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlabel("hits", fontsize=9)
+    ax.set_title("Hits per database searched (grey = searched, 0 hits)", fontsize=10, fontweight="bold")
+    for i, v in zip(y, vals):
+        ax.text(v + max(vals + [1]) * 0.01, i, str(v), va="center", fontsize=7)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    fig.tight_layout()
+    made = []
+    for ext in ("png", "svg", "pdf"):
+        p = out_dir / f"database_hits.{ext}"
+        fig.savefig(p, dpi=300 if ext == "png" else None, bbox_inches="tight")
+        made.append(str(p))
+    plt.close(fig)
+    return made
 
 
 def _write_multifastas(allh: pd.DataFrame, dedup: pd.DataFrame, discovery: Path, pkg: Path) -> list:
@@ -259,12 +322,16 @@ def export(discovery: Path) -> list[str]:
             paper.to_csv(discovery / "paper_main_table.csv", index=False)
             written.append(str(discovery / "paper_main_table.csv"))
 
-        # Per-database hit summary (hits / unique sequences / unique organisms per
-        # database + a deduplicated ALL row) — makes cross-database redundancy clear.
-        dbsum = _db_hit_summary(best_run)
+        # Complete per-database summary over EVERY database searched (incl. 0-hit
+        # ones), from the engine record for the most-complete run, joined with the
+        # validated-hit unique counts. Plus a bar-chart graph.
+        best_label = str(best_run["run_label"].iloc[0]) if "run_label" in best_run.columns else ""
+        eng = _read_tsv(discovery / f"run{best_label}" / "benchmark" / "results" / "all_database_summary.tsv")
+        dbsum = _db_hit_summary(best_run, eng)
         if not dbsum.empty:
             dbsum.to_csv(discovery / "database_hit_summary.csv", index=False)
             written.append(str(discovery / "database_hit_summary.csv"))
+            written += _db_barplot(dbsum, discovery)
 
         # Supplementary Table S1 — genome metadata (one row per genome/source)
         meta = []
@@ -302,6 +369,7 @@ def export(discovery: Path) -> list[str]:
         tables = pkg / "00_tables"
         tables.mkdir(exist_ok=True)
         for name in ("paper_main_table.csv", "hits_deduplicated.csv", "database_hit_summary.csv",
+                     "database_hits.png", "database_hits.svg", "database_hits.pdf",
                      "hit_summary.csv",
                      "database_summary.csv", "genome_metadata.csv", "homolog_stats.csv",
                      "all_runs_hits.csv"):
