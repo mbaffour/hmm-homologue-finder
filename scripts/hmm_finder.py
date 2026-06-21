@@ -175,6 +175,57 @@ def _tool_versions() -> dict:
     return versions
 
 
+# Citations for the external tools and databases the pipeline uses. Keyed so the
+# per-run METHODS lists only what that run actually invoked / searched.
+_TOOL_CITATIONS = {
+    "hmmsearch": "HMMER 3.4 — Eddy SR (2011) Accelerated profile HMM searches. PLoS Comput Biol 7:e1002195.",
+    "hmmbuild":  "HMMER 3.4 — Eddy SR (2011) Accelerated profile HMM searches. PLoS Comput Biol 7:e1002195.",
+    "hmmscan":   "HMMER 3.4 — Eddy SR (2011) Accelerated profile HMM searches. PLoS Comput Biol 7:e1002195.",
+    "mafft":     "MAFFT v7 — Katoh K & Standley DM (2013) Mol Biol Evol 30:772-780.",
+    "trimal":    "trimAl — Capella-Gutiérrez S, Silla-Martínez JM, Gabaldón T (2009) Bioinformatics 25:1972-1973.",
+    "prodigal":  "Prodigal — Hyatt D et al. (2010) BMC Bioinformatics 11:119.",
+    "seqkit":    "SeqKit — Shen W et al. (2016) PLoS One 11:e0163962.",
+    "cd-hit":    "CD-HIT — Fu L et al. (2012) Bioinformatics 28:3150-3152.",
+    "iqtree":    "IQ-TREE 2 — Minh BQ et al. (2020) Mol Biol Evol 37:1530-1534; ModelFinder — Kalyaanamoorthy S et al. (2017) Nat Methods 14:587-589; UFBoot2 — Hoang DT et al. (2018) Mol Biol Evol 35:518-522.",
+    "meme":      "MEME Suite — Bailey TL et al. (2009) Nucleic Acids Res 37:W202-W208.",
+    "fimo":      "FIMO — Grant CE, Bailey TL, Noble WS (2011) Bioinformatics 27:1017-1018.",
+    "clinker":   "clinker — Gilchrist CLM & Chooi YH (2021) Bioinformatics 37:2473-2475.",
+    "mmseqs":    "MMseqs2 — Steinegger M & Söding J (2017) Nat Biotechnol 35:1026-1028.",
+}
+_BIOPYTHON_CITE = "Biopython — Cock PJA et al. (2009) Bioinformatics 25:1422-1423."
+_DB_CITATIONS = {
+    "INPHARED":            "INPHARED — Cook R et al. (2021) PHAGE 2:214-223.",
+    "RefSeq":              "NCBI RefSeq — O'Leary NA et al. (2016) Nucleic Acids Res 44:D733-D745.",
+    "SwissProt":           "UniProtKB/Swiss-Prot — The UniProt Consortium (2023) Nucleic Acids Res 51:D523-D531.",
+    "Gut Phage Database":  "Gut Phage Database (GPD) — Camarillo-Guerrero LF et al. (2021) Cell 184:1098-1109.",
+    "GPD":                 "Gut Phage Database (GPD) — Camarillo-Guerrero LF et al. (2021) Cell 184:1098-1109.",
+    "GVD":                 "Gut Virome Database (GVD) — Gregory AC et al. (2020) Cell Host Microbe 28:724-740.",
+    "AVrC":                "Gut Virome Database (GVD) — Gregory AC et al. (2020) Cell Host Microbe 28:724-740.",
+    "Pfam":                "Pfam — Mistry J et al. (2021) Nucleic Acids Res 49:D412-D419.",
+    "VOGDB":               "VOGDB — Virus Orthologous Groups database (https://vogdb.org).",
+    "PHROG":               "PHROGs — Terzian P et al. (2021) NAR Genom Bioinform 3:lqab067.",
+}
+
+
+def _citation_lines(tool_versions: dict, selected_dbs: str) -> list:
+    """Markdown citation lines for the tools used + databases searched (de-duplicated)."""
+    seen, refs = set(), []
+    for t in (tool_versions or {}):
+        c = _TOOL_CITATIONS.get(t)
+        if c and c not in seen:
+            seen.add(c); refs.append(c)
+    if refs and _BIOPYTHON_CITE not in seen:
+        refs.append(_BIOPYTHON_CITE)
+    for key, c in _DB_CITATIONS.items():
+        if key.lower() in (selected_dbs or "").lower() and c not in seen:
+            seen.add(c); refs.append(c)
+    if not refs:
+        return []
+    return (["", "## Citations",
+             "Please cite this tool (see `CITATION.cff`) and the methods/databases used:"]
+            + [f"- {r}" for r in refs])
+
+
 def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: str,
                       iter_hits: list, started_at: str, log, stop_reason: str = "",
                       control_summary: dict | None = None) -> None:
@@ -265,6 +316,7 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                     L.append(f"    - url: {u}")
                 for s in (e.get("source_sha256s") or [])[:8]:
                     L.append(f"    - sha256: {s}")
+        L += _citation_lines(tool_versions, selected_dbs)
         L += ["", "> Full machine-readable provenance: `run_manifest.json` (this folder) and "
               "`run*/benchmark/reports/reproducibility.json`."]
         (out / "METHODS.md").write_text("\n".join(L) + "\n")
