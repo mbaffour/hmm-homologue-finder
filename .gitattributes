@@ -1,0 +1,25 @@
+# Enforce consistent line endings so the shipped tool runs everywhere.
+# Without this, files committed from Windows (core.autocrlf=true) end up with
+# CRLF in the repo blobs, and `git archive` ships CRLF shell scripts that fail on
+# Linux/macOS/WSL ("cd: $'.\r'", "syntax error near unexpected token").
+
+# Default: detect text and normalise to LF in the repo and on checkout.
+* text=auto eol=lf
+
+# Shell scripts and the macOS clickable launcher MUST be LF (bash chokes on CRLF).
+*.sh       text eol=lf
+*.command  text eol=lf
+
+# Windows batch file MUST stay CRLF.
+*.bat      text eol=crlf
+
+# Binary assets — never apply EOL conversion.
+*.png  binary
+*.svg  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.h3m  binary
+*.h3i  binary
+*.h3f  binary
+*.h3p  binary
