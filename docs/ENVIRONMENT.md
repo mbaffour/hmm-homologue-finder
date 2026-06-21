@@ -27,6 +27,10 @@ This:
    `environment.yml`.
 3. Verifies every required tool and installs any that are missing.
 
+On **Apple Silicon (arm64) Macs**, `setup.sh` automatically sets
+`CONDA_SUBDIR=osx-64` (the bioconda tools have no native arm64 build; they run
+under Rosetta 2). Export your own `CONDA_SUBDIR` first to override.
+
 If you don't have conda, install Miniforge first (one time):
 ```bash
 curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-$(uname -m).sh

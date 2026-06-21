@@ -221,8 +221,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--hits-tsv", type=Path, required=True)
     ap.add_argument("--out-dir", type=Path, required=True)
-    ap.add_argument("--email", default="researcher@example.com")
+    ap.add_argument("--email", default=None,
+                    help="NCBI Entrez email for genome retrieval. Never assumed: if omitted "
+                         "(and $NCBI_EMAIL unset) NCBI genomes are skipped — no address is "
+                         "ever sent to NCBI. Metagenomic-catalogue genomes are unaffected.")
     args = ap.parse_args()
+    email = args.email or (os.environ.get("NCBI_EMAIL") or "").strip() or None
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_csv(args.hits_tsv, sep="\t")
@@ -244,10 +248,17 @@ def main() -> None:
     genome_ids = list(by_genome)
     print(f"{len(genome_ids)} genomes ({len(df)} hits)")
 
-    # 1. NCBI genomes (sequences + phage names)
+    # 1. NCBI genomes (sequences + phage names). Skipped offline (no real email):
+    #    never send a placeholder address to NCBI; metagenomic catalogues still run.
     ncbi_ids = [g for g in genome_ids if is_ncbi(g)]
-    print(f"Fetching {len(ncbi_ids)} NCBI genomes…")
-    seqs, names = fetch_ncbi(ncbi_ids, args.email)
+    if ncbi_ids and email:
+        print(f"Fetching {len(ncbi_ids)} NCBI genomes…")
+        seqs, names = fetch_ncbi(ncbi_ids, email)
+    else:
+        if ncbi_ids:
+            print(f"(offline: skipping {len(ncbi_ids)} NCBI genome(s) — no --email/$NCBI_EMAIL; "
+                  "their neighbourhoods are omitted)")
+        seqs, names = {}, {}
 
     # 2. metagenomic genomes, grouped by catalogue prefix (uncultured -> no name)
     meta_ids = [g for g in genome_ids if not is_ncbi(g)]

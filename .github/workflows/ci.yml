@@ -16,5 +16,14 @@ jobs:
           python-version: "3.11"
       - name: Install Python dependencies
         run: pip install biopython pandas matplotlib numpy
+      - name: Byte-compile all Python (catches syntax/import-time breakage repo-wide)
+        run: python3 -m compileall -q scripts engine
       - name: Run unit tests
         run: python3 scripts/run_tests.py
+      - name: CLI arg-parse smoke (no network, no databases)
+        run: python3 scripts/hmm_finder.py --list-databases
+# Full end-to-end smoke + golden regression need multi-GB database downloads and
+# the bioinformatics tools, so they are NOT run in CI. Run them locally before a
+# release (conda env `hmm-discovery`):
+#   bash run.sh --fasta examples/example_seeds.fasta --smoke
+#   python3 scripts/golden_test.py --discovery <run> --baseline tests/golden/<fam>.json

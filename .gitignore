@@ -8,6 +8,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Local developer/session notes — not for distribution (may contain personal
+# paths, machine-specific commands, or contact details). Keep out of the repo.
+HANDOFF.md
+
 # Pipeline outputs & working data (generated; don't commit)
 *_discovery/
 *_discovery/

@@ -20,6 +20,7 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import socket
 import time
@@ -113,7 +114,13 @@ def annotate(tsv: Path, email: str) -> None:
         print(f"  {tsv.name}: 0 rows — organism column ensured.")
         return
     accs = sorted({str(g) for g in df["genome_id"] if is_ncbi(g)})
-    names = fetch_names(accs, email) if accs else {}
+    # Without a real NCBI email we must NOT contact Entrez (NCBI policy + project
+    # rule: never send a placeholder address). Skip the lookup and fall back to the
+    # generic organism label so the table is still well-formed offline.
+    if accs and not email:
+        print(f"  {tsv.name}: no --email/$NCBI_EMAIL — skipping NCBI organism lookup "
+              f"({len(accs)} accession(s)); using generic labels.")
+    names = fetch_names(accs, email) if (accs and email) else {}
 
     def org(row) -> str:
         gid = str(row["genome_id"])
@@ -130,17 +137,21 @@ def annotate(tsv: Path, email: str) -> None:
     cols = cols[:idx] + ["organism"] + cols[idx:]
     df = df[cols]
     df.to_csv(tsv, sep="\t", index=False)
-    print(f"  {tsv.name}: organism added ({len(accs)} NCBI names; {len(df)} rows)")
+    print(f"  {tsv.name}: organism added ({len(names)} NCBI names; {len(df)} rows)")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--hits-tsv", type=Path, nargs="+", required=True)
-    ap.add_argument("--email", default="researcher@example.com")
+    ap.add_argument("--email", default=None,
+                    help="NCBI Entrez email for organism-name lookups. Never assumed: if "
+                         "omitted (and $NCBI_EMAIL unset) the run stays offline and uses "
+                         "generic organism labels — no address is ever sent to NCBI.")
     args = ap.parse_args()
+    email = args.email or (os.environ.get("NCBI_EMAIL") or "").strip() or None
     for tsv in args.hits_tsv:
         if tsv.exists():
-            annotate(tsv, args.email)
+            annotate(tsv, email)
 
 
 if __name__ == "__main__":

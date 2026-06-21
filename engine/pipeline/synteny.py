@@ -1220,7 +1220,7 @@ def fetch_protein_coordinates(prot_accession: str, email: str) -> tuple:
 
 def build_synteny_table(
     hits_df: pd.DataFrame,
-    email: str = "researcher@example.com",
+    email: str = "",
     flanks: int = 5,
     max_genomes: int = 30,
     local_genbank_dirs: Optional[list] = None,

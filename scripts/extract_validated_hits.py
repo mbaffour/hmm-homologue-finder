@@ -350,7 +350,7 @@ def main():
         accs = sorted({clean_accession(r.get("protein_id", r.get("target_name", ""))) for r in protein_rows})
         # Offline (no real email): keep the protein-DB hits in the table but skip the
         # NCBI fetch rather than sending a placeholder address (NCBI policy).
-        if args.email and args.email != "researcher@example.com":
+        if args.email:
             print(f"  fetching {len(accs)} protein-database hit sequences from NCBI…")
             prot_seqs = fetch_protein_seqs(accs, args.email)
         else:

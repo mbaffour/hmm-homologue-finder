@@ -64,6 +64,18 @@ check("dedup: cross-DB same locus collapses (4 hits -> 3 loci)", len(_keep) == 3
 check("dedup: prefers six-frame over protein", 0 in _keep and 1 not in _keep)
 check("dedup: keeps paralog + other genome", 2 in _keep and 3 in _keep)
 
+# --- email never assumed: helpers stay OFFLINE (no NCBI call) without an address.
+# With email=None the organism lookup must be skipped entirely (proving no
+# placeholder address is ever sent) and fall back to a generic label. This test
+# runs with NO network because the guard short-circuits before any Entrez call.
+_eo = Path(tempfile.mkdtemp()) / "hits.tsv"
+pd.DataFrame({"genome_id": ["NC_000000.1"], "db_name": ["RefSeq viral genomes"]}).to_csv(
+    _eo, sep="\t", index=False)
+O.annotate(_eo, None)
+_eor = pd.read_csv(_eo, sep="\t")
+check("annotate_organism offline (email=None) -> generic label, no NCBI",
+      "organism" in _eor.columns and "uncultured virus" in str(_eor["organism"].iloc[0]))
+
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
 dna = td / "x.fna"

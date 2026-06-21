@@ -64,6 +64,11 @@ def pick_databases(engine_dir: Path, default_names: list[str]) -> str:
     cat = load_catalog(engine_dir)
     if not cat:
         return ",".join(default_names)
+    # Defensive: never block on input() without a terminal. The sole caller
+    # (hmm_finder.py) already TTY-guards this, but guard here too so any future
+    # caller can't hang an unattended run.
+    if not sys.stdin.isatty():
+        return ",".join(default_names)
     print("\nSelect databases to search:")
     print("  Enter = defaults (*)   |   'all' = everything   |   else: numbers e.g. 2 4 7\n")
     for i, db in enumerate(cat, 1):

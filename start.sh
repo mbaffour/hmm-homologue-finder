@@ -5,7 +5,7 @@
 #
 #   bash start.sh
 #
-set -u
+set -u -o pipefail   # NOT -e: interactive prompts / probes return non-zero by design
 ORIG_PWD="$(pwd)"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"

@@ -2,7 +2,7 @@
 # HMM Homologue Finder — terminal launcher for macOS and Linux (incl. WSL2).
 # Verifies the software (installs on first run), then starts the interactive
 # pipeline, which asks for your seed FASTA.
-set -u
+set -u -o pipefail   # NOT -e: conda hook + `command -v` probes return non-zero by design
 cd "$(dirname "$0")"
 
 ENV_NAME="hmm-discovery"

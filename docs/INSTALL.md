@@ -28,6 +28,13 @@ Run it: `bash run.sh` — or double-click **`scripts/Run HMM Homologue Finder.co
 > On first launch macOS may warn about an unidentified developer. Right-click
 > the `.command` → **Open** → **Open**, or run `bash run.sh` from Terminal.
 
+> **Apple Silicon (M1/M2/M3):** several bioinformatics tools (HMMER, MAFFT,
+> Prodigal, IQ-TREE, MEME) have no native `osx-arm64` conda build. `setup.sh`
+> detects an arm64 Mac and automatically sets `CONDA_SUBDIR=osx-64`, so the
+> environment is built for x86-64 and runs under Rosetta 2 (install it once with
+> `softwareupdate --install-rosetta --agree-to-license` if prompted). To force a
+> different subdir, export `CONDA_SUBDIR` yourself before running `setup.sh`.
+
 ---
 
 ## 2b. Linux

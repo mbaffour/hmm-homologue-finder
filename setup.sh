@@ -5,7 +5,11 @@
 #
 #   bash setup.sh
 #
-set -u
+# NOTE: we use `set -u -o pipefail` but deliberately NOT `set -e` — this script
+# sources the conda shell hook and runs `command -v` / `grep -q` probes that
+# legitimately exit non-zero; `-e` would abort on those. Errors are handled
+# explicitly below.
+set -u -o pipefail
 TOOL_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Use the engine bundled with the tool; fall back to the dev repo if absent.
 if [ -f "$TOOL_DIR/engine/environment.yml" ]; then
@@ -23,7 +27,18 @@ case "$(uname -s)" in
     echo "Please run this inside WSL2 (Ubuntu). See README / run.bat."; exit 1 ;;
 esac
 
-echo "=== HMM Homologue Finder — environment setup ($(uname -s)) ==="
+# macOS Apple Silicon (M1/M2/M3): several bioconda tools (HMMER, MAFFT, Prodigal,
+# IQ-TREE, MEME, …) lack reliable osx-arm64 builds. Without this, conda either
+# fails to solve or silently mixes channels. Force the x86-64 subdir so the env
+# resolves consistently (runs under Rosetta 2). Respect a user-set CONDA_SUBDIR
+# and only do this on arm64 Darwin; Linux and Intel macOS are untouched.
+if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] && [ -z "${CONDA_SUBDIR:-}" ]; then
+  export CONDA_SUBDIR=osx-64
+  echo "(Apple Silicon detected: setting CONDA_SUBDIR=osx-64 so bioconda tools resolve "
+  echo " via x86-64/Rosetta 2 — override by exporting CONDA_SUBDIR before running.)"
+fi
+
+echo "=== HMM Homologue Finder — environment setup ($(uname -s) $(uname -m)) ==="
 
 # 1. conda / mamba present?  Load a conda *shell hook* (etc/profile.d/conda.sh)
 # rather than bin/activate, so that `conda activate` works later even when conda

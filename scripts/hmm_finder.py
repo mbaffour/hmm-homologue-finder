@@ -552,6 +552,14 @@ def main() -> None:
 
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # Fail fast with a clear message if the search engine is missing, rather than a
+    # cryptic subprocess error mid-run. Happens on a partial clone (no engine/) when
+    # the dated dev-repo fallback path also isn't present.
+    if not BENCHMARK.exists():
+        sys.exit(f"Search engine not found at {BENCHMARK}.\n"
+                 "The bundled engine/ folder is missing from this install — re-clone or "
+                 "restore the full repository (it must include engine/).")
+
     # --smoke: minutes-long install/sanity check on a single fast database.
     if args.smoke:
         args.iterations = 1
