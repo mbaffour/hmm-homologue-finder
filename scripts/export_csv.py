@@ -327,7 +327,9 @@ def export(discovery: Path) -> list[str]:
         # Supplementary Table S1 — genome metadata (one row per genome/source)
         meta = []
         for gid, g in allh.groupby("genome_id"):
-            org = next((o for o in g["organism"] if o), "")
+            # `.get` so offline runs (no NCBI annotation -> no 'organism' column)
+            # still export this table instead of aborting the whole CSV export.
+            org = next((o for o in g.get("organism", pd.Series(dtype=str)) if o), "")
             meta.append({
                 "genome_id": gid, "organism": org, "host": _host_from_organism(org),
                 "databases": ";".join(sorted(x for x in g["db_name"].unique() if x)),

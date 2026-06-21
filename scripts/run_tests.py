@@ -76,6 +76,25 @@ _eor = pd.read_csv(_eo, sep="\t")
 check("annotate_organism offline (email=None) -> generic label, no NCBI",
       "organism" in _eor.columns and "uncultured virus" in str(_eor["organism"].iloc[0]))
 
+# --- offline CSV export: a hits table with NO 'organism' column (the offline /
+# --no-annotate case) must NOT abort the whole export. Regression for the bug
+# where genome_metadata.csv + homolog_stats.csv silently went missing offline.
+import export_csv as EX  # noqa: E402
+_xd = Path(tempfile.mkdtemp())
+_xv = _xd / "run1" / "benchmark" / "validated"; _xv.mkdir(parents=True)
+pd.DataFrame({                                   # deliberately NO 'organism' column
+    "hit_id": ["h1", "h2"], "genome_id": ["G1", "G2"],
+    "db_name": ["INPHARED genomes", "INPHARED genomes"],
+    "source_type": ["six_frame_orf", "six_frame_orf"], "run_label": ["1", "1"],
+    "aa_sequence": ["MKAAQR", "MKBBST"], "bit_score": ["120", "90"],
+    "evalue": ["1e-20", "1e-9"], "domain_aa_len": ["50", "40"],
+    "passes_orf_filter": ["True", "True"],
+}).to_csv(_xv / "hits.tsv", sep="\t", index=False)
+_xfiles = EX.export(_xd)
+check("offline export() runs without an 'organism' column", len(_xfiles) > 0)
+check("offline export writes genome_metadata.csv", (_xd / "genome_metadata.csv").exists())
+check("offline export writes homolog_stats.csv", (_xd / "homolog_stats.csv").exists())
+
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
 dna = td / "x.fna"
