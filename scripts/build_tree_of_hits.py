@@ -199,28 +199,57 @@ def _organism_labels(hits_tsv) -> dict:
     return mp
 
 
-def _render_newick(newick_path: Path, out_dir: Path, stem: str) -> list:
-    """Render a Newick tree to {stem}.svg/.png/.pdf — editable vector (Inkscape /
-    Illustrator) + 300-dpi raster. Canvas height scales with tip count. Graceful
-    if toytree/toyplot are absent."""
+def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r") -> list:
+    """Render a publication tree to {stem}.svg/.png/.pdf — editable vector (Inkscape
+    / Illustrator) + 300-dpi raster, on an OPAQUE WHITE background (toytree's default
+    canvas is transparent → black on dark viewers). Tips are coloured by host genus
+    (first token of the organism label) with a legend, and well-supported nodes
+    (UFBoot >= 80) carry a dot. layout 'r' = rectangular, 'c' = circular. Graceful
+    if toytree/toyplot/matplotlib are absent."""
     try:
+        import math
         import toytree  # noqa: F401
-        import toyplot, toyplot.svg, toyplot.png
-        from Bio import Phylo
+        import toyplot, toyplot.svg, toyplot.png, toyplot.marker
+        import matplotlib
+        import matplotlib.colors as mcolors
     except Exception as e:
         print(f"  ({stem} rendering skipped: {e}; Newick at {newick_path})")
         return []
     try:
-        ntips = len(Phylo.read(str(newick_path), "newick").get_terminals())
         tre = toytree.tree(str(newick_path))
-        # Draw onto an explicit canvas with an OPAQUE WHITE background — toytree's
-        # default canvas is transparent, which renders as black on dark viewers and
-        # hides the branches. White bg makes the figure usable everywhere.
-        canvas = toyplot.Canvas(width=1100, height=max(400, 18 * ntips),
-                                style={"background-color": "white"})
-        ax = canvas.cartesian(padding=20)
+        tips = [str(t) for t in tre.get_tip_labels()]
+        ntips = len(tips)
+        # colour tips by host genus (first underscore token of the organism label)
+        genera = [t.split("_")[0] for t in tips]
+        uniq = sorted(set(genera))
+        cmap = matplotlib.colormaps["tab20"].resampled(max(len(uniq), 1))
+        gcol = {g: mcolors.to_hex(cmap(i)) for i, g in enumerate(uniq)}
+        tip_colors = [gcol[g] for g in genera]
+        # support dots (UFBoot >= 80) on internal nodes
+        sizes, ncolors = [], []
+        for v in list(tre.get_node_data("support")):
+            ok = isinstance(v, (int, float)) and not math.isnan(v) and v >= 80
+            sizes.append(7 if ok else 0)
+            ncolors.append("#222222" if ok else "transparent")
+        if layout == "c":
+            dim = max(700, 9 * ntips)
+            canvas = toyplot.Canvas(width=dim + 280, height=dim, style={"background-color": "white"})
+        else:
+            canvas = toyplot.Canvas(width=1300, height=max(400, 18 * ntips),
+                                    style={"background-color": "white"})
+        ax = canvas.cartesian(padding=25)
         ax.show = False
-        tre.draw(axes=ax, tip_labels_align=True)
+        tre.draw(axes=ax, layout=layout, tip_labels_align=(layout != "c"),
+                 tip_labels_colors=tip_colors, node_sizes=sizes, node_colors=ncolors)
+        # host-genus colour legend + a support-dot key
+        try:
+            entries = [(g, toyplot.marker.create(shape="o", size=11, mstyle={"fill": gcol[g]}))
+                       for g in uniq]
+            entries.append(("UFBoot >= 80", toyplot.marker.create(shape="o", size=9,
+                                                                  mstyle={"fill": "#222222"})))
+            canvas.legend(entries, corner=("right", 6, 150, 16 * len(entries)))
+        except Exception as e:
+            print(f"  ({stem} legend skipped: {e})")
         made = []
         toyplot.svg.render(canvas, str(out_dir / f"{stem}.svg")); made.append("svg")
         try:
@@ -232,7 +261,7 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str) -> list:
             toyplot.pdf.render(canvas, str(out_dir / f"{stem}.pdf")); made.append("pdf")
         except Exception as e:
             print(f"  ({stem} PDF skipped: {e})")
-        print(f"  rendered {stem}.{{{','.join(made)}}} ({ntips} tips)")
+        print(f"  rendered {stem}.{{{','.join(made)}}} ({ntips} tips, {len(uniq)} host genera)")
         return made
     except Exception as e:
         print(f"  ({stem} render skipped: {e})")
@@ -354,6 +383,8 @@ def main() -> None:
     ho = _homologs_only_newick(treefile, out / "hits_tree_homologs_only.treefile")
     if ho:
         _render_newick(ho, out, "hits_tree_homologs_only")
+        # (circular layout is left to iTOL/FigTree on the exported Newick — toytree
+        # 3.0.10 doesn't implement a circular layout.)
 
     print(f"Done. Tree: {prefix}.treefile")
 
