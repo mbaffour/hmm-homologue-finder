@@ -863,7 +863,7 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.is_dir():
             shutil.rmtree(dst, ignore_errors=True)
-            shutil.copytree(src, dst)
+            shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         else:
             shutil.copy2(src, dst)
 

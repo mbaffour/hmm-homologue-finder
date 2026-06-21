@@ -39,9 +39,9 @@
   },
   "stop_reason": "converged at run2 (hits 2\u21922, HMM length 56\u219256)",
   "tree_tips": [
-    "JN882298_sixframe_orf03295502",
-    "MG201401_sixframe_orf02886510",
-    "SEED_NC_019520.1",
-    "SEED_NC_047890.1"
+    "Escherichia_phage_PGT2_MG201401",
+    "Escherichia_phage_PGT2_NC_047890.1_seed",
+    "Escherichia_phage_phiKT_JN882298",
+    "Escherichia_phage_phiKT_NC_019520.1_seed"
   ]
 }

@@ -132,6 +132,48 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _write_multifastas(allh: pd.DataFrame, dedup: pd.DataFrame, discovery: Path, pkg: Path) -> list:
+    """Write combined multi-FASTAs so the whole hit set is usable in one file by
+    other tools (Jalview, MEGA, CD-HIT, BLAST, etc.):
+      - all_hits_aa.faa / all_hits_nt.fna : every validated hit (all runs)
+      - unique_homologs_aa.faa            : one per unique sequence, rich header
+    Mirrored into PACKAGE/02_sequences_per_run/ when a package exists."""
+    written: list = []
+
+    def _w(path: Path, frame: pd.DataFrame, seqcol: str, header) -> int:
+        if seqcol not in frame.columns:
+            return -1
+        n = 0
+        with open(path, "w") as fh:
+            for _, r in frame.iterrows():
+                seq = str(r.get(seqcol, "") or "").strip().replace("*", "")
+                if not seq:
+                    continue
+                fh.write(f">{header(r)}\n{seq}\n")
+                n += 1
+        return n
+
+    h_all = lambda r: f"{r.get('hit_id','')} {r.get('organism','')} [{r.get('db_name','')}]".strip()
+    if _w(discovery / "all_hits_aa.faa", allh, "aa_sequence", h_all) >= 0:
+        written.append(str(discovery / "all_hits_aa.faa"))
+    if _w(discovery / "all_hits_nt.fna", allh, "nt_sequence", h_all) >= 0:
+        written.append(str(discovery / "all_hits_nt.fna"))
+    if dedup is not None and not dedup.empty:
+        h_uniq = lambda r: (f"{r.get('homolog_id','')} {r.get('representative_organism','')} "
+                            f"n_organisms={r.get('n_organisms','')} n_databases={r.get('n_databases','')}").strip()
+        if _w(discovery / "unique_homologs_aa.faa", dedup, "aa_sequence", h_uniq) >= 0:
+            written.append(str(discovery / "unique_homologs_aa.faa"))
+
+    if pkg and pkg.exists():
+        dst = pkg / "02_sequences_per_run"
+        dst.mkdir(parents=True, exist_ok=True)
+        for name in ("all_hits_aa.faa", "all_hits_nt.fna", "unique_homologs_aa.faa"):
+            src = discovery / name
+            if src.exists():
+                shutil.copy2(src, dst / name)
+    return written
+
+
 def export(discovery: Path) -> list[str]:
     discovery = Path(discovery)
     written: list[str] = []
@@ -165,6 +207,9 @@ def export(discovery: Path) -> list[str]:
         if not dedup.empty:
             dedup.to_csv(discovery / "hits_deduplicated.csv", index=False)
             written.append(str(discovery / "hits_deduplicated.csv"))
+
+        # combined multi-FASTAs (all hits + unique homologs) for downstream tools
+        written += _write_multifastas(allh, dedup, discovery, pkg)
 
         rows = []
         for rl, g in allh.groupby("run_label"):
