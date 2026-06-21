@@ -199,6 +199,58 @@ def _organism_labels(hits_tsv) -> dict:
     return mp
 
 
+def _render_newick(newick_path: Path, out_dir: Path, stem: str) -> list:
+    """Render a Newick tree to {stem}.svg/.png/.pdf — editable vector (Inkscape /
+    Illustrator) + 300-dpi raster. Canvas height scales with tip count. Graceful
+    if toytree/toyplot are absent."""
+    try:
+        import toytree  # noqa: F401
+        import toyplot.svg, toyplot.png
+        from Bio import Phylo
+    except Exception as e:
+        print(f"  ({stem} rendering skipped: {e}; Newick at {newick_path})")
+        return []
+    try:
+        ntips = len(Phylo.read(str(newick_path), "newick").get_terminals())
+        tre = toytree.tree(str(newick_path))
+        canvas, _, _ = tre.draw(width=1000, height=max(400, 16 * ntips), tip_labels_align=True)
+        made = []
+        toyplot.svg.render(canvas, str(out_dir / f"{stem}.svg")); made.append("svg")
+        try:
+            toyplot.png.render(canvas, str(out_dir / f"{stem}.png")); made.append("png")
+        except Exception as e:
+            print(f"  ({stem} PNG skipped: {e})")
+        try:
+            import toyplot.pdf
+            toyplot.pdf.render(canvas, str(out_dir / f"{stem}.pdf")); made.append("pdf")
+        except Exception as e:
+            print(f"  ({stem} PDF skipped: {e})")
+        print(f"  rendered {stem}.{{{','.join(made)}}} ({ntips} tips)")
+        return made
+    except Exception as e:
+        print(f"  ({stem} render skipped: {e})")
+        return []
+
+
+def _homologs_only_newick(treefile: Path, out_path: Path):
+    """Write a copy of the tree with the seed tips (labels ending '_seed') pruned,
+    so the discovered homologs can be shown in a legible 'result' figure separate
+    from the seed-context tree. Returns out_path, or None if not applicable."""
+    try:
+        from Bio import Phylo
+        t = Phylo.read(str(treefile), "newick")
+        seeds = [tp for tp in t.get_terminals() if (tp.name or "").endswith("_seed")]
+        if not seeds or (len(t.get_terminals()) - len(seeds)) < 3:
+            return None
+        for tp in seeds:
+            t.prune(tp)
+        Phylo.write(t, str(out_path), "newick")
+        return out_path
+    except Exception as e:
+        print(f"  (homologs-only prune skipped: {e})")
+        return None
+
+
 def _relabel_newick(newick: str, mapping: dict) -> str:
     for hid in sorted(mapping, key=len, reverse=True):
         newick = re.sub(r"\b" + re.escape(hid) + r"\b", mapping[hid], newick)
@@ -288,28 +340,13 @@ def main() -> None:
     treefile = Path(str(prefix) + ".treefile")
     render_tree = treefile
 
-    # 4. Optional rendering. Emit editable
-    # vector formats (SVG for Inkscape, PDF for Illustrator) plus a 300-dpi PNG
-    # preview. toyplot SVG keeps text as real text elements (editable, not paths).
-    try:
-        import toytree  # noqa: F401
-        import toyplot.png, toyplot.svg
-        tre = toytree.tree(str(render_tree))
-        canvas, _, _ = tre.draw(width=1000, height=max(400, 16 * n), tip_labels_align=True)
-        made = []
-        toyplot.svg.render(canvas, str(out / "hits_tree.svg")); made.append("svg")
-        try:
-            toyplot.png.render(canvas, str(out / "hits_tree.png")); made.append("png")
-        except Exception as e:
-            print(f"  (tree PNG skipped: {e})")
-        try:
-            import toyplot.pdf
-            toyplot.pdf.render(canvas, str(out / "hits_tree.pdf")); made.append("pdf")
-        except Exception as e:
-            print(f"  (tree PDF skipped: {e})")
-        print(f"  rendered hits_tree.{{{','.join(made)}}}")
-    except Exception as e:
-        print(f"  (tree rendering skipped: {e}; Newick tree is at {prefix}.treefile)")
+    # 4. Render the full tree (homologs + any seeds, organism-labelled), then ALSO
+    # a legible homologs-only tree (seed tips pruned) — large trees are dense once
+    # the seeds are added, so the result figure is easier to read on its own.
+    _render_newick(render_tree, out, "hits_tree")
+    ho = _homologs_only_newick(treefile, out / "hits_tree_homologs_only.treefile")
+    if ho:
+        _render_newick(ho, out, "hits_tree_homologs_only")
 
     print(f"Done. Tree: {prefix}.treefile")
 
