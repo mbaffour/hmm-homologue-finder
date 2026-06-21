@@ -415,11 +415,16 @@ def alignment_figure(
     #    sequences sharing the most common residue in each column. ────────────
     from collections import Counter
     conservation = np.zeros(aln_len)
+    consensus = []                                   # most-common residue per column
     for j in range(aln_len):
         col = [str(rec.seq)[j] if j < len(rec.seq) else "-" for rec in records]
         non_gap = [c for c in col if c != "-"]
         if non_gap:
-            conservation[j] = Counter(non_gap).most_common(1)[0][1] / n_seqs
+            res, cnt = Counter(non_gap).most_common(1)[0]
+            conservation[j] = cnt / n_seqs
+            consensus.append(res.upper())
+        else:
+            consensus.append("-")
 
     # ── Figure layout: alignment (top) + conservation bar chart (bottom) ─────
     cell_w  = 0.11   # inch per column
@@ -434,10 +439,11 @@ def alignment_figure(
         "svg.fonttype": "none",
     })
 
-    fig = plt.figure(figsize=(fig_w, fig_h))
-    gs  = fig.add_gridspec(2, 1, height_ratios=[max(n_seqs, 6), 4], hspace=0.05)
+    fig = plt.figure(figsize=(fig_w, fig_h + 0.5))
+    gs  = fig.add_gridspec(3, 1, height_ratios=[max(n_seqs, 6), 1.2, 4], hspace=0.06)
     ax  = fig.add_subplot(gs[0])                 # alignment
-    axc = fig.add_subplot(gs[1], sharex=ax)      # conservation / abundance bars
+    axk = fig.add_subplot(gs[1], sharex=ax)      # consensus row
+    axc = fig.add_subplot(gs[2], sharex=ax)      # conservation / abundance bars
 
     ax.imshow(color_mat, aspect="auto", interpolation="none",
               origin="upper", extent=[0, aln_len, n_seqs, 0])
@@ -467,6 +473,23 @@ def alignment_figure(
         fontsize=8, fontweight="bold", pad=5,
     )
     ax.tick_params(axis="both", which="both", length=2, width=0.5)
+
+    # ── Consensus row (most common residue per column), CLC-style ────────────
+    cons_mat = np.zeros((1, aln_len, 4), dtype=float)
+    for j, aa in enumerate(consensus):
+        r, g, b = mcolors.to_rgb(_AA_COLORS.get(aa, _DEFAULT_COL))
+        cons_mat[0, j] = [r, g, b, 1.0 if aa != "-" else 0.0]
+    axk.imshow(cons_mat, aspect="auto", interpolation="none", origin="upper",
+               extent=[0, aln_len, 1, 0])
+    if draw_letters:
+        for j, aa in enumerate(consensus):
+            if aa != "-":
+                axk.text(j + 0.5, 0.5, aa, ha="center", va="center",
+                         fontsize=lfs, fontweight="bold", color="#1a1a1a")
+    axk.set_yticks([0.5]); axk.set_yticklabels(["consensus"], fontsize=6)
+    axk.set_xlim(0, aln_len)
+    plt.setp(axk.get_xticklabels(), visible=False)
+    axk.tick_params(axis="both", which="both", length=0)
 
     # Conservation / abundance bar chart, one bar per column, shaded by level.
     cmap = plt.cm.YlGn
