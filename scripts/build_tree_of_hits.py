@@ -205,7 +205,7 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str) -> list:
     if toytree/toyplot are absent."""
     try:
         import toytree  # noqa: F401
-        import toyplot.svg, toyplot.png
+        import toyplot, toyplot.svg, toyplot.png
         from Bio import Phylo
     except Exception as e:
         print(f"  ({stem} rendering skipped: {e}; Newick at {newick_path})")
@@ -213,7 +213,14 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str) -> list:
     try:
         ntips = len(Phylo.read(str(newick_path), "newick").get_terminals())
         tre = toytree.tree(str(newick_path))
-        canvas, _, _ = tre.draw(width=1000, height=max(400, 16 * ntips), tip_labels_align=True)
+        # Draw onto an explicit canvas with an OPAQUE WHITE background — toytree's
+        # default canvas is transparent, which renders as black on dark viewers and
+        # hides the branches. White bg makes the figure usable everywhere.
+        canvas = toyplot.Canvas(width=1100, height=max(400, 18 * ntips),
+                                style={"background-color": "white"})
+        ax = canvas.cartesian(padding=20)
+        ax.show = False
+        tre.draw(axes=ax, tip_labels_align=True)
         made = []
         toyplot.svg.render(canvas, str(out_dir / f"{stem}.svg")); made.append("svg")
         try:
