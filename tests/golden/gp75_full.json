@@ -1,0 +1,490 @@
+{
+  "calibration": {
+    "false_positive_rate": 0.0,
+    "sensitivity": 1.0,
+    "specificity": 1.0
+  },
+  "hit_summary": [
+    {
+      "passed_filter": "172",
+      "protein_db_hits": "0",
+      "run": "1",
+      "six_frame_hits": "172",
+      "total_hits": "172",
+      "unique_sequences": "67"
+    },
+    {
+      "passed_filter": "174",
+      "protein_db_hits": "0",
+      "run": "2",
+      "six_frame_hits": "174",
+      "total_hits": "174",
+      "unique_sequences": "67"
+    },
+    {
+      "passed_filter": "181",
+      "protein_db_hits": "0",
+      "run": "3",
+      "six_frame_hits": "181",
+      "total_hits": "181",
+      "unique_sequences": "70"
+    }
+  ],
+  "orf_invariants": {
+    "all_pass_filter": true,
+    "n_kept": 527,
+    "six_frame_internal_stops_max": 0
+  },
+  "paper_table": {
+    "GutCatV1_CHVDgut_14092": {
+      "bit": 159.3,
+      "tier": "high_confidence"
+    },
+    "GutCatV1_CHVDgut_15017": {
+      "bit": 46.0,
+      "tier": "high_confidence"
+    },
+    "GutCatV1_GVDv1_27286": {
+      "bit": 164.2,
+      "tier": "high_confidence"
+    },
+    "GutCatV1_GVDv1_31674": {
+      "bit": 158.4,
+      "tier": "high_confidence"
+    },
+    "GutCatV1_MVG_20698": {
+      "bit": 157.1,
+      "tier": "high_confidence"
+    },
+    "GutCatV1_MVG_4778": {
+      "bit": 162.2,
+      "tier": "high_confidence"
+    },
+    "GutCatV1_MVG_6481": {
+      "bit": 159.1,
+      "tier": "high_confidence"
+    },
+    "MG770228": {
+      "bit": 153.7,
+      "tier": "high_confidence"
+    },
+    "MH992123": {
+      "bit": 153.9,
+      "tier": "high_confidence"
+    },
+    "MK931297": {
+      "bit": 153.5,
+      "tier": "high_confidence"
+    },
+    "MW175414": {
+      "bit": 154.6,
+      "tier": "high_confidence"
+    },
+    "NC_008720.1": {
+      "bit": 154.4,
+      "tier": "high_confidence"
+    },
+    "NC_015933.1": {
+      "bit": 162.1,
+      "tier": "high_confidence"
+    },
+    "NC_018854.1": {
+      "bit": 165.7,
+      "tier": "high_confidence"
+    },
+    "NC_019423.1": {
+      "bit": 162.6,
+      "tier": "high_confidence"
+    },
+    "NC_023556.1": {
+      "bit": 135.4,
+      "tier": "high_confidence"
+    },
+    "NC_023579.1": {
+      "bit": 122.9,
+      "tier": "high_confidence"
+    },
+    "NC_023589.1": {
+      "bit": 170.2,
+      "tier": "high_confidence"
+    },
+    "NC_024142.2": {
+      "bit": 165.1,
+      "tier": "high_confidence"
+    },
+    "NC_024786.1": {
+      "bit": 166.5,
+      "tier": "high_confidence"
+    },
+    "NC_024790.1": {
+      "bit": 166.7,
+      "tier": "high_confidence"
+    },
+    "NC_027348.2": {
+      "bit": 100.4,
+      "tier": "high_confidence"
+    },
+    "NC_028908.2": {
+      "bit": 142.2,
+      "tier": "high_confidence"
+    },
+    "NC_041906.1": {
+      "bit": 169.3,
+      "tier": "high_confidence"
+    },
+    "NC_048700.1": {
+      "bit": 156.1,
+      "tier": "high_confidence"
+    },
+    "NC_048703.1": {
+      "bit": 93.3,
+      "tier": "high_confidence"
+    },
+    "NC_049456.2": {
+      "bit": 104.2,
+      "tier": "high_confidence"
+    },
+    "NC_049463.1": {
+      "bit": 89.6,
+      "tier": "high_confidence"
+    },
+    "NC_049469.1": {
+      "bit": 93.0,
+      "tier": "high_confidence"
+    },
+    "NC_049510.1": {
+      "bit": 116.1,
+      "tier": "high_confidence"
+    },
+    "NC_054969.1": {
+      "bit": 143.4,
+      "tier": "high_confidence"
+    },
+    "NC_054970.1": {
+      "bit": 125.3,
+      "tier": "high_confidence"
+    },
+    "NC_054971.1": {
+      "bit": 134.6,
+      "tier": "high_confidence"
+    },
+    "NC_054972.1": {
+      "bit": 138.9,
+      "tier": "high_confidence"
+    },
+    "NC_055840.1": {
+      "bit": 90.2,
+      "tier": "high_confidence"
+    },
+    "NC_070847.1": {
+      "bit": 76.4,
+      "tier": "high_confidence"
+    },
+    "NC_070850.1": {
+      "bit": 164.5,
+      "tier": "high_confidence"
+    },
+    "NC_070851.1": {
+      "bit": 37.5,
+      "tier": "divergent"
+    },
+    "NC_070854.1": {
+      "bit": 36.4,
+      "tier": "divergent"
+    },
+    "NC_070857.1": {
+      "bit": 101.8,
+      "tier": "high_confidence"
+    },
+    "NC_070858.1": {
+      "bit": 71.2,
+      "tier": "high_confidence"
+    },
+    "NC_070867.1": {
+      "bit": 76.9,
+      "tier": "high_confidence"
+    },
+    "NC_070868.1": {
+      "bit": 81.0,
+      "tier": "high_confidence"
+    },
+    "NC_070869.1": {
+      "bit": 161.1,
+      "tier": "high_confidence"
+    },
+    "NC_070870.1": {
+      "bit": 165.7,
+      "tier": "high_confidence"
+    },
+    "NC_070871.1": {
+      "bit": 164.9,
+      "tier": "high_confidence"
+    },
+    "NC_070872.1": {
+      "bit": 165.4,
+      "tier": "high_confidence"
+    },
+    "NC_070873.1": {
+      "bit": 169.4,
+      "tier": "high_confidence"
+    },
+    "NC_070874.1": {
+      "bit": 167.9,
+      "tier": "high_confidence"
+    },
+    "OM687511": {
+      "bit": 76.3,
+      "tier": "high_confidence"
+    },
+    "OM982646": {
+      "bit": 165.7,
+      "tier": "high_confidence"
+    },
+    "ON602749": {
+      "bit": 158.3,
+      "tier": "high_confidence"
+    },
+    "ON602751": {
+      "bit": 158.2,
+      "tier": "high_confidence"
+    },
+    "ON922919": {
+      "bit": 166.5,
+      "tier": "high_confidence"
+    },
+    "OP312987": {
+      "bit": 166.0,
+      "tier": "high_confidence"
+    },
+    "OP562166": {
+      "bit": 100.5,
+      "tier": "high_confidence"
+    },
+    "OP745616": {
+      "bit": 167.3,
+      "tier": "high_confidence"
+    },
+    "OP829055": {
+      "bit": 80.3,
+      "tier": "high_confidence"
+    },
+    "OP870143": {
+      "bit": 162.8,
+      "tier": "high_confidence"
+    },
+    "OQ181210": {
+      "bit": 83.0,
+      "tier": "high_confidence"
+    },
+    "OQ938542": {
+      "bit": 168.3,
+      "tier": "high_confidence"
+    },
+    "OR067834": {
+      "bit": 164.6,
+      "tier": "high_confidence"
+    },
+    "OY978778": {
+      "bit": 159.3,
+      "tier": "high_confidence"
+    },
+    "OY979416": {
+      "bit": 160.7,
+      "tier": "high_confidence"
+    },
+    "uvig_139985": {
+      "bit": 159.9,
+      "tier": "high_confidence"
+    },
+    "uvig_174850": {
+      "bit": 165.4,
+      "tier": "high_confidence"
+    },
+    "uvig_482154": {
+      "bit": 158.6,
+      "tier": "high_confidence"
+    },
+    "uvig_574873": {
+      "bit": 158.7,
+      "tier": "high_confidence"
+    },
+    "uvig_589115": {
+      "bit": 168.5,
+      "tier": "high_confidence"
+    }
+  },
+  "stop_reason": "ran the requested 3 iteration(s)",
+  "tree_tips": [
+    "Achromobacter_phage_JWAlpha_NC_023556.1_Achromobacter_phage_JWAlpha_NC_023556.1_seed",
+    "Achromobacter_phage_JWAlpha_NC_023556.1_x2",
+    "Achromobacter_phage_JWDelta_KF787094.1_Achromobacter_phage_JWDelta_KF787094.1_seed",
+    "Achromobacter_phage_phiAxp-3_KT321317.2_Achromobacter_phage_phiAxp-3_KT321317.2_seed",
+    "Achromobacter_phage_phiAxp-3_NC_028908.2",
+    "Achromobacter_phage_phiAxp-3_NC_028908.2_Achromobacter_phage_phiAxp-3_NC_028908.2_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy04_NC_054967.1_Achromobacter_phage_vB_AxyP_19-32_Axy04_NC_054967.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy10_NC_054971.1",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy10_NC_054971.1_Achromobacter_phage_vB_AxyP_19-32_Axy10_NC_054971.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy11_NC_054972.1_Achromobacter_phage_vB_AxyP_19-32_Axy11_NC_054972.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy11_NC_054972.1_x2",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy12_NC_054968.1_Achromobacter_phage_vB_AxyP_19-32_Axy12_NC_054968.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy13_MK962632.1_Achromobacter_phage_vB_AxyP_19-32_Axy13_MK962632.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy22_MK962639.1_Achromobacter_phage_vB_AxyP_19-32_Axy22_MK962639.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy24_NC_054969.1_Achromobacter_phage_vB_AxyP_19-32_Axy24_NC_054969.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy24_NC_054969.1_x3",
+    "Agrobacterium_phage_OLIVR1_NC_055840.1_x3",
+    "Burkholderia_phage_vB_BpP_HN01_OM687511",
+    "Caballeronia_sp._TF1N1_plasmid_p3_CP084632.1_Caballeronia_sp._TF1N1_plasmid_p3_CP084632.1_seed",
+    "Delftia_phage_RG-2014_KM879221.2_Delftia_phage_RG-2014_KM879221.2_seed",
+    "Delftia_phage_RG-2014_NC_027348.2",
+    "Delftia_phage_RG-2014_NC_027348.2_Delftia_phage_RG-2014_NC_027348.2_seed",
+    "Echerichia_phage_E20_OP745616",
+    "Echerichia_phage_E20_OP745616.1_Echerichia_phage_E20_OP745616.1_seed",
+    "Enterobacter_phage_IME11_NC_019423.1",
+    "Enterobacter_phage_IME11_NC_019423.1_Enterobacter_phage_IME11_NC_019423.1_seed",
+    "Enterobacteria_phage_Bp4_NC_024142.2_Enterobacteria_phage_Bp4_NC_024142.2_seed",
+    "Enterobacteria_phage_Bp4_NC_024142.2_x2",
+    "Enterobacteria_phage_N4_NC_008720.1_x10",
+    "Enterococcus_faecium_strain_ME3_chromosome_CP043865.1_Enterococcus_faecium_strain_ME3_chromosome_CP043865.1_seed",
+    "Erwinia_phage_Ea9-2_NC_023579.1_Erwinia_phage_Ea9-2_NC_023579.1_seed",
+    "Erwinia_phage_Ea9-2_NC_023579.1_x4",
+    "Erwinia_phage_Fifi051_PQ072212.1_Erwinia_phage_Fifi051_PQ072212.1_seed",
+    "Erwinia_phage_Fifi067_OP829055",
+    "Erwinia_phage_Kuerle_OQ181210",
+    "Erwinia_phage_phiEaP-8_NC_049510.1_Erwinia_phage_phiEaP-8_NC_049510.1_seed",
+    "Erwinia_phage_phiEaP-8_NC_049510.1_x2",
+    "Erwinia_phage_vB_EamP_Frozen_NC_031062.2_Erwinia_phage_vB_EamP_Frozen_NC_031062.2_seed",
+    "Erwinia_phage_vB_EamP_Gutmeister_KX098391.1_Erwinia_phage_vB_EamP_Gutmeister_KX098391.1_seed",
+    "Erwinia_phage_vB_EamP_Rexella_KX098390.2_Erwinia_phage_vB_EamP_Rexella_KX098390.2_seed",
+    "Escherichia_phage_AlfredRasser_MZ501049.1_Escherichia_phage_AlfredRasser_MZ501049.1_seed",
+    "Escherichia_phage_EC1-UPM_NC_041906.1",
+    "Escherichia_phage_EC1-UPM_NC_041906.1_Escherichia_phage_EC1-UPM_NC_041906.1_seed",
+    "Escherichia_phage_ECBP1_NC_018854.1",
+    "Escherichia_phage_ECBP1_NC_018854.1_Escherichia_phage_ECBP1_NC_018854.1_seed",
+    "Escherichia_phage_HK2_PP514361.1_Escherichia_phage_HK2_PP514361.1_seed",
+    "Escherichia_phage_KKP_3715_OR067834",
+    "Escherichia_phage_KKP_3715_OR067834.1_Escherichia_phage_KKP_3715_OR067834.1_seed",
+    "Escherichia_phage_Mimir124_PQ310662.1_Escherichia_phage_Mimir124_PQ310662.1_seed",
+    "Escherichia_phage_PBM-2_PV029541.1_Escherichia_phage_PBM-2_PV029541.1_seed",
+    "Escherichia_phage_PBM-3_PV053165.1_Escherichia_phage_PBM-3_PV053165.1_seed",
+    "Escherichia_phage_PD38_MH669274.1_Escherichia_phage_PD38_MH669274.1_seed",
+    "Escherichia_phage_PGN829.1_NC_070871.1",
+    "Escherichia_phage_PGN829.1_NC_070871.1_Escherichia_phage_PGN829.1_NC_070871.1_seed",
+    "Escherichia_phage_PMBT57_MG770228",
+    "Escherichia_phage_PMBT57_MG770228.1_Escherichia_phage_PMBT57_MG770228.1_seed",
+    "Escherichia_phage_RudolfBernhard_Bas96_PQ850623.1_Escherichia_phage_RudolfBernhard_Bas96_PQ850623.1_seed",
+    "Escherichia_phage_ST4_OM982646",
+    "Escherichia_phage_ST4_OM982646.1_Escherichia_phage_ST4_OM982646.1_seed",
+    "Escherichia_phage_St11Ph5_NC_070873.1",
+    "Escherichia_phage_St11Ph5_NC_070873.1_Escherichia_phage_St11Ph5_NC_070873.1_seed",
+    "Escherichia_phage_U1G_NC_070872.1",
+    "Escherichia_phage_U1G_NC_070872.1_Escherichia_phage_U1G_NC_070872.1_seed",
+    "Escherichia_phage_UE-M3_PP301342.1_Escherichia_phage_UE-M3_PP301342.1_seed",
+    "Escherichia_phage_UE-M6_PP301343.1_Escherichia_phage_UE-M6_PP301343.1_seed",
+    "Escherichia_phage_UE-S5a_PP175015.1_Escherichia_phage_UE-S5a_PP175015.1_seed",
+    "Escherichia_phage_UE-S5b_PP301341.1_Escherichia_phage_UE-S5b_PP301341.1_seed",
+    "Escherichia_phage_VEc25_MW175414",
+    "Escherichia_phage_VEc25_MW175414.1_Escherichia_phage_VEc25_MW175414.1_seed",
+    "Escherichia_phage_VTCCBPA_322_PP989839.1_Escherichia_phage_VTCCBPA_322_PP989839.1_seed",
+    "Escherichia_phage_nithesis_PV252060.1_Escherichia_phage_nithesis_PV252060.1_seed",
+    "Escherichia_phage_phi_G17_NC_070870.1",
+    "Escherichia_phage_phi_G17_NC_070870.1_Escherichia_phage_phi_G17_NC_070870.1_seed",
+    "Escherichia_phage_vB_EcoM_PD205_ON922919",
+    "Escherichia_phage_vB_EcoM_PD205_ON922919.1_Escherichia_phage_vB_EcoM_PD205_ON922919.1_seed",
+    "Escherichia_phage_vB_EcoP-ZQ2_NC_070874.1",
+    "Escherichia_phage_vB_EcoP-ZQ2_NC_070874.1_Escherichia_phage_vB_EcoP-ZQ2_NC_070874.1_seed",
+    "Escherichia_phage_vB_EcoP_3HA13_MK931297",
+    "Escherichia_phage_vB_EcoP_3HA13_MK931297.1_Escherichia_phage_vB_EcoP_3HA13_MK931297.1_seed",
+    "Escherichia_phage_vB_EcoP_CU10EC_PQ435408.1_Escherichia_phage_vB_EcoP_CU10EC_PQ435408.1_seed",
+    "Escherichia_phage_vB_EcoP_G7C_NC_015933.1",
+    "Escherichia_phage_vB_EcoP_G7C_NC_015933.1_Escherichia_phage_vB_EcoP_G7C_NC_015933.1_seed",
+    "Escherichia_phage_vB_EcoP_PW8_PQ362703.1_Escherichia_phage_vB_EcoP_PW8_PQ362703.1_seed",
+    "Escherichia_phage_vB_EcoP_PhAPEC5_NC_024786.1",
+    "Escherichia_phage_vB_EcoP_PhAPEC5_NC_024786.1_Escherichia_phage_vB_EcoP_PhAPEC5_NC_024786.1_seed",
+    "Escherichia_phage_vB_EcoP_PhAPEC7_NC_024790.1",
+    "Escherichia_phage_vB_EcoP_PhAPEC7_NC_024790.1_Escherichia_phage_vB_EcoP_PhAPEC7_NC_024790.1_seed",
+    "Escherichia_phage_vB_EcoP_SP5M_NC_070869.1",
+    "Escherichia_phage_vB_EcoP_SP5M_NC_070869.1_Escherichia_phage_vB_EcoP_SP5M_NC_070869.1_seed",
+    "Escherichia_phage_vB_EcoP_ShWW44_PQ900156.1_Escherichia_phage_vB_EcoP_ShWW44_PQ900156.1_seed",
+    "Escherichia_phage_vB_EcoS_Uz-1_OP312987",
+    "Escherichia_phage_vB_EcoS_Uz-1_OP312987.1_Escherichia_phage_vB_EcoS_Uz-1_OP312987.1_seed",
+    "Escherichia_phage_vB_Eco_AL25_OW991345.1_Escherichia_phage_vB_Eco_AL25_OW991345.1_seed",
+    "Escherichia_phage_vB_Eco_F22_OP870143",
+    "Escherichia_phage_vB_Eco_F22_OP870143.1_Escherichia_phage_vB_Eco_F22_OP870143.1_seed",
+    "Escherichia_phage_vB_Eco_Jura_LR999871.1_Escherichia_phage_vB_Eco_Jura_LR999871.1_seed",
+    "Escherichia_phage_vB_Eco_SPSP_OV049961.1_Escherichia_phage_vB_Eco_SPSP_OV049961.1_seed",
+    "Gamaleyavirus_AN24P2_OZ035740.1_Gamaleyavirus_AN24P2_OZ035740.1_seed",
+    "Gamaleyavirus_AN24P2_OZ035810.1_Gamaleyavirus_AN24P2_OZ035810.1_seed",
+    "Gamaleyavirus_NAN33P5_OZ035750.1_Gamaleyavirus_NAN33P5_OZ035750.1_seed",
+    "Klebsiella_phage_KP8_NC_048700.1",
+    "Klebsiella_phage_KP8_NC_048700.1_Klebsiella_phage_KP8_NC_048700.1_seed",
+    "Klebsiella_phage_VLCpiP4a_ON602749",
+    "Klebsiella_phage_VLCpiP4a_ON602749.1_Klebsiella_phage_VLCpiP4a_ON602749.1_seed",
+    "Klebsiella_phage_VLCpiP4b_ON602751",
+    "Klebsiella_phage_VLCpiP4b_ON602751.1_Klebsiella_phage_VLCpiP4b_ON602751.1_seed",
+    "Klebsiella_phage_phi1_146050_PP889499.1_Klebsiella_phage_phi1_146050_PP889499.1_seed",
+    "Klebsiella_phage_vB_KoxiM_BaqKoxi_PQ741797.1_Klebsiella_phage_vB_KoxiM_BaqKoxi_PQ741797.1_seed",
+    "Klebsiella_phage_vB_KpiP_JZBo1_PV533664.1_Klebsiella_phage_vB_KpiP_JZBo1_PV533664.1_seed",
+    "Klebsiella_phage_vB_Kpl_K57alpha1.2_OY979416.1_Klebsiella_phage_vB_Kpl_K57alpha1.2_OY979416.1_seed",
+    "Klebsiella_phage_vB_Kpl_K57alpha1.2_genome_assembly__chromos",
+    "Klebsiella_phage_vB_Kpn16-P2_PP848842.1_Klebsiella_phage_vB_Kpn16-P2_PP848842.1_seed",
+    "Klebsiella_phage_vB_KpnP_PW7_PQ409239.1_Klebsiella_phage_vB_KpnP_PW7_PQ409239.1_seed",
+    "Klebsiella_phage_vB_Kpn_K60PH164C1_OY978778.1_Klebsiella_phage_vB_Kpn_K60PH164C1_OY978778.1_seed",
+    "Klebsiella_phage_vB_Kpn_K60PH164C1_genome_assembly__chromoso",
+    "MAG_TPA_asm__Bacteriophage_sp._isolate_ctmxT28_BK032987_MAG_TPA_asm__Bacteriophage_sp._isolate_ctmxT28_BK032987_seed",
+    "MAG_TPA_asm__Caudoviricetes_sp._isolate_ctD2H8_BK019650_MAG_TPA_asm__Caudoviricetes_sp._isolate_ctD2H8_BK019650_seed",
+    "MAG_TPA_asm__Caudoviricetes_sp._isolate_ctSoE5_BK016332_MAG_TPA_asm__Caudoviricetes_sp._isolate_ctSoE5_BK016332_seed",
+    "MAG_TPA_asm__Caudoviricetes_sp._isolate_ctzUu2_BK024339_MAG_TPA_asm__Caudoviricetes_sp._isolate_ctzUu2_BK024339_seed",
+    "MAG__Caudoviricetes_sp._isolate_112_MN855785.1_MAG__Caudoviricetes_sp._isolate_112_MN855785.1_seed",
+    "MAG__Caudoviricetes_sp._isolate_355_MN855733.1_MAG__Caudoviricetes_sp._isolate_355_MN855733.1_seed",
+    "MAG__Caudoviricetes_sp._isolate_443_MN855779.1_MAG__Caudoviricetes_sp._isolate_443_MN855779.1_seed",
+    "MAG__Caudoviricetes_sp._isolate_MSP0469_OR222882.1_MAG__Caudoviricetes_sp._isolate_MSP0469_OR222882.1_seed",
+    "MAG__Caudoviricetes_sp._isolate_MSP0535_OR222820.1_MAG__Caudoviricetes_sp._isolate_MSP0535_OR222820.1_seed",
+    "MAG__Podoviridae_sp._ctda_1_MH622920.1_MAG__Podoviridae_sp._ctda_1_MH622920.1_seed",
+    "MAG__Wisapiscaud_virus_1_isolate_HBWI_vp_24_PQ490692.1_MAG__Wisapiscaud_virus_1_isolate_HBWI_vp_24_PQ490692.1_seed",
+    "Pseudomonas_phage_Arace01_PP179312.1_Pseudomonas_phage_Arace01_PP179312.1_seed",
+    "Pseudomonas_phage_Ebordelon_PV565042.1_Pseudomonas_phage_Ebordelon_PV565042.1_seed",
+    "Pseudomonas_phage_Holyagarpour_PV565043.1_Pseudomonas_phage_Holyagarpour_PV565043.1_seed",
+    "Pseudomonas_phage_Meara_PV565044.1_Pseudomonas_phage_Meara_PV565044.1_seed",
+    "Pseudomonas_phage_Zuri_NC_049456.2",
+    "Pseudomonas_phage_Zuri_NC_049456.2_Pseudomonas_phage_Zuri_NC_049456.2_seed",
+    "Pseudomonas_phage_inbricus_NC_054970.1_Pseudomonas_phage_inbricus_NC_054970.1_seed",
+    "Pseudomonas_phage_inbricus_NC_054970.1_x2",
+    "Rhizobium_phage_RHph_N38_NC_070851.1",
+    "Rhizobium_phage_RHph_X2_28B_NC_070857.1_x2",
+    "Rhizobium_phage_RHph_Y2_6_NC_070854.1",
+    "Shigella_phage_Moonfish_PQ613263.1_Shigella_phage_Moonfish_PQ613263.1_seed",
+    "Shigella_phage_pSb-1_NC_023589.1",
+    "Shigella_phage_pSb-1_NC_023589.1_Shigella_phage_pSb-1_NC_023589.1_seed",
+    "Shigella_virus_Moo19_NC_070850.1",
+    "Shigella_virus_Moo19_NC_070850.1_Shigella_virus_Moo19_NC_070850.1_seed",
+    "Sinorhizobium_phage_ort11_NC_049469.1",
+    "Stenotrophomonas_phage_C121_NC_070858.1",
+    "Stenotrophomonas_phage_Paxi_NC_070867.1",
+    "Stenotrophomonas_phage_Paxi_NC_070867.1_Stenotrophomonas_phage_Paxi_NC_070867.1_seed",
+    "Stenotrophomonas_phage_Philippe_NC_070847.1",
+    "Stenotrophomonas_phage_Piffle_NC_070868.1",
+    "Stenotrophomonas_phage_Piffle_NC_070868.1_Stenotrophomonas_phage_Piffle_NC_070868.1_seed",
+    "Stenotrophomonas_phage_Pokken_NC_049463.1",
+    "Stenotrophomonas_phage_Pokken_NC_049463.1_Stenotrophomonas_phage_Pokken_NC_049463.1_seed",
+    "UNVERIFIED__Escherichia_phage_OLB145_MH992123_x2",
+    "UNVERIFIED__Escherichia_phage_vB_EcoP_PE007_OQ938542",
+    "Xanthomonas_phage_RiverRider_NC_048703.1",
+    "Xanthomonas_phage_RiverRider_NC_048703.1_Xanthomonas_phage_RiverRider_NC_048703.1_seed",
+    "Xanthomonas_virus_PB119_OP562166",
+    "Xanthomonas_virus_PB119_OP562166.1_Xanthomonas_virus_PB119_OP562166.1_seed",
+    "gp75_gp75_seed",
+    "uncultured_virus__GVD-AVrC__GutCatV1_CHVDgut_14092",
+    "uncultured_virus__GVD-AVrC__GutCatV1_CHVDgut_15017",
+    "uncultured_virus__GVD-AVrC__GutCatV1_CHVDgut_15017_2",
+    "uncultured_virus__GVD-AVrC__GutCatV1_GVDv1_27286",
+    "uncultured_virus__GVD-AVrC__GutCatV1_GVDv1_31674",
+    "uncultured_virus__GVD-AVrC__GutCatV1_MVG_20698",
+    "uncultured_virus__GVD-AVrC__GutCatV1_MVG_4778",
+    "uncultured_virus__GVD-AVrC__GutCatV1_MVG_6481",
+    "uncultured_virus__Gut_Phage_Database__GPD___uvig_139985_x3",
+    "uncultured_virus__Gut_Phage_Database__GPD___uvig_174850_x2",
+    "uncultured_virus__Gut_Phage_Database__GPD___uvig_482154_x2",
+    "uncultured_virus__Gut_Phage_Database__GPD___uvig_574873_x2",
+    "uncultured_virus__Gut_Phage_Database__GPD___uvig_589115_x3"
+  ]
+}
