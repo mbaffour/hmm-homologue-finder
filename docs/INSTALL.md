@@ -3,6 +3,11 @@
 The only prerequisite you install by hand is **conda** (via Miniforge). Then
 `setup.sh` builds everything else automatically. Pick your platform below.
 
+> **Preview the plan first (optional):** `bash setup.sh --check` prints what it
+> detected — your OS/arch, the `CONDA_SUBDIR` it will use, whether conda is found,
+> and whether the environment already exists — and installs nothing. Useful on a
+> new machine (especially Apple Silicon) before the multi-minute install.
+
 ---
 
 ## 1. Get the code

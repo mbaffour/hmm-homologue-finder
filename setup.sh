@@ -3,7 +3,8 @@
 # Checks for conda, creates the `hmm-discovery` environment with all required
 # tools, and verifies everything is installed. Safe to re-run.
 #
-#   bash setup.sh
+#   bash setup.sh            # create/verify the environment
+#   bash setup.sh --check    # dry run: print the platform plan, install nothing
 #
 # NOTE: we use `set -u -o pipefail` but deliberately NOT `set -e` — this script
 # sources the conda shell hook and runs `command -v` / `grep -q` probes that
@@ -18,6 +19,9 @@ else
   DEPLOY="$HOME/Documents/HMM-Discovery-Deployable-20260602"
 fi
 ENV_NAME="hmm-discovery"
+
+CHECK=0
+case "${1:-}" in --check|--dry-run|-n) CHECK=1 ;; esac
 
 # OS check: bioconda tools are Linux/macOS only. On Windows this must run in WSL2.
 case "$(uname -s)" in
@@ -39,6 +43,32 @@ if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] && [ -z "${CONDA_
 fi
 
 echo "=== HMM Homologue Finder — environment setup ($(uname -s) $(uname -m)) ==="
+
+# --check / dry run: report the platform plan and exit before touching anything.
+if [ "$CHECK" = "1" ]; then
+  echo ""
+  echo "--- dry run (--check): nothing will be created or installed ---"
+  echo "  Platform:      $(uname -s) $(uname -m)"
+  echo "  CONDA_SUBDIR:  ${CONDA_SUBDIR:-(platform default)}"
+  echo "  Target env:    $ENV_NAME"
+  if [ -f "$DEPLOY/environment.yml" ]; then
+    echo "  Env recipe:    $DEPLOY/environment.yml"
+  else
+    echo "  Env recipe:    (none found at $DEPLOY — would use a minimal inline recipe)"
+  fi
+  if command -v conda >/dev/null 2>&1; then
+    echo "  conda:         $(command -v conda)"
+    if conda env list 2>/dev/null | grep -qE "^[[:space:]]*${ENV_NAME}[[:space:]]"; then
+      echo "  env status:    exists — setup would verify it and install any missing tools"
+    else
+      echo "  env status:    missing — setup would create it from the recipe"
+    fi
+  else
+    echo "  conda:         NOT FOUND — setup would print Miniforge install instructions"
+  fi
+  echo "Plan looks right? Re-run without --check to apply."
+  exit 0
+fi
 
 # 1. conda / mamba present?  Load a conda *shell hook* (etc/profile.d/conda.sh)
 # rather than bin/activate, so that `conda activate` works later even when conda
