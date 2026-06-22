@@ -7,6 +7,10 @@ in `run1/`, `run2/`, … and `downstream/`.
 ## PACKAGE/ — the shareable result
 ```
 PACKAGE/
+├── 00_seed_qc/
+│     seed_recovery.csv                per-seed QC: each input seed's best score vs the
+│                                      INITIAL (run1) and FINAL (refined) model + recovered flag
+│     (+ seed alignment & QC tree, unless --no-seed-tree)
 ├── 01_hmm_profile/profile.hmm        the profile HMM (submit to Pfam/CDD/VOGDB)
 ├── 02_sequences_per_run/runN/
 │     hits.tsv                          per-hit evidence table (see schema below)
@@ -64,3 +68,8 @@ PACKAGE/
 - **Novel & specific?** Zero hits in SwissProt / Pfam / VOGDB across rounds.
 - **Every hit is a real ORF** — see the ORF-validation columns; `passes_orf_filter`
   is the keep/flag decision.
+- **Did every input seed come back?** `00_seed_qc/seed_recovery.csv` lists each seed
+  with its best score against the initial vs final model and a recovered flag; the
+  aggregate counts are in `run_manifest.json` → `seed_recovery_qc` and `METHODS.md`.
+  A seed not recovered by the final model is usually a divergent outlier — consider
+  dropping it or treating it as a separate sub-family.

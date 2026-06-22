@@ -327,7 +327,8 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     <code>run1/ run2/ …</code> and <code>downstream/</code>. The run root also holds <code>report.html</code>,
     <code>METHODS.md</code>, <code>run_manifest.json</code>, <code>pipeline.log</code>, and the CSV exports.
 <pre><code>PACKAGE/
-├── 00_seed_qc/                     pre-run seed alignment + QC tree
+├── 00_seed_qc/                     pre-run seed alignment + QC tree, and
+│     seed_recovery.csv             per-seed: best score vs the initial & final model + recovered flag
 ├── 01_hmm_profile/profile.hmm      the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
 ├── 00_tables/                      paper_main_table.csv, hits_deduplicated.csv,
 │                                   database_hit_summary.csv (+ bar chart), genome_metadata.csv,

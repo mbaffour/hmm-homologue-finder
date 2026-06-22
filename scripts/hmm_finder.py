@@ -228,7 +228,8 @@ def _citation_lines(tool_versions: dict, selected_dbs: str) -> list:
 
 def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: str,
                       iter_hits: list, started_at: str, log, stop_reason: str = "",
-                      control_summary: dict | None = None) -> None:
+                      control_summary: dict | None = None,
+                      seed_recovery: dict | None = None) -> None:
     """Write a consolidated methodology record at the run root: run_manifest.json
     (machine-readable) + METHODS.md (human-readable). Aggregates tool versions and
     per-database provenance (source URLs, SHA256, access dates) from each
@@ -271,6 +272,7 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
             "per_iteration_unique_seeds": [{"run": i, "unique_validated_seeds": n} for i, n in iter_hits],
             "iteration_stop_reason": stop_reason,
             "threshold_calibration": control_summary or {},
+            "seed_recovery_qc": seed_recovery or {},
             "tool_versions": tool_versions,
             "database_provenance": db_provenance,
         }
@@ -300,6 +302,18 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                   f"- Negative controls: composition-matched shuffled seeds"
                   + (" + unrelated-proteome sets" if (cs.get('n_negative_controls') or 0) > 1 else "")
                   + f" ({cs.get('n_negative_controls')} set(s)). Full detail: `controls/control_report.json`."]
+        if seed_recovery:
+            sr = seed_recovery
+            miss = sr.get("not_recovered_after") or []
+            L += ["", "## Seed-recovery QC (per seed; `seed_qc/seed_recovery.csv`)",
+                  f"- Of {sr.get('n_seeds')} input seeds, {sr.get('recovered_before')} are recovered by "
+                  f"the initial model and {sr.get('recovered_after')} by the final refined model "
+                  f"(strict bit≥{sr.get('strict_bits')}).",
+                  ("- Every input seed is recovered by the final model."
+                   if not miss else
+                   f"- Not recovered by the final model ({len(miss)}): "
+                   + ", ".join(miss[:12]) + (" …" if len(miss) > 12 else "")
+                   + " — likely divergent outliers; see the CSV for per-seed scores.")]
         if tool_versions:
             L += ["", "## Tool versions"]
             for t, info in sorted(tool_versions.items()):
@@ -850,9 +864,26 @@ def main() -> None:
             rbest / "hmm" / "benchmark_profile.hmm", fasta, out,
             args.biology_mode, 45.0, 30.0, args.cpu, log)
 
+    # Per-seed recovery QC (named, before vs after): which of the original input
+    # seeds does the model actually recover — against the INITIAL model (run1) and
+    # the FINAL refined model (best run)? Surfaces divergent-outlier seeds by name
+    # (the controls only give an aggregate count). Cheap; skipped in smoke.
+    seed_recovery_summary: dict = {}
+    if not args.smoke:
+        try:
+            from seed_recovery import seed_recovery_report  # noqa: E402  (sibling)
+            seed_recovery_summary = seed_recovery_report(
+                fasta,
+                out / "run1" / "benchmark" / "hmm" / "benchmark_profile.hmm",   # before
+                rbest / "hmm" / "benchmark_profile.hmm",                        # after
+                out / "seed_qc", args.cpu, log)
+        except Exception as e:
+            log(f"  (seed-recovery QC skipped: {e})")
+
     # Consolidated methodology / reproducibility record at the run root.
     write_methods_log(out, args, fasta, label, args.databases, iter_hits,
-                      started_at, log, stop_reason, control_summary)
+                      started_at, log, stop_reason, control_summary,
+                      seed_recovery_summary)
     write_csv_exports(out, log)
 
     if args.smoke:

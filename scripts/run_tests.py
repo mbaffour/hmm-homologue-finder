@@ -95,6 +95,22 @@ check("offline export() runs without an 'organism' column", len(_xfiles) > 0)
 check("offline export writes genome_metadata.csv", (_xd / "genome_metadata.csv").exists())
 check("offline export writes homolog_stats.csv", (_xd / "homolog_stats.csv").exists())
 
+# --- seed-recovery QC: tblout parsing + before/after status classification -----
+import seed_recovery as SR  # noqa: E402
+_tbl = (
+    "#  comment line\n"
+    "seqA  - q - 1e-50 150.2 0.1 1e-49 149.0 0.0 1.0 1 1 0 0 a capsid protein\n"
+    "seqB  - q - 1e-03  30.0 0.0 1e-02  29.0 0.0 1.0 1 1 0 0 a weak hit\n"
+    "seqA  - q - 1e-10  60.0 0.0 1e-09  59.0 0.0 1.0 1 1 0 0 lower dup of seqA\n")
+_bb = SR.parse_tblout_best_bits(_tbl)
+check("seed_recovery: best bit per target (dedup, keep max)",
+      _bb.get("seqA") == 150.2 and _bb.get("seqB") == 30.0)
+check("seed_recovery: comment/blank lines ignored", "#" not in "".join(_bb.keys()))
+check("seed_recovery classify both -> recovered", SR.classify(True, True) == "recovered")
+check("seed_recovery classify lost", SR.classify(True, False) == "lost_after_refinement")
+check("seed_recovery classify gained", SR.classify(False, True) == "gained_after_refinement")
+check("seed_recovery classify never", SR.classify(False, False) == "never_recovered")
+
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
 dna = td / "x.fna"
