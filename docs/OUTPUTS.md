@@ -67,7 +67,7 @@ PACKAGE/
 | `*.hmm` | HMMER; submit to Pfam / NCBI CDD / VOGDB |
 
 ## Reading the result
-- **Converged?** Compare `03_database_summaries/run*_summary.tsv` across rounds —
+- **Converged?** Compare `06_database_summaries/run*_summary.tsv` across rounds —
   stable counts mean the family is fully captured.
 - **Novel & specific?** Zero hits in SwissProt / Pfam / VOGDB across rounds.
 - **Every hit is a real ORF** — see the ORF-validation columns; `passes_orf_filter`

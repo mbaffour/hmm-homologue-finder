@@ -100,7 +100,7 @@ The whole workflow runs from a single command requiring only a seed FASTA. Tool
 versions, database URLs, access dates, and checksums are recorded in the run's
 `reproducibility.json`.
 
-Software: HMMER 3.4, MAFFT v7.526, trimAl v1.5, Prodigal V2.6.3, seqkit v2.13.0,
+Software: HMMER 3.4, MAFFT v7.526, trimAl v1.5.1, Prodigal V2.6.3, seqkit v2.13.0,
 CD-HIT 4.8.1, IQ-TREE 3.1.2, MEME/FIMO 5.5.9, clinker v0.0.32; genome retrieval
 via NCBI Entrez and direct catalogue streaming.
 
