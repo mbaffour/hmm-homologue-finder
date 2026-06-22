@@ -111,6 +111,24 @@ check("seed_recovery classify lost", SR.classify(True, False) == "lost_after_ref
 check("seed_recovery classify gained", SR.classify(False, True) == "gained_after_refinement")
 check("seed_recovery classify never", SR.classify(False, False) == "never_recovered")
 
+# --- package layout: distinct numbered folders + per-folder README generation --
+import package_layout as PL  # noqa: E402
+check("package_layout: 8 distinct numbered dirs (no 00/00 collision)",
+      len(set(PL.DIRS.values())) == 8 and len({d[:2] for d in PL.DIRS.values()}) == 8)
+_pk = Path(tempfile.mkdtemp()) / "PACKAGE"
+(_pk / PL.DIRS["tables"]).mkdir(parents=True)
+(_pk / PL.DIRS["tables"] / "paper_main_table.csv").write_text("x\n")
+(_pk / PL.DIRS["sequences"] / PL.PER_RUN / "run1").mkdir(parents=True)
+(_pk / PL.DIRS["sequences"] / PL.PER_RUN / "run1" / "hits.tsv").write_text("x\n")
+PL.write_readmes(_pk)
+check("package_layout: top-level README written", (_pk / "README.txt").exists())
+check("package_layout: folder README written", (_pk / PL.DIRS["tables"] / "README.txt").exists())
+_rt = (_pk / PL.DIRS["tables"] / "README.txt").read_text()
+check("package_layout: README describes a known file",
+      "paper_main_table.csv" in _rt and "MAIN RESULT" in _rt)
+check("package_layout: per-run README written",
+      (_pk / PL.DIRS["sequences"] / PL.PER_RUN / "run1" / "README.txt").exists())
+
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
 dna = td / "x.fna"

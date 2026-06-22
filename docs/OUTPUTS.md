@@ -5,23 +5,27 @@ clean, shareable results assembled under `PACKAGE/`. Per-run working data lives
 in `run1/`, `run2/`, … and `downstream/`.
 
 ## PACKAGE/ — the shareable result
+
+Every folder contains a `README.txt` describing each file. Open `../report.html`
+for the visual summary. The folders are numbered in reading order:
 ```
 PACKAGE/
-├── 00_seed_qc/
-│     seed_recovery.csv                per-seed QC: each input seed's best score vs the
-│                                      INITIAL (run1) and FINAL (refined) model + recovered flag
-│     (+ seed alignment & QC tree, unless --no-seed-tree)
-├── 01_hmm_profile/profile.hmm        the profile HMM (submit to Pfam/CDD/VOGDB)
-├── 02_sequences_per_run/runN/
-│     hits.tsv                          per-hit evidence table (see schema below)
-│     hits.gff3                         genome-browser track of every hit
-│     hits_aa.faa / hits_nt.fna    homologue domain: protein / DNA
-│     orfs_aa.faa / orfs_nt.fna    full ORF context: protein / DNA
-│     hits_unique_aa.faa                deduplicated domains (the next-round seed)
-├── 03_database_summaries/runN_summary.tsv   per-database hit counts + provenance
-├── 04_synteny_clinker/                       clinker figures + named GenBank neighbourhoods
-├── 05_phylogeny/                             ML tree of the homologues (Newick + PNG/SVG)
-└── 06_scripts/                               a copy of the scripts that produced this run
+├── README.txt                        guide to the whole package
+├── METHODS.md                        how this run was produced (methods + citations)
+├── run_manifest.json                 machine-readable provenance (params, versions, calibration, seed recovery)
+├── 01_summary_tables/                headline tables + database-hit bar chart  (START HERE)
+│     paper_main_table.csv            one row per unique homolog (the main result)
+│     hits_deduplicated.csv, hit_summary.csv, database_hit_summary.csv (+ database_hits.png/svg/pdf),
+│     genome_metadata.csv, homolog_stats.csv, all_runs_hits.csv, database_summary.csv
+├── 02_sequences/                     all_hits_aa.faa / all_hits_nt.fna, unique_homologs_aa.faa
+│     └── per_run/runN/               hits.tsv (evidence table), hits.gff3, hits_aa.faa/hits_nt.fna,
+│                                     orfs_aa.faa/orfs_nt.fna, hits_unique_aa.faa
+├── 03_hmm_profile/profile.hmm        the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
+├── 04_alignment_phylogeny/           MSA (hits.aln.faa + stats + figure) and the ML tree (seeds marked)
+├── 05_synteny/                       clinker/ (interactive), publication_figures/, genbank_with_sequence/
+├── 06_database_summaries/runN_summary.tsv   per-database hit counts + provenance
+├── 07_seed_qc/                       seed_recovery.csv (per-seed before/after) + seed alignment & QC tree
+└── 08_scripts/                       a copy of the scripts that produced this run
 ```
 
 ## `hits.tsv` — column schema (one row per hit)
@@ -68,7 +72,7 @@ PACKAGE/
 - **Novel & specific?** Zero hits in SwissProt / Pfam / VOGDB across rounds.
 - **Every hit is a real ORF** — see the ORF-validation columns; `passes_orf_filter`
   is the keep/flag decision.
-- **Did every input seed come back?** `00_seed_qc/seed_recovery.csv` lists each seed
+- **Did every input seed come back?** `07_seed_qc/seed_recovery.csv` lists each seed
   with its best score against the initial vs final model and a recovered flag; the
   aggregate counts are in `run_manifest.json` → `seed_recovery_qc` and `METHODS.md`.
   A seed not recovered by the final model is usually a divergent outlier — consider

@@ -16,6 +16,8 @@ import html
 import json
 from pathlib import Path
 
+from package_layout import DIRS  # PACKAGE/ folder names (single source of truth)
+
 
 def _read_csv(p: Path) -> list[dict]:
     try:
@@ -68,16 +70,16 @@ def generate(discovery: Path) -> Path:
 
     tree_png = discovery / "downstream" / "tree" / "hits_tree.png"
     if not tree_png.exists():
-        tree_png = discovery / "PACKAGE" / "05_phylogeny" / "hits_tree.png"
+        tree_png = discovery / "PACKAGE" / DIRS["phylo"] / "hits_tree.png"
     tree_b64 = _b64(tree_png) if tree_png.exists() else ""
 
     aln_png = discovery / "downstream" / "tree" / "alignment_figure.png"
     if not aln_png.exists():
-        aln_png = discovery / "PACKAGE" / "05_phylogeny" / "alignment_figure.png"
+        aln_png = discovery / "PACKAGE" / DIRS["phylo"] / "alignment_figure.png"
     aln_b64 = _b64(aln_png) if aln_png.exists() else ""
     aln_stats = {}
     for sp in (discovery / "downstream" / "tree" / "hits.aln.stats.json",
-               discovery / "PACKAGE" / "05_phylogeny" / "hits.aln.stats.json"):
+               discovery / "PACKAGE" / DIRS["phylo"] / "hits.aln.stats.json"):
         if sp.exists():
             try:
                 aln_stats = json.loads(sp.read_text())

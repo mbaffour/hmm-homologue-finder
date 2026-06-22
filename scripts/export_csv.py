@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from canonical import canonical_organism as _canonical_organism  # shared source of truth
+from package_layout import DIRS, PER_RUN  # single source of truth for PACKAGE/ layout
 
 
 def _canon_org_set(g) -> set:
@@ -244,7 +245,7 @@ def _write_multifastas(allh: pd.DataFrame, dedup: pd.DataFrame, discovery: Path,
             written.append(str(discovery / "unique_homologs_aa.faa"))
 
     if pkg and pkg.exists():
-        dst = pkg / "02_sequences_per_run"
+        dst = pkg / DIRS["sequences"]
         dst.mkdir(parents=True, exist_ok=True)
         for name in ("all_hits_aa.faa", "all_hits_nt.fna", "unique_homologs_aa.faa"):
             src = discovery / name
@@ -270,7 +271,7 @@ def export(discovery: Path) -> list[str]:
         # mirror per-run hits.csv into the package if present
         run_id = tsv.parts[-4]  # run1 / run2 / run3
         if pkg.exists():
-            dst = pkg / "02_sequences_per_run" / run_id
+            dst = pkg / DIRS["sequences"] / PER_RUN / run_id
             dst.mkdir(parents=True, exist_ok=True)
             shutil.copy2(csv, dst / "hits.csv")
 
@@ -359,8 +360,8 @@ def export(discovery: Path) -> list[str]:
         written.append(str(discovery / "database_summary.csv"))
 
     if pkg.exists():
-        tables = pkg / "00_tables"
-        tables.mkdir(exist_ok=True)
+        tables = pkg / DIRS["tables"]
+        tables.mkdir(parents=True, exist_ok=True)
         for name in ("paper_main_table.csv", "hits_deduplicated.csv", "database_hit_summary.csv",
                      "database_hits.png", "database_hits.svg", "database_hits.pdf",
                      "hit_summary.csv",

@@ -38,6 +38,7 @@ Always `conda activate hmm-discovery` first (the launchers do this for you).
 | `--prodigal-gate` | off | Stricter: require six-frame hits to overlap a Prodigal gene. |
 | `--no-seed-tree` | off | Skip the pre-run seed-only QC tree + alignment. |
 | `--synteny-gene-labels` | off | Label neighbour genes with function in synteny figures. |
+| `--color-by {function,conservation,both}` | both | How to colour synteny neighbourhood genes. |
 | `--skip-tool-check` | off | Skip the startup software preflight. |
 | `--db-cache DIR` | `~/.cache/hmm-homologue-finder` | Persistent shared DB cache (download once, ever). |
 

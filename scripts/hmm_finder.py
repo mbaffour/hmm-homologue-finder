@@ -514,6 +514,9 @@ def main() -> None:
                     help="label neighbour genes with their functional annotation in the synteny "
                          "figures (off by default; an interactive run will ask). Can clutter "
                          "dense neighbourhoods — colours + legend already convey function.")
+    ap.add_argument("--color-by", choices=("function", "conservation", "both"), default="both",
+                    help="how to colour the synteny neighbourhood genes: by functional category "
+                         "(VOGDB), by cross-locus conservation, or both (default both)")
     ap.add_argument("--no-controls", action="store_true",
                     help="skip the threshold-calibration controls (sensitivity on the "
                          "seed self-test + false-positive rate on shuffled/unrelated "
@@ -913,7 +916,7 @@ def main() -> None:
             "--clinker-dir", str(down / "clinker"),
             "--out-dir", str(down / "synteny"),
             "--annotation-cache", str(args.db_cache), "--cpu", args.cpu,
-            "--color-by", "both"]
+            "--color-by", args.color_by]
         if args.synteny_gene_labels:
             synteny_cmd.append("--gene-labels")
         sh(synteny_cmd)
@@ -949,6 +952,13 @@ def main() -> None:
     assemble_package(out, args.iterations, log, best_i)
     write_csv_exports(out, log)  # re-run now that PACKAGE exists, to mirror CSVs into it
     write_report(out, log)       # one-page HTML summary (links tables, tree, clinker)
+    # README.txt in the package root + every subfolder, describing each file's
+    # purpose. Done last so it reflects everything mirrored into PACKAGE/.
+    try:
+        from package_layout import write_readmes
+        write_readmes(out / "PACKAGE", log)
+    except Exception as e:
+        log(f"  (package READMEs skipped: {e})")
 
     log(f"=== DONE. Package: {out / 'PACKAGE'} ===")
 
@@ -969,23 +979,28 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
         else:
             shutil.copy2(src, dst)
 
+    from package_layout import DIRS, PER_RUN  # single source of truth for the layout
+
+    # Provenance + the human-facing report copied in so the package is self-contained.
+    for f in ("METHODS.md", "run_manifest.json"):
+        cp(out / f, pkg / f)
     # Publish the most refined HMM (from the canonical/most-complete run), which
     # is what the figures + paper table describe — not necessarily run1's model.
     cp(out / f"run{best_i}" / "benchmark" / "hmm" / "benchmark_profile.hmm",
-       pkg / "01_hmm_profile" / "profile.hmm")
+       pkg / DIRS["hmm"] / "profile.hmm")
     for i in range(1, iterations + 1):
         v = out / f"run{i}" / "benchmark" / "validated"
         for f in ["hits.tsv", "hits.gff3", "hits_aa.faa", "hits_nt.fna",
                   "hits_unique_aa.faa", "orfs_aa.faa", "orfs_nt.fna"]:
-            cp(v / f, pkg / "02_sequences_per_run" / f"run{i}" / f)
+            cp(v / f, pkg / DIRS["sequences"] / PER_RUN / f"run{i}" / f)
         cp(out / f"run{i}" / "benchmark" / "results" / "all_database_summary.tsv",
-           pkg / "03_database_summaries" / f"run{i}_summary.tsv")
-    cp(out / "downstream" / "clinker", pkg / "04_synteny_clinker")
-    cp(out / "downstream" / "synteny", pkg / "04_synteny_clinker" / "publication_figures")
-    cp(out / "downstream" / "genbank_with_sequence", pkg / "04_synteny_clinker" / "genbank_with_sequence")
-    cp(out / "seed_qc", pkg / "00_seed_qc")
-    cp(out / "downstream" / "tree", pkg / "05_phylogeny")
-    cp(Path(__file__).resolve().parent, pkg / "06_scripts")
+           pkg / DIRS["dbsum"] / f"run{i}_summary.tsv")
+    cp(out / "downstream" / "clinker", pkg / DIRS["synteny"] / "clinker")
+    cp(out / "downstream" / "synteny", pkg / DIRS["synteny"] / "publication_figures")
+    cp(out / "downstream" / "genbank_with_sequence", pkg / DIRS["synteny"] / "genbank_with_sequence")
+    cp(out / "seed_qc", pkg / DIRS["seedqc"])
+    cp(out / "downstream" / "tree", pkg / DIRS["phylo"])
+    cp(Path(__file__).resolve().parent, pkg / DIRS["scripts"])
     log(f"  package assembled at {pkg}")
 
 

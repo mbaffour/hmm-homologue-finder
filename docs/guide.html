@@ -258,6 +258,7 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     <tr><td><code>--prodigal-gate</code></td><td>off</td><td>Stricter: require six-frame hits to overlap a Prodigal gene. Off by default to keep genuine antisense/alternate-frame homologues.</td></tr>
     <tr><td><code>--no-seed-tree</code></td><td>off</td><td>Skip the pre-run seed-only QC tree + alignment.</td></tr>
     <tr><td><code>--synteny-gene-labels</code></td><td>off</td><td>Label neighbour genes with functional annotation in synteny figures (can clutter dense regions).</td></tr>
+    <tr><td><code>--color-by {function,conservation,both}</code></td><td>both</td><td>How to colour synteny neighbourhood genes: by VOGDB functional category, by cross-locus conservation, or both.</td></tr>
     <tr><td><code>--skip-tool-check</code></td><td>off</td><td>Skip the startup software preflight.</td></tr>
     <tr><td><code>--db-cache DIR</code></td><td><code>~/.cache/hmm-homologue-finder</code></td><td>Persistent shared cache — each database downloads once, ever, across all runs.</td></tr>
   </table>
@@ -327,22 +328,20 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     <code>run1/ run2/ …</code> and <code>downstream/</code>. The run root also holds <code>report.html</code>,
     <code>METHODS.md</code>, <code>run_manifest.json</code>, <code>pipeline.log</code>, and the CSV exports.
 <pre><code>PACKAGE/
-├── 00_seed_qc/                     pre-run seed alignment + QC tree, and
-│     seed_recovery.csv             per-seed: best score vs the initial & final model + recovered flag
-├── 01_hmm_profile/profile.hmm      the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
-├── 00_tables/                      paper_main_table.csv, hits_deduplicated.csv,
-│                                   database_hit_summary.csv (+ bar chart), genome_metadata.csv,
-│                                   homolog_stats.csv, all_runs_hits.csv
-├── 02_sequences_per_run/runN/
-│     hits.tsv  hits.csv            per-hit evidence table (schema below)
-│     hits.gff3                     genome-browser track
-│     hits_aa.faa  hits_nt.fna      homologue domain: protein / DNA
-│     orfs_aa.faa  orfs_nt.fna      full ORF context: protein / DNA
-│     hits_unique_aa.faa            deduplicated domains (next-round seed)
-├── 03_database_summaries/runN_summary.tsv   per-database hit counts + provenance
-├── 04_synteny_clinker/             clinker figures + publication_figures/ + genbank_with_sequence/
-├── 05_phylogeny/                   ML tree of the homologues (Newick + PNG/SVG/PDF) with seeds marked
-└── 06_scripts/                     a copy of the scripts that produced this run</code></pre>
+├── README.txt                      guide to the package (every folder has its own README.txt)
+├── METHODS.md  run_manifest.json   methods + machine-readable provenance
+├── 01_summary_tables/              headline tables + database-hit chart  (START HERE)
+│     paper_main_table.csv          one row per unique homolog (the main result)
+│     hits_deduplicated.csv  hit_summary.csv  database_hit_summary.csv (+ bar chart)
+│     genome_metadata.csv  homolog_stats.csv  all_runs_hits.csv  database_summary.csv
+├── 02_sequences/                   all_hits_aa.faa / all_hits_nt.fna, unique_homologs_aa.faa
+│     └── per_run/runN/             hits.tsv (evidence table), hits.gff3, hits_aa/nt, orfs_aa/nt, hits_unique_aa
+├── 03_hmm_profile/profile.hmm      the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
+├── 04_alignment_phylogeny/         MSA (+ stats + figure) and the ML tree (seeds marked SEED_*)
+├── 05_synteny/                     clinker/ (interactive) + publication_figures/ + genbank_with_sequence/
+├── 06_database_summaries/runN_summary.tsv   per-database hit counts + provenance
+├── 07_seed_qc/                     seed_recovery.csv (per-seed before/after) + seed alignment & QC tree
+└── 08_scripts/                     a copy of the scripts that produced this run</code></pre>
   </div>
   <details><summary><code>hits.tsv</code> — column schema (one row per hit)</summary>
   <div class="inner">
@@ -442,7 +441,9 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
   </div></details>
   <details><summary>Disk space</summary><div class="inner">
     Databases are cached once in <code>~/.cache/hmm-homologue-finder</code> (several GB across the full set).
-    Inspect or prune with <code>python3 scripts/manage_cache.py</code>. Keep ~20 GB free for a full run.
+    Inspect with <code>python3 scripts/manage_cache.py</code>; free space with
+    <code>--prune-translations</code> (regenerable ORF caches), <code>--prune-vogdb</code>,
+    <code>--prune-downloads</code>, or <code>--clear-all</code> (wipe everything). Keep ~20 GB free for a full run.
   </div></details>
   <div class="note">More: <code>docs/TROUBLESHOOTING.md</code>, <code>docs/INSTALL.md</code>, <code>docs/USAGE.md</code>.</div>
 </section>

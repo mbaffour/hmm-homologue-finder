@@ -60,6 +60,16 @@ NAME="$(ask '  output label (folder name)' "$(basename "${FASTA%.*}")")"; ARGS+=
 EMAIL="$(ask '  NCBI email for genome/protein fetch (blank = run offline)' '')"
 [ -n "$EMAIL" ] && ARGS+=(--email "$EMAIL")   # never send a placeholder address to NCBI
 
+# where the results folder should be created (Enter = next to the seed FASTA)
+echo
+echo "  Output location — where should the results folder go?"
+OUTLOC="$(ask '  output directory (Enter = next to your FASTA)' '')"
+if [ -n "$OUTLOC" ]; then
+  OUTLOC="$(resolve_path "$OUTLOC")"
+  ARGS+=(--out-dir "$OUTLOC/${NAME}_discovery")
+  echo "  -> results will go to: $OUTLOC/${NAME}_discovery"
+fi
+
 if [ "$MODE" = "2" ]; then
   ARGS+=(--iterations "$(ask '  iterations' '3')")
   ARGS+=(--cpu "$(ask '  CPU threads' "$DEF_CPU")")
@@ -72,6 +82,20 @@ if [ "$MODE" = "2" ]; then
   echo
   PG="$(ask '  strict mode — also require Prodigal coding-locus overlap? (y/N)' 'N')"
   case "$PG" in y|Y|yes|YES) ARGS+=(--prodigal-gate) ;; esac
+
+  echo
+  echo "Step 4 — figures"
+  ST="$(ask '  include the pre-run seed QC tree + alignment? (Y/n)' 'Y')"
+  case "$ST" in n|N|no|NO) ARGS+=(--no-seed-tree) ;; esac
+  GL="$(ask '  label neighbour genes in the synteny figures? (y/N)' 'N')"
+  case "$GL" in y|Y|yes|YES) ARGS+=(--synteny-gene-labels) ;; esac
+  echo "  colour synteny genes by:   1) function   2) conservation   3) both"
+  CB="$(ask '  choose 1/2/3' '3')"
+  case "$CB" in
+    1) ARGS+=(--color-by function) ;;
+    2) ARGS+=(--color-by conservation) ;;
+    *) ARGS+=(--color-by both) ;;
+  esac
 else
   ARGS+=(--smoke --cpu "$DEF_CPU")
 fi
@@ -79,6 +103,8 @@ fi
 echo
 bold "About to run:"
 echo "  bash run.sh ${ARGS[*]}"
+echo
+echo "  Tip: inspect or free cached databases later with:  python3 scripts/manage_cache.py  (add --clear-all to wipe)"
 echo
 C="$(ask '  press Enter to run (or type n to cancel)' '')"
 case "$C" in n|N|no|NO) echo "Cancelled."; exit 0 ;; esac

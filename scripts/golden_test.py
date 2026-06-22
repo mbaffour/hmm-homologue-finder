@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from package_layout import DIRS  # PACKAGE/ folder names
 
 BIT_TOL = 2.0  # bit-score tolerance for the paper-table comparison
 
@@ -87,7 +88,7 @@ def extract_invariants(discovery: Path) -> dict:
         }
 
     # 4. tree tips (presence + set), if a tree was built
-    for tf in [discovery / "PACKAGE" / "05_phylogeny" / "hits.treefile",
+    for tf in [discovery / "PACKAGE" / DIRS["phylo"] / "hits.treefile",
                discovery / "downstream" / "tree" / "hits.treefile"]:
         if tf.exists():
             inv["tree_tips"] = _tree_tips(tf)
