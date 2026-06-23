@@ -257,6 +257,7 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     <tr><td><code>--biology-mode {generic,phage,bacterial}</code></td><td>phage</td><td>Which control panel to calibrate against.</td></tr>
     <tr><td><code>--download-controls</code></td><td>off</td><td>One-time fetch of the UniProt unrelated-proteome negative controls (fungi/mammalian/archaea).</td></tr>
     <tr><td><code>--prodigal-gate</code></td><td>off</td><td>Stricter: require six-frame hits to overlap a Prodigal gene. Off by default to keep genuine antisense/alternate-frame homologues.</td></tr>
+    <tr><td><code>--find-interrupted</code></td><td>off</td><td>Also <b>read-through</b>-scan the nucleotide databases for homologues interrupted by a premature stop codon — overprinted/pseudogenized genes the stop-to-stop search misses. Writes <code>interrupted_homologs.tsv</code>. <a href="#deepdive">See deep-dive panel 3.</a></td></tr>
     <tr><td><code>--no-seed-tree</code></td><td>off</td><td>Skip the pre-run seed-only QC tree + alignment.</td></tr>
     <tr><td><code>--synteny-gene-labels</code></td><td>off</td><td>Label neighbour genes with functional annotation in synteny figures (can clutter dense regions).</td></tr>
     <tr><td><code>--color-by {function,conservation,both}</code></td><td>both</td><td>How to colour synteny neighbourhood genes: by VOGDB functional category, by cross-locus conservation, or both.</td></tr>
@@ -368,6 +369,16 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     evidence directly — nothing is asserted on HMM score alone. (Optional <code>--prodigal-gate</code> makes
     coding-locus overlap a hard requirement; it's off by default precisely so genuine antisense/alternate-frame
     homologues — the ones annotation missed — aren't thrown away.)</p>
+    <p><b>Interrupted / overprinted genes (<code>--find-interrupted</code>).</b> Because the six-frame ORFs are
+    stop-to-stop, a homologue whose gene carries an internal <b>premature stop</b> gets its ORF truncated at
+    the stop and is split or missed. That's exactly what happens to an <b>overprinted</b> gene — one encoded
+    antisense to (or in a different frame from) a large essential gene (e.g. a small protein overprinted on a
+    virion RNA polymerase): a point mutation can be a <i>nonsense stop in the small gene yet silent
+    (synonymous) in the polymerase frame</i>, so it's tolerated and the small gene is interrupted. With
+    <code>--find-interrupted</code> the pipeline additionally <b>read-through</b>-translates every frame (stops
+    kept, not broken on) and searches that, reporting matches whose domain contains ≥1 internal stop —
+    candidate interrupted/overprinted homologues — to <code>interrupted_homologs.tsv</code>, with the stop
+    positions, so you can study the truncation directly.</p>
   </div></details>
 
   <details><summary>4 · Iteration &amp; convergence — capturing the whole family</summary>

@@ -229,7 +229,8 @@ def _citation_lines(tool_versions: dict, selected_dbs: str) -> list:
 def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: str,
                       iter_hits: list, started_at: str, log, stop_reason: str = "",
                       control_summary: dict | None = None,
-                      seed_recovery: dict | None = None) -> None:
+                      seed_recovery: dict | None = None,
+                      interrupted: dict | None = None) -> None:
     """Write a consolidated methodology record at the run root: run_manifest.json
     (machine-readable) + METHODS.md (human-readable). Aggregates tool versions and
     per-database provenance (source URLs, SHA256, access dates) from each
@@ -273,6 +274,7 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
             "iteration_stop_reason": stop_reason,
             "threshold_calibration": control_summary or {},
             "seed_recovery_qc": seed_recovery or {},
+            "interrupted_homologs": interrupted or {},
             "tool_versions": tool_versions,
             "database_provenance": db_provenance,
         }
@@ -322,6 +324,14 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                    f"- Not recovered by the final model ({len(miss)}): "
                    + ", ".join(miss[:12]) + (" …" if len(miss) > 12 else "")
                    + " — likely divergent outliers; see the CSV for per-seed scores.")]
+        if interrupted and interrupted.get("interrupted_candidates") is not None:
+            ic = interrupted
+            L += ["", "## Stop-interrupted / overprinted homologs (`interrupted_homologs.tsv`)",
+                  f"- A read-through translation of the searched nucleotide databases (stop codons "
+                  f"retained, not broken on) was scanned with the family HMM. {ic.get('interrupted_candidates')} "
+                  f"match(es) carry ≥1 internal stop within the domain — candidate homologs interrupted by "
+                  f"a premature stop (e.g. overprinted genes whose nonsense mutation is silent in an "
+                  f"overlapping reading frame). The stop-to-stop search cannot recover these."]
         if tool_versions:
             L += ["", "## Tool versions"]
             for t, info in sorted(tool_versions.items()):
@@ -491,6 +501,62 @@ def run_controls(hmm_path: Path, seed_faa: Path, out: Path, mode: str,
         return {}
 
 
+def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
+                         cpu, log) -> dict:
+    """Read-through scan of the searched NUCLEOTIDE databases for homologs that are
+    interrupted by a premature stop codon (e.g. overprinted genes). Writes
+    out/interrupted_homologs.tsv and returns a summary. Never raises."""
+    try:
+        from find_interrupted import _run as _fi  # noqa: E402  (sibling)
+    except Exception as e:
+        log(f"  (find-interrupted skipped: {e})")
+        return {}
+    if not Path(hmm).exists():
+        log("  (find-interrupted skipped: HMM not found)")
+        return {}
+    cache = Path(db_cache).expanduser() / "cache"
+    if not cache.exists():
+        log("  (find-interrupted skipped: no database cache)")
+        return {}
+    dbl = (databases or "").lower()
+    targets: list = []
+    for sub in sorted(p for p in cache.iterdir() if p.is_dir()):
+        if sub.name.replace("_", " ").lower() not in dbl:
+            continue
+        if not any(sub.glob("*.sixframe.*")):   # only nucleotide DBs were six-frame-translated
+            continue
+        for pat in ("*.fa.gz", "*.fna.gz", "*.fasta.gz", "*.fa", "*.fna", "*.fasta"):
+            targets += [f for f in sorted(sub.glob(pat)) if ".sixframe." not in f.name]
+    if not targets:
+        log("  (find-interrupted: no cached nucleotide DBs from this run to scan)")
+        return {}
+    log(f"Read-through scan for interrupted/overprinted homologs "
+        f"({len(targets)} nucleotide DB file(s))…")
+    import csv as _csv
+    out_tsv = out / "interrupted_homologs.tsv"
+    all_rows, scored = [], 0
+    for fa in targets:
+        tmp = out / f".interrupted_{fa.stem}.part.tsv"
+        try:
+            s = _fi(fa, Path(hmm), tmp, 30.0, int(cpu), log)
+            scored += s.get("matches_scored", 0)
+            if tmp.exists():
+                all_rows += list(_csv.DictReader(open(tmp), delimiter="\t"))
+                tmp.unlink()
+        except Exception as e:
+            log(f"  (find-interrupted: {fa.name} skipped: {e})")
+    if all_rows:
+        all_rows.sort(key=lambda r: -float(r.get("domain_bit_score", 0) or 0))
+        with open(out_tsv, "w", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=list(all_rows[0].keys()), delimiter="\t")
+            w.writeheader(); w.writerows(all_rows)
+    summary = {"matches_scored": scored, "interrupted_candidates": len(all_rows),
+               "tsv": str(out_tsv) if all_rows else ""}
+    log(f"  interrupted-homolog scan: {len(all_rows)} candidate(s) carrying an internal stop"
+        + (f" -> {out_tsv.name}" if all_rows else " (none found)"))
+    return summary
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -553,6 +619,13 @@ def main() -> None:
                     help="require six-frame hits to overlap a Prodigal-predicted gene to "
                          "pass (stricter / higher specificity). Default off: keeps genuine "
                          "antisense/alternate-frame homologs the tool is designed to find.")
+    ap.add_argument("--find-interrupted", action="store_true",
+                    help="ALSO scan the searched nucleotide databases with READ-THROUGH "
+                         "translation (stops kept, not broken on) to find homologs interrupted "
+                         "by a premature stop codon — e.g. overprinted genes where a nonsense "
+                         "mutation in this gene is silent in an overlapping gene. The normal "
+                         "stop-to-stop search misses these. Writes interrupted_homologs.tsv. "
+                         "Opt-in (extra scan of each nucleotide DB).")
     ap.add_argument("--list-databases", action="store_true",
                     help="print the available search databases (with sizes/times) and exit")
     ap.add_argument("--pick-databases", action="store_true",
@@ -899,10 +972,18 @@ def main() -> None:
         except Exception as e:
             log(f"  (seed-recovery QC skipped: {e})")
 
+    # Optional: read-through scan for stop-interrupted / overprinted homologs that
+    # the stop-to-stop search cannot see (opt-in; scans the nucleotide DBs again).
+    interrupted_summary: dict = {}
+    if getattr(args, "find_interrupted", False) and not args.smoke:
+        interrupted_summary = run_find_interrupted(
+            out, rbest / "hmm" / "benchmark_profile.hmm", args.db_cache,
+            args.databases, args.cpu, log)
+
     # Consolidated methodology / reproducibility record at the run root.
     write_methods_log(out, args, fasta, label, args.databases, iter_hits,
                       started_at, log, stop_reason, control_summary,
-                      seed_recovery_summary)
+                      seed_recovery_summary, interrupted_summary)
     write_csv_exports(out, log)
 
     if args.smoke:
@@ -1000,6 +1081,8 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
     # Provenance + the human-facing report copied in so the package is self-contained.
     for f in ("METHODS.md", "run_manifest.json"):
         cp(out / f, pkg / f)
+    # Stop-interrupted/overprinted homolog table (only present with --find-interrupted).
+    cp(out / "interrupted_homologs.tsv", pkg / DIRS["tables"] / "interrupted_homologs.tsv")
     # Publish the most refined HMM (from the canonical/most-complete run), which
     # is what the figures + paper table describe — not necessarily run1's model.
     cp(out / f"run{best_i}" / "benchmark" / "hmm" / "benchmark_profile.hmm",

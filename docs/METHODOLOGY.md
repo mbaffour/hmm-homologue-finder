@@ -45,6 +45,17 @@ genuine coding locus. Hits in annotated protein databases are captured by
 accession and marked accordingly. Both nucleotide and amino-acid sequences are
 exported with a per-hit evidence table.
 
+**Interrupted / overprinted homologs (optional, `--find-interrupted`).** Because
+six-frame ORFs are stop-to-stop, a homolog whose gene carries a *premature stop*
+is truncated at the stop and missed — which is precisely how an overprinted gene
+behaves (a nonsense mutation in the overprinted gene can be synonymous in the
+overlapping reading frame, so it is tolerated). With this flag the nucleotide
+databases are additionally translated with **read-through** (stop codons retained)
+and searched with the family HMM; matches whose domain envelope contains ≥1
+internal stop are written to `interrupted_homologs.tsv` with the stop positions,
+recovering candidate interrupted/overprinted homologs the stop-to-stop search
+cannot see.
+
 ## 6. Iterative refinement and convergence
 Unique, ORF-validated domains from one round seed the next; identical databases,
 parameters, and extraction are applied each round. Iteration **stops early on

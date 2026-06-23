@@ -41,6 +41,7 @@ _REGISTRY = {
             "homolog_stats.csv": "Supplementary S3 — per-hit homology statistics (E-value, bit, domain length/coverage, confidence tier).",
             "all_runs_hits.csv": "The complete, un-collapsed hit table across all iterations (every hit, every column).",
             "database_summary.csv": "Raw engine per-database summary across all iterations.",
+            "interrupted_homologs.tsv": "(--find-interrupted) Homologs interrupted by a premature stop codon, found by read-through translation — candidate overprinted/pseudogenized genes the stop-to-stop search misses. Columns: contig, strand, frame, domain coords, internal_stops, stop positions, bit score, domain AA (with '*').",
         },
     },
     DIRS["sequences"]: {

@@ -36,6 +36,7 @@ Always `conda activate hmm-discovery` first (the launchers do this for you).
 | `--biology-mode {generic,phage,bacterial}` | phage | Which control panel to calibrate against. |
 | `--download-controls` | off | One-time fetch of UniProt unrelated-proteome negatives. |
 | `--prodigal-gate` | off | Stricter: require six-frame hits to overlap a Prodigal gene. |
+| `--find-interrupted` | off | Also read-through-scan the nucleotide DBs for homologs interrupted by a premature stop (overprinted/pseudogenized genes the stop-to-stop search misses) → `interrupted_homologs.tsv`. |
 | `--no-seed-tree` | off | Skip the pre-run seed-only QC tree + alignment. |
 | `--synteny-gene-labels` | off | Label neighbour genes with function in synteny figures. |
 | `--color-by {function,conservation,both}` | both | How to colour synteny neighbourhood genes. |

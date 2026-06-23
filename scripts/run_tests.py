@@ -186,6 +186,18 @@ try:
 except Exception as _e:
     check(f"ROC calibration import/compute failed: {_e}", False)
 
+# --- interrupted-homolog finder (read-through translation + stop counting) ----
+import find_interrupted as FI  # noqa: E402
+_s, _m = FI.read_through_aa("ATG" + "AAA" + "TAA" + "GGG", "+", 0)   # M K * G
+check("find_interrupted: read-through marker keeps '*' at the stop", _m == "MK*G")
+check("find_interrupted: search sequence masks the stop as 'X'", _s == "MKXG")
+check("find_interrupted: internal stop counted (1-based envelope)",
+      FI.count_envelope_stops("AB*CD", 1, 5) == (1, [3]))
+check("find_interrupted: terminal stop not counted as internal",
+      FI.count_envelope_stops("ABC*", 1, 4) == (0, []))
+check("find_interrupted: stop outside the envelope ignored",
+      FI.count_envelope_stops("*ABCD", 2, 5) == (0, []))
+
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
 dna = td / "x.fna"
