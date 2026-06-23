@@ -80,9 +80,25 @@ def _frames(seq: str):
 
 
 BATCH_CONTIGS = 500   # search this many contigs per hmmsearch call (bounds temp + memory)
+WIN_AA = 5000         # window long read-through frames: HMMER aborts (SIGABRT) on whole-
+WIN_STEP = 4400       # genome-length sequences (10k-100k+ aa). Overlap = WIN_AA - WIN_STEP
+                      # (>> any domain), so every domain lies fully inside >=1 window.
 ROW_COLS = ["contig", "strand", "frame", "env_from_aa", "env_to_aa", "domain_aa_len",
             "internal_stops", "stop_aa_positions", "domain_bit_score", "i_evalue",
             "domain_aa_with_stops"]
+
+
+def _windows(n: int):
+    """Yield (offset, length) windows covering a length-n frame with WIN overlap."""
+    if n <= WIN_AA:
+        yield 0, n
+        return
+    off = 0
+    while off < n:
+        yield off, min(WIN_AA, n - off)
+        if off + WIN_AA >= n:
+            break
+        off += WIN_STEP
 
 
 def _search_batch(frames: list, markers: dict, hmm: Path, workdir: Path,
@@ -117,13 +133,14 @@ def _search_batch(frames: list, markers: dict, hmm: Path, workdir: Path,
         n_stops, positions = count_envelope_stops(marker, env_from, env_to)
         if n_stops < 1:
             continue
-        contig, sf_tag = name.rsplit("__", 1)
+        contig, sf_tag, off_s = name.rsplit("__", 2)   # name = contig__SF__windowOffset
+        offset = int(off_s)
         rows.append({
             "contig": contig, "strand": sf_tag[0], "frame": sf_tag[1],
-            "env_from_aa": env_from, "env_to_aa": env_to,
+            "env_from_aa": offset + env_from, "env_to_aa": offset + env_to,
             "domain_aa_len": env_to - env_from + 1,
             "internal_stops": n_stops,
-            "stop_aa_positions": ";".join(str(x) for x in positions),
+            "stop_aa_positions": ";".join(str(offset + x) for x in positions),
             "domain_bit_score": round(dom_bits, 1),
             "i_evalue": f"{i_eval:.2g}",
             "domain_aa_with_stops": marker[env_from - 1:env_to],
@@ -149,10 +166,14 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
         with open_maybe_gz(genomes) as fh:
             for rec in SeqIO.parse(fh, "fasta"):
                 for strand, frame, search, marker in _frames(str(rec.seq)):
-                    name = f"{rec.id}__{strand}{frame}"
-                    frames.append((name, search))
-                    markers[name] = marker
-                    n_frames += 1
+                    for off, wlen in _windows(len(search)):
+                        sw = search[off:off + wlen]
+                        if len(sw) < MIN_AA:
+                            continue
+                        name = f"{rec.id}__{strand}{frame}__{off}"
+                        frames.append((name, sw))
+                        markers[name] = marker[off:off + wlen]
+                        n_frames += 1
                 nctg += 1
                 if nctg >= BATCH_CONTIGS:
                     try:
@@ -173,8 +194,16 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
                     log(f"  (find-interrupted: final batch failed, skipped: {e})")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
-    log(f"  read-through: {n_frames} frames in {n_batches} batch(es); "
+    log(f"  read-through: {n_frames} windowed frames in {n_batches} batch(es); "
         f"{n_scored} matches ≥{min_bit} bits scored")
+    # Overlapping windows can report the same interrupted domain twice — dedup by
+    # (contig, strand, frame, stop positions), keeping the best-scoring copy.
+    best: dict = {}
+    for r in all_rows:
+        key = (r["contig"], r["strand"], r["frame"], r["stop_aa_positions"])
+        if key not in best or r["domain_bit_score"] > best[key]["domain_bit_score"]:
+            best[key] = r
+    all_rows = list(best.values())
     all_rows.sort(key=lambda r: -r["domain_bit_score"])
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=ROW_COLS, delimiter="\t")
