@@ -70,6 +70,10 @@ PACKAGE/
 - **Converged?** Compare `06_database_summaries/run*_summary.tsv` across rounds —
   stable counts mean the family is fully captured.
 - **Novel & specific?** Zero hits in SwissProt / Pfam / VOGDB across rounds.
+- **Score threshold trustworthy?** `controls/control_report.json` +
+  `controls/roc_curve.svg` give sensitivity / specificity / FPR and the ROC **AUC**
+  (1.0 = perfect separation) plus the Youden-optimal cutoff (advisory; the fixed
+  strict 45 is kept for tiering). Summary in `run_manifest.json` → `threshold_calibration`.
 - **Every hit is a real ORF** — see the ORF-validation columns; `passes_orf_filter`
   is the keep/flag decision.
 - **Did every input seed come back?** `07_seed_qc/seed_recovery.csv` lists each seed

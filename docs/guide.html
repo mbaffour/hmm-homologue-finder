@@ -120,6 +120,7 @@
   <a href="#flags">Every flag</a>
   <a href="#databases">Databases</a>
   <a href="#method">How it works (methods)</a>
+  <a href="#deepdive">Deep dive — why it works</a>
   <a href="#controls">Calibration &amp; controls</a>
   <a href="#outputs">Outputs</a>
   <a href="#repro">Reproducibility</a>
@@ -298,10 +299,182 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     <div class="step"><div class="num">3</div><div><b>Extract &amp; validate each hit.</b> The ORF is reconstructed from genomic coordinates (1-based, strand/frame-correct); the domain is delimited by the HMM envelope (<code>--domtblout</code>). Recorded: ORF/domain length, coverage, internal-stop count (<b>must be 0</b>), and <b>Prodigal</b> overlap. A hit passes if it has no internal stops and sits in a coding locus. Protein-DB hits are captured by accession. <b>Both NT and AA</b> are exported with a per-hit evidence table.</div></div>
     <div class="step"><div class="num">4</div><div><b>Iterate to convergence.</b> Unique validated domains re-seed the next round. Iteration stops early when the unique-hit count changes &lt;5% <b>and</b> the HMM length changes &lt;3 between rounds (or a round finds nothing). The stopping reason is recorded.</div></div>
     <div class="step"><div class="num">5</div><div><b>Calibrate thresholds.</b> Positive (seed self-test) + negative (composition-matched shuffled seeds, plus optional unrelated proteomes) controls give per-run sensitivity, specificity, and false-positive rate at the strict bit threshold. <a href="#controls">Details ↓</a></div></div>
-    <div class="step"><div class="num">6</div><div><b>Characterise.</b> <b>CD-HIT</b> clustering (40% id, 80% cov); accuracy-first <b>MAFFT</b> alignment of the unique homologues (a first-class deliverable: full + trimmed MSA, stats, ClustalX figure); <b>trimAl</b> → <b>IQ-TREE</b> ML tree (ModelFinder, 1000 ultrafast bootstrap, fixed seed) with the seeds placed and marked <code>SEED_*</code>; <b>clinker</b> synteny + real-sequence GenBank neighbourhoods; <b>MEME/FIMO</b> motifs; GFF3 tracks.</div></div>
+    <div class="step"><div class="num">6</div><div><b>Characterise.</b> <b>CD-HIT</b> clustering (40% id, 80% cov); accuracy-first <b>MAFFT</b> alignment of the unique homologues (a first-class deliverable: full + trimmed MSA, stats, ClustalX figure); <b>trimAl</b> → <b>IQ-TREE</b> ML tree (ModelFinder, 1000 ultrafast bootstrap <b>+ 1000 SH-aLRT</b>, fixed seed) with the seeds placed and marked <code>SEED_*</code>; <b>clinker</b> synteny + real-sequence GenBank neighbourhoods; <b>MEME/FIMO</b> motifs; GFF3 tracks.</div></div>
     <div class="step"><div class="num">7</div><div><b>Package.</b> Everything is assembled into a labelled folder with <code>report.html</code>, <code>METHODS.md</code>, and machine-readable <code>run_manifest.json</code> (parameters, provenance, tool versions, calibration, stop reason).</div></div>
   </div>
   <div class="note">The <b>most-complete round</b> (after convergence, the refined final round) is the canonical set used for the figures, the published profile HMM, and the main paper table — so tables and figures always describe the <i>same</i> homolog set.</div>
+</section>
+
+<section id="deepdive">
+  <h2>Deep dive — why each step works (and why it matters)</h2>
+  <p class="sub" style="margin:0 0 8px">The overview above is the <i>what</i>. This is the <i>how</i> and the
+  <i>so&nbsp;what</i> — the biology and statistics behind each step, and what a reviewer will expect from it.
+  Click any panel to expand.</p>
+
+  <details open><summary>1 · Why a profile HMM instead of BLAST?</summary>
+  <div class="inner">
+    <p>A BLAST search compares your query to each database sequence one-by-one, using a fixed substitution
+    matrix. A <b>profile hidden Markov model (HMM)</b> instead learns, <i>position by position</i>, which
+    residues your family tolerates: a catalytic histidine that is never substituted gets a sharp, confident
+    column; a floppy surface loop gets a permissive one. It also models position-specific insertion and
+    deletion probabilities. That position-specificity is what lets the model reach into the
+    <b>"twilight zone"</b> (~15–25% identity) where pairwise BLAST loses the signal.</p>
+    <p><b>How it's built:</b> your seeds are aligned (MAFFT L-INS-i — see panel 8), trimmed (trimAl), and
+    <code>hmmbuild</code> turns the alignment columns into match/insert/delete states with emission and
+    transition probabilities. <code>hmmsearch</code> then scores every database sequence against that model,
+    reporting a <b>bit score</b> (log-odds that the sequence was emitted by your family's model versus a
+    random/background model) and an <b>E-value</b> (expected number of chance hits at that score given the
+    database size).</p>
+    <p><b>The self-recovery gate (≥70%):</b> before searching anything, the model is searched back against
+    its own seeds. If it can't recover ≥70% of them above the strict bit score, the seeds aren't one coherent
+    family (e.g. a broad label like "endolysin" lumping unrelated proteins) and the run stops — because an
+    incoherent model produces meaningless, unspecific hits. <b>Significance:</b> this is your first guarantee
+    that everything downstream describes a real, single family.</p>
+  </div></details>
+
+  <details><summary>2 · Why six-frame translation — the genes annotation misses</summary>
+  <div class="inner">
+    <p>Standard genome annotation runs a gene-caller (e.g. Prodigal) that predicts one set of
+    non-overlapping ORFs. But real genomes — phages especially — encode genes that callers routinely miss:
+    genes on the <b>opposite strand</b> of (or in a <b>different reading frame</b> to) a predicted gene,
+    short genes below length cutoffs, and genes in gene-dense regions where the caller picked the "other"
+    overlapping ORF. If you only BLAST the <i>annotated</i> proteins, those homologues are invisible.</p>
+    <p><b>How it works:</b> each nucleotide database is translated in <b>all six reading frames</b> (three
+    forward, three reverse), broken into stop-to-stop ORFs (minimum 30 aa), and the protein HMM is searched
+    against <i>that</i>. Nothing is assumed about which frame is "the gene" — every possible protein the DNA
+    could encode is on the table. Large databases are chunked (seqkit) and searched in parallel, and each
+    translation is cached so re-runs are fast.</p>
+    <p><b>Significance:</b> this is the core novelty. In the gp75 reference run, the family was found
+    <i>only</i> via six-frame translation of genome databases — zero hits in the curated protein/domain
+    databases (SwissProt, Pfam, VOGDB), i.e. the gene is genuinely unannotated everywhere. That is the
+    difference between "rediscovering known proteins" and "discovering missed biology."</p>
+  </div></details>
+
+  <details><summary>3 · ORF validation — proving a hit is a real gene, not translation noise</summary>
+  <div class="inner">
+    <p>Six-frame translation will happily produce a protein from any stretch of DNA, so an HMM hit on
+    translated DNA is <i>not yet</i> evidence of a gene. Each hit is therefore reconstructed and validated:</p>
+    <ul>
+      <li><b>Exact ORF reconstruction</b> from the genomic coordinates (1-based, strand- and frame-correct),
+      so the stored sequence is the precise ORF the model matched — not an overlapping or shifted one. (Storing
+      the wrong overlapping protein was the bug earlier versions had; this is the corrected core.)</li>
+      <li><b>No internal stop codons</b> — a genuine coding sequence reads cleanly from start to stop. Internal
+      stops mean it isn't a real ORF (wrong frame / not coding). This must be <b>0</b> to pass.</li>
+      <li><b>Sits in a coding locus</b> — overlap with Prodigal gene calls (same-strand and any-strand
+      percentages are recorded), confirming it lives in a real coding region rather than intergenic junk.</li>
+    </ul>
+    <p>Every hit carries this evidence in the 37-column <code>hits.tsv</code>, and both the <b>nucleotide and
+    amino-acid</b> sequences are exported. <b>Significance:</b> reviewers can audit each call's "is-it-a-gene"
+    evidence directly — nothing is asserted on HMM score alone. (Optional <code>--prodigal-gate</code> makes
+    coding-locus overlap a hard requirement; it's off by default precisely so genuine antisense/alternate-frame
+    homologues — the ones annotation missed — aren't thrown away.)</p>
+  </div></details>
+
+  <details><summary>4 · Iteration &amp; convergence — capturing the whole family</summary>
+  <div class="inner">
+    <p>A model built from a few seeds is sharpest near those seeds. The validated homologues from round 1 are
+    de-duplicated and <b>used as new seeds</b> for round 2, which broadens the model toward the family's true
+    diversity and pulls in more-divergent members; round 3 repeats. This is the same idea as jackhmmer/PSI-BLAST
+    iteration, but with the six-frame search and ORF validation at every step.</p>
+    <p><b>When does it stop?</b> Iteration ends early on <b>convergence</b>: when the unique-validated-hit count
+    changes by &lt;5% <b>and</b> the HMM length (number of match states) changes by &lt;3 between consecutive
+    rounds — i.e. both the membership and the model have stabilised, so another round would add nothing. A round
+    that finds zero new hits also stops it. The exact stopping reason is recorded in <code>run_manifest.json</code>.</p>
+    <p><b>Significance:</b> convergence is your evidence that the search is <i>complete</i> — you've captured the
+    detectable family, not just an arbitrary first slice. The "unique sequences" count (not raw hit count) is the
+    honest measure of family size, because the same protein recurs across many genomes/databases.</p>
+  </div></details>
+
+  <details><summary>5 · Calibration, controls &amp; the ROC curve — quantifying that hits are real</summary>
+  <div class="inner">
+    <p>A score threshold is only meaningful if you know its error rates <i>on this model</i>. So the calibrated
+    profile is tested against built-in controls:</p>
+    <ul>
+      <li><b>Positive control</b> = your seeds. <b>Sensitivity</b> = the fraction scoring above the strict
+      threshold (how many true members the model catches; expect ≈1.0).</li>
+      <li><b>Negative controls</b> = composition-matched <b>shuffled seeds</b> (identical amino-acid composition,
+      randomised order — so any hit is pure composition artefact) plus, optionally, unrelated reviewed proteomes
+      (fungi/mammalian/archaea). <b>False-positive rate</b> = the fraction of these scoring above strict;
+      <b>specificity</b> = 1 − FPR.</li>
+    </ul>
+    <p><b>The ROC curve &amp; AUC.</b> Sweeping the threshold from high to low traces a curve of true-positive
+    rate vs false-positive rate. The <b>area under it (AUC)</b> is the probability that a random true member
+    outscores a random negative: <b>1.0 = perfect separation, 0.5 = no better than chance.</b> The
+    <b>Youden's-J optimal</b> cutoff is the threshold of maximum margin between the two distributions. This is
+    reported as <i>advisory</i> — the pipeline keeps its fixed tiers (strict 45 / moderate 30) so results stay
+    comparable across runs — and it tells you whether 45 sits safely inside the separating gap. <b>Significance:</b>
+    you can state, with numbers, that hits above threshold are not an artefact of amino-acid composition or
+    generic similarity to unrelated proteins — exactly the alternative explanation a reviewer reaches for.</p>
+  </div></details>
+
+  <details><summary>6 · Seed-recovery QC — did any input seed never come back?</summary>
+  <div class="inner">
+    <p>Every input seed is scored against the <b>initial</b> model (round 1) and the <b>final</b> refined model,
+    and written by name to <code>07_seed_qc/seed_recovery.csv</code> with a status of
+    <code>recovered</code> / <code>lost_after_refinement</code> / <code>gained_after_refinement</code> /
+    <code>never_recovered</code>. <b>Significance:</b> a seed the model can't recover is a divergent outlier (or a
+    mis-curated entry); seeing it by name lets you decide whether to drop it or treat it as a separate sub-family,
+    rather than silently trusting an aggregate "sensitivity = 0.96."</p>
+  </div></details>
+
+  <details><summary>7 · Clustering (CD-HIT) &amp; the homolog alignment (MAFFT L-INS-i)</summary>
+  <div class="inner">
+    <p><b>CD-HIT</b> groups the validated homologues at 40% identity / 80% coverage, collapsing near-identical
+    variants so downstream figures show representative diversity rather than 50 copies of the same protein.</p>
+    <p>The unique homologues are then aligned with <b>MAFFT L-INS-i</b> (<code>--localpair --maxiterate 1000</code>)
+    — the most accurate MAFFT strategy, which considers all pairwise local alignments. Accuracy matters here
+    because a sloppy alignment of divergent sequences propagates into a wrong tree. The alignment is a
+    first-class deliverable: the full MSA, a trimmed copy, and <code>hits.aln.stats.json</code> reporting
+    <b>length, gap %, conserved columns, and mean pairwise identity</b> (e.g. ~18% for gp75 — genuinely
+    divergent, which is the whole point), plus a ClustalX-coloured figure. <b>Significance:</b> the alignment
+    quality stats let a reader judge how much to trust the phylogeny built from it.</p>
+  </div></details>
+
+  <details><summary>8 · Phylogeny — the tree, model selection, and two kinds of branch support</summary>
+  <div class="inner">
+    <p>The trimmed alignment goes to <b>IQ-TREE</b>. <b>ModelFinder</b> first selects the best-fitting amino-acid
+    substitution model by information criterion (rather than assuming one), then a maximum-likelihood tree is
+    inferred. The input seeds are placed <i>within</i> the tree, marked <code>SEED_*</code>, so you can see where
+    your starting sequences fall among everything discovered. A fixed random seed makes the tree reproducible.</p>
+    <p><b>Two support measures, on purpose.</b> Each branch carries <b>UFBoot</b> (1000 ultrafast bootstrap
+    replicates) <b>and SH-aLRT</b> (1000 replicates of an approximate likelihood-ratio test). They fail in
+    different ways — UFBoot can be over-optimistic; SH-aLRT is more conservative — so the robust convention,
+    which the figure uses to place a support dot, is <b>SH-aLRT ≥ 80 <i>and</i> UFBoot ≥ 95</b>. <b>Significance:</b>
+    reviewers increasingly expect both; a clade that passes both is one you can build an argument on, and the tree
+    file loads into FigTree/iTOL showing "aLRT/UFBoot" on every branch.</p>
+  </div></details>
+
+  <details><summary>9 · Synteny (clinker) &amp; real-sequence GenBanks — function from gene neighbourhoods</summary>
+  <div class="inner">
+    <p>Homology of a single gene is stronger when its <b>genomic context is conserved</b> too: if the same
+    flanking genes sit around your hit across many phages, that's independent evidence the locus is real and
+    functionally coherent (and often hints at function). The pipeline anchors each hit, takes ±7 neighbouring
+    ORFs, and compares neighbourhoods with <b>clinker</b> (interactive HTML) plus publication panels coloured by
+    VOGDB functional category and/or cross-locus conservation. It also writes <b>real-sequence GenBank files</b>
+    (named by phage) you can open in Artemis/Geneious/UGENE. <b>Significance:</b> conserved synteny is a classic,
+    reviewer-trusted corroboration of orthology that sequence similarity alone doesn't provide.</p>
+  </div></details>
+
+  <details><summary>10 · Motifs (MEME/FIMO) &amp; genome-browser tracks</summary>
+  <div class="inner">
+    <p><b>MEME</b> discovers conserved sequence motifs (up to 3, width 6–30 aa) shared across the homologues —
+    candidate functional/structural signatures — and <b>FIMO</b> scans for their occurrences. Per-run
+    <b>GFF3</b> tracks let you load every hit into IGV/JBrowse/Artemis against the source genome. <b>Significance:</b>
+    motifs give a testable functional hypothesis; the tracks let a collaborator inspect any hit in genomic
+    context in seconds.</p>
+  </div></details>
+
+  <details><summary>11 · Reproducibility &amp; provenance — why this passes methods review</summary>
+  <div class="inner">
+    <p>Every run records what would be needed to reproduce it exactly: the <b>pinned conda environment</b>
+    (<code>environment.lock.yml</code>), the <b>live tool versions</b> actually invoked, every database's
+    <b>source URL + SHA-256 + access date</b>, the full command line, the code's git commit, the input FASTA's
+    SHA-256, per-iteration counts, the convergence stop reason, and the calibration — all in
+    <code>run_manifest.json</code> + human-readable <code>METHODS.md</code>, with auto-generated citations for
+    every tool and database used. Determinism is enforced (fixed IQ-TREE seed; deterministic MAFFT/trimAl/CD-HIT;
+    sorted iteration throughout). <b>Significance:</b> reproducibility is delivered by recorded provenance and a
+    pinned environment — not containers — which is exactly the evidence a journal's reproducibility check asks for.</p>
+  </div></details>
 </section>
 
 <section id="controls">
@@ -317,6 +490,14 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     Results are written to <code>controls/control_report.json</code> + <code>controls_summary.csv</code> and
     summarised in <code>run_manifest.json</code> (<code>threshold_calibration</code>) and <code>METHODS.md</code>.
     Disable with <code>--no-controls</code>.
+    <div class="note" style="margin-top:12px"><b>ROC curve &amp; AUC (advisory).</b> The positive and negative
+    score distributions are also drawn as an <b>ROC curve</b> (<code>controls/roc_curve.svg</code>). The
+    <b>AUC</b> (area under the curve, exact Mann–Whitney form) measures how cleanly the profile separates
+    true family members from negatives — <b>AUC = 1.0 means perfect separation</b>, 0.5 means no
+    discrimination. The <b>Youden's-J optimal</b> bit-score cutoff (the maximum-margin threshold) is reported
+    next to the fixed strict 45. This is <i>advisory only</i>: it tells you whether 45 sits comfortably in the
+    separating gap; the pipeline keeps the fixed tiers so results stay comparable across runs. (For gp75:
+    AUC 1.0, optimal ≈ 33 — so the fixed 45 is a deliberately conservative, specificity-first choice.)</div>
   </div>
 </section>
 

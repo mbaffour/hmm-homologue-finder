@@ -76,7 +76,7 @@ For each run (under `<fasta>_discovery/PACKAGE/`):
 
 | Output | Description |
 |--------|-------------|
-| `hits.tsv` | One row per hit — 35 columns: organism, genomic coordinates, ORF-validation metrics, HMM statistics, and **both nucleotide & amino-acid sequence**. |
+| `hits.tsv` | One row per hit — 37 columns: organism, genomic coordinates, ORF-validation metrics, HMM statistics, and **both nucleotide & amino-acid sequence**. |
 | `hits_deduplicated.csv` | One row per **unique** homolog, collapsing the same protein found across databases/iterations, with a **"found in N databases"** provenance column. |
 | `hits_aa.faa` / `hits_nt.fna` | Homologue protein / DNA sequences. |
 | `hits.gff3` | Genome-browser track of every hit (IGV/JBrowse/Artemis). |
@@ -98,10 +98,21 @@ See **[docs/OUTPUTS.md](docs/OUTPUTS.md)** for the full reference.
 
 1. **Build the HMM** — align seeds (MAFFT, accuracy-first **L-INS-i**), trim (trimAl), `hmmbuild`, validate self-recovery, and calibrate the score threshold against positive/negative controls.
 2. **Choose & search databases** — an interactive run **prompts you to pick** which databases to search (an unattended run uses the full default set, or pass `--databases` / `--all-databases`). `hmmsearch` (E ≤ 1e-5); genome databases are six-frame translated so unannotated genes are reachable.
-3. **Extract & validate** — reconstruct each hit's ORF from genomic coordinates, delimit the domain by the HMM envelope, confirm it's a genuine ORF (no internal stops; in a real coding locus). Save NT + AA + a 35-column table. Protein-database hits are captured by accession too.
+3. **Extract & validate** — reconstruct each hit's ORF from genomic coordinates, delimit the domain by the HMM envelope, confirm it's a genuine ORF (no internal stops; in a real coding locus). Save NT + AA + a 37-column table. Protein-database hits are captured by accession too.
 4. **Iterate to convergence** — deduplicate hits, re-seed, repeat; **stop early** when the hit set and model stabilise.
 5. **Characterise** — cross-database hit deduplication, CD-HIT clustering, clinker + publication synteny, an ML tree (seeds included), high-quality alignment, MEME/FIMO motifs, GFF3 tracks, named GenBank files.
 6. **Package** — assemble a labelled, self-contained output folder with full provenance (`run_manifest.json`, `METHODS.md`).
+
+### Why it works (the science, in one breath)
+
+- **Profile HMMs reach the "twilight zone."** Position-specific scoring (a conserved catalytic residue weighted heavily, a floppy loop loosely) detects homology down to ~15–25% identity, where pairwise BLAST fails.
+- **Six-frame translation finds the unfindable.** Genome databases are translated in all six frames, so homologues encoded **antisense or out-of-frame** to predicted genes — the ones standard annotation misses — are searchable. (gp75 was found *only* this way: zero hits in curated protein/domain DBs.)
+- **ORF validation proves they're real genes.** Each hit is reconstructed frame-correctly, required to have **no internal stop codons**, and checked to sit in a coding locus — with the evidence in `hits.tsv`. An HMM score alone is never enough.
+- **Controls + ROC quantify that hits aren't artefacts.** Composition-matched shuffled seeds and unrelated proteomes give sensitivity / specificity / FPR and an **ROC AUC** (1.0 = perfect separation), so you can rule out the "it's just composition bias" objection with numbers.
+- **Convergence proves completeness; dual tree support (SH-aLRT + UFBoot) and conserved synteny corroborate it.** And everything is recorded for exact reproduction.
+
+**Full, educational walkthrough — how *and why* each step works:** open
+**[docs/guide.html](docs/guide.html)** → *"Deep dive — why it works."*
 
 Scientific detail: **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
 
