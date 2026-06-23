@@ -85,6 +85,33 @@ def extend_orf(marker_aa: str, env_from: int, env_to: int) -> tuple[int, int, st
     return orf_from, orf_to, marker_aa[orf_from - 1:orf_to]
 
 
+def aa_to_nt(contig_seq: str, strand: str, frame: int, aa_from: int, aa_to: int):
+    """Map a frame-relative aa span [aa_from, aa_to] (1-based inclusive) back to the
+    genome: returns (fwd_start, fwd_end, coding_nt) where fwd_start/fwd_end are
+    FORWARD-strand contig coordinates (1-based inclusive) and coding_nt is the
+    coding DNA 5'->3' (reverse-complemented for '-' hits). Lets you see exactly
+    where in the genome the gene sits and pull its DNA."""
+    L = len(contig_seq)
+    if strand == "-":
+        rc_a = frame + (aa_from - 1) * 3
+        rc_b = frame + aa_to * 3
+        fwd_start, fwd_end = L - rc_b + 1, L - rc_a
+        coding = str(Seq(contig_seq[fwd_start - 1:fwd_end]).reverse_complement())
+    else:
+        fwd_start = frame + (aa_from - 1) * 3 + 1
+        fwd_end = frame + aa_to * 3
+        coding = contig_seq[fwd_start - 1:fwd_end]
+    return fwd_start, fwd_end, coding
+
+
+def stop_nt(contig_seq: str, strand: str, frame: int, aa_pos: int) -> int:
+    """Forward-strand 1-based coordinate of the first base of the stop codon at the
+    given frame-relative aa position (lowest of the codon's three forward coords)."""
+    if strand == "-":
+        return len(contig_seq) - (frame + (aa_pos - 1) * 3) - 2
+    return frame + (aa_pos - 1) * 3 + 1
+
+
 def _frames(seq: str):
     """Yield (strand, frame, search_aa, marker_aa) for all six frames."""
     for strand in ("+", "-"):
@@ -98,11 +125,11 @@ BATCH_CONTIGS = 500   # search this many contigs per hmmsearch call (bounds temp
 WIN_AA = 5000         # window long read-through frames: HMMER aborts (SIGABRT) on whole-
 WIN_STEP = 4400       # genome-length sequences (10k-100k+ aa). Overlap = WIN_AA - WIN_STEP
                       # (>> any domain), so every domain lies fully inside >=1 window.
-ROW_COLS = ["contig", "strand", "frame", "env_from_aa", "env_to_aa", "domain_aa_len",
-            "internal_stops", "stop_aa_positions", "domain_bit_score", "i_evalue",
-            "orf_from_aa", "orf_to_aa", "orf_aa_len",
+ROW_COLS = ["contig", "strand", "frame", "domain_nt_start", "domain_nt_end",
+            "domain_aa_len", "internal_stops", "stop_nt_positions", "stop_aa_positions",
+            "domain_bit_score", "i_evalue", "orf_aa_len",
             "aa_before_first_stop", "aa_after_last_stop",
-            "domain_aa_with_stops", "full_orf_aa"]
+            "domain_nt", "domain_aa_with_stops", "full_orf_aa"]
 
 
 def _windows(n: int):
@@ -118,10 +145,11 @@ def _windows(n: int):
         off += WIN_STEP
 
 
-def _search_batch(frames: list, markers: dict, hmm: Path, workdir: Path,
+def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workdir: Path,
                   min_bit: float, cpu: int) -> tuple[int, list]:
     """hmmsearch one batch of (name, search_aa); return (n_scored, interrupted_rows).
-    markers maps name -> marker_aa (with '*') for the SAME batch (kept small)."""
+    markers maps name -> marker_aa; contig_nt maps contig -> forward DNA (both for
+    the SAME batch, kept small)."""
     import shutil
     sfa = workdir / "batch.faa"
     with open(sfa, "w") as f:
@@ -151,24 +179,32 @@ def _search_batch(frames: list, markers: dict, hmm: Path, workdir: Path,
         if n_stops < 1:
             continue
         contig, sf_tag, off_s = name.rsplit("__", 2)   # name = contig__SF__windowOffset
-        offset = int(off_s)
+        strand, frame, offset = sf_tag[0], int(sf_tag[1]), int(off_s)
         # full read-through ORF (through the premature stop to the natural stop).
         orf_from, orf_to, full_aa = extend_orf(marker, env_from, env_to)
         terminal_stop = 1 if full_aa.endswith("*") else 0
         aa_before = positions[0] - orf_from              # intact N-terminal residues
         aa_after = max(0, orf_to - positions[-1] - terminal_stop)  # C-terminal continuation
+        # Map the DOMAIN back to genome DNA coordinates (frame-relative -> contig).
+        nt = contig_nt.get(contig, "")
+        dfrom, dto = offset + env_from, offset + env_to       # frame-relative aa
+        nt_start, nt_end, dom_nt = (aa_to_nt(nt, strand, frame, dfrom, dto)
+                                    if nt else (0, 0, ""))
+        stop_nt_pos = ";".join(str(stop_nt(nt, strand, frame, offset + x))
+                               for x in positions) if nt else ""
         rows.append({
-            "contig": contig, "strand": sf_tag[0], "frame": sf_tag[1],
-            "env_from_aa": offset + env_from, "env_to_aa": offset + env_to,
+            "contig": contig, "strand": strand, "frame": frame,
+            "domain_nt_start": nt_start, "domain_nt_end": nt_end,
             "domain_aa_len": env_to - env_from + 1,
             "internal_stops": n_stops,
+            "stop_nt_positions": stop_nt_pos,
             "stop_aa_positions": ";".join(str(offset + x) for x in positions),
             "domain_bit_score": round(dom_bits, 1),
             "i_evalue": f"{i_eval:.2g}",
-            "orf_from_aa": offset + orf_from, "orf_to_aa": offset + orf_to,
             "orf_aa_len": orf_to - orf_from + 1,
             "aa_before_first_stop": aa_before,
             "aa_after_last_stop": aa_after,
+            "domain_nt": dom_nt,
             "domain_aa_with_stops": marker[env_from - 1:env_to],
             "full_orf_aa": full_aa,
         })
@@ -188,11 +224,13 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
     base = out.parent if out.parent.exists() else Path(".")
     workdir = Path(tempfile.mkdtemp(prefix="interrupted_", dir=str(base)))
     all_rows, n_scored, n_batches, n_frames = [], 0, 0, 0
-    frames, markers, nctg = [], {}, 0
+    frames, markers, contig_nt, nctg = [], {}, {}, 0
     try:
         with open_maybe_gz(genomes) as fh:
             for rec in SeqIO.parse(fh, "fasta"):
-                for strand, frame, search, marker in _frames(str(rec.seq)):
+                seq = str(rec.seq)
+                contig_nt[rec.id] = seq.upper().replace("U", "T")   # for genome coords + DNA
+                for strand, frame, search, marker in _frames(seq):
                     for off, wlen in _windows(len(search)):
                         sw = search[off:off + wlen]
                         if len(sw) < MIN_AA:
@@ -204,16 +242,16 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
                 nctg += 1
                 if nctg >= BATCH_CONTIGS:
                     try:
-                        ns, rows = _search_batch(frames, markers, hmm, workdir, min_bit, cpu)
+                        ns, rows = _search_batch(frames, markers, contig_nt, hmm, workdir, min_bit, cpu)
                         n_scored += ns
                         all_rows += rows
                     except Exception as e:
                         log(f"  (find-interrupted: a batch failed, skipped: {e})")
                     n_batches += 1
-                    frames, markers, nctg = [], {}, 0
+                    frames, markers, contig_nt, nctg = [], {}, {}, 0
             if frames:
                 try:
-                    ns, rows = _search_batch(frames, markers, hmm, workdir, min_bit, cpu)
+                    ns, rows = _search_batch(frames, markers, contig_nt, hmm, workdir, min_bit, cpu)
                     n_scored += ns
                     all_rows += rows
                     n_batches += 1

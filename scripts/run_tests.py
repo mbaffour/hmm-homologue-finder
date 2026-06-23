@@ -202,6 +202,16 @@ check("find_interrupted: extend_orf spans flanking stops",
       FI.extend_orf("M*KAR*Q", 3, 4) == (3, 6, "KAR*"))
 check("find_interrupted: extend_orf with no upstream stop starts at residue 1",
       FI.extend_orf("KAR*Q", 1, 2) == (1, 4, "KAR*"))
+# aa_to_nt / stop_nt: genome coordinates + DNA that translate back (frame/strand-correct)
+from Bio.Seq import Seq as _Seq  # noqa: E402
+_g = "ATGAAATAAGGGCCC"   # + frame 0: M K * G P
+_fs, _fe, _cod = FI.aa_to_nt(_g, "+", 0, 1, 5)
+check("find_interrupted: aa_to_nt (+) coords + DNA round-trip",
+      (_fs, _fe) == (1, 15) and str(_Seq(_cod).translate()) == "MK*GP")
+check("find_interrupted: aa_to_nt (-) gives the reverse-complement frame DNA",
+      str(_Seq(FI.aa_to_nt(_g, "-", 0, 1, 5)[2]).translate())
+      == str(_Seq(_g).reverse_complement().translate()))
+check("find_interrupted: stop_nt (+) points at the stop codon", FI.stop_nt(_g, "+", 0, 3) == 7)
 
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
