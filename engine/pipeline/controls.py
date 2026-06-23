@@ -444,6 +444,155 @@ class ControlReport:
     def false_positive_rate(self, threshold: Optional[float] = None) -> float:
         return round(1.0 - self.specificity(threshold), 4)
 
+    # ---- ROC / threshold calibration (advisory) -----------------------------
+
+    _UNDETECTED = 0.0  # a sequence with no hit carries 0 bits (the natural noise floor)
+
+    def _score_vectors(self):
+        """Full per-sequence bit-score vectors for positives and negatives.
+
+        hmmsearch only lists sequences passing the (lenient) e-value, so a control
+        set's ``scores`` list is shorter than its ``n_seqs``; the undetected
+        sequences are filled with a below-threshold sentinel so they count as
+        negatives at every real cutoff (matching how sensitivity()/specificity()
+        divide by n_seqs, not len(scores))."""
+        def vec(results):
+            v = []
+            for r in results:
+                scores = [float(s) for s in r.get("scores", [])]
+                v.extend(scores)
+                missing = max(0, int(r.get("n_seqs", len(scores))) - len(scores))
+                v.extend([self._UNDETECTED] * missing)
+            return v
+        return vec(self.positive_results()), vec(self.negative_results())
+
+    def roc(self) -> dict:
+        """ROC over positive (seed self-test) vs negative bit-score distributions:
+        exact AUC (Mann-Whitney) + the Youden's-J optimal cutoff. ADVISORY only —
+        the pipeline keeps its fixed strict/moderate tiers; this just reports
+        whether 45 is near the calibrated optimum. {} if either side is empty."""
+        import bisect
+        pos, neg = self._score_vectors()
+        npos, nneg = len(pos), len(neg)
+        if npos == 0 or nneg == 0:
+            return {}
+        # Exact AUC = P(pos>neg) + 0.5 P(pos==neg) = Mann-Whitney U / (npos*nneg).
+        negs = sorted(neg)
+        wins = ties = 0
+        for p in pos:
+            wins += bisect.bisect_left(negs, p)
+            ties += bisect.bisect_right(negs, p) - bisect.bisect_left(negs, p)
+        auc = (wins + 0.5 * ties) / (npos * nneg)
+        # Youden's J over candidate cutoffs (all observed scores incl. the 0-bit
+        # noise floor of undetected sequences, + midpoints + bounds), so a clean
+        # separation gap above the floor yields a sensible mid-gap optimum.
+        finite = sorted(set(pos + neg))
+        cands = [(finite[0] - 1.0) if finite else 0.0]
+        for i, s in enumerate(finite):
+            cands.append(s)
+            if i + 1 < len(finite):
+                cands.append((s + finite[i + 1]) / 2.0)
+        cands.append((finite[-1] + 1.0) if finite else 1.0)
+
+        def _tpr_fpr(t):
+            tp = sum(1 for s in pos if s >= t)
+            fp = sum(1 for s in neg if s >= t)
+            return tp / npos, fp / nneg
+
+        best_j, jmax_ts = -2.0, []
+        for t in sorted(set(cands)):
+            tpr, fpr = _tpr_fpr(t)
+            j = tpr - fpr
+            if j > best_j + 1e-9:
+                best_j, jmax_ts = j, [t]
+            elif abs(j - best_j) <= 1e-9:
+                jmax_ts.append(t)
+        # Many cutoffs can tie for max J (e.g. a clean separation gap). Pick the
+        # most ROBUST one: the threshold furthest from any observed score (maximum
+        # margin) — under clean separation this is the midpoint of the gap. Ties
+        # resolve toward the lower threshold.
+        if jmax_ts:
+            def _margin(t):
+                i = bisect.bisect_left(finite, t)
+                d = []
+                if i < len(finite):
+                    d.append(abs(finite[i] - t))
+                if i > 0:
+                    d.append(abs(t - finite[i - 1]))
+                return min(d) if d else 0.0
+            best_t = max(jmax_ts, key=lambda t: (_margin(t), -t))
+        else:
+            best_t = self.strict_threshold
+        tpr_opt, fpr_opt = _tpr_fpr(best_t)
+        return {
+            "auc": round(auc, 4),
+            "optimal_threshold": round(best_t, 2),
+            "youden_j": round(best_j, 4),
+            "sensitivity_at_optimum": round(tpr_opt, 4),
+            "specificity_at_optimum": round(1.0 - fpr_opt, 4),
+            "threshold_method": "Youden's J",
+            "n_positive": npos,
+            "n_negative": nneg,
+            "separable": bool(best_j >= 0.999),
+            "strict_threshold": self.strict_threshold,
+        }
+
+    def plot_roc(self, out_dir: Path) -> list:
+        """Write roc_curve.{png,svg,pdf} in the house style. [] if matplotlib is
+        absent or a side is empty. Never raises."""
+        try:
+            roc = self.roc()
+            if not roc:
+                return []
+            import matplotlib
+            matplotlib.use("Agg")
+            matplotlib.rcParams["svg.fonttype"] = "none"
+            matplotlib.rcParams["pdf.fonttype"] = 42
+            import matplotlib.pyplot as plt
+
+            pos, neg = self._score_vectors()
+            npos, nneg = len(pos), len(neg)
+
+            def _pt(t):
+                tp = sum(1 for s in pos if s >= t)
+                fp = sum(1 for s in neg if s >= t)
+                return fp / nneg, tp / npos
+
+            finite = sorted(set(pos + neg), reverse=True)
+            cutoffs = [(finite[0] + 1.0) if finite else 1.0] + finite + [(finite[-1] - 1.0) if finite else 0.0]
+            xs, ys = zip(*[_pt(t) for t in cutoffs]) if cutoffs else ([0, 1], [0, 1])
+
+            out_dir = Path(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            fig, ax = plt.subplots(figsize=(4.7, 4.5))
+            ax.plot([0, 1], [0, 1], ls="--", lw=0.8, color="#bbbbbb")
+            ax.plot(xs, ys, color="#4C72B0", lw=1.8)
+            sx, sy = _pt(self.strict_threshold)
+            ox, oy = _pt(roc["optimal_threshold"])
+            ax.scatter([sx], [sy], color="#C44E52", s=30, zorder=5,
+                       label=f"strict bit {self.strict_threshold:g}")
+            ax.scatter([ox], [oy], color="#55A868", s=30, zorder=5,
+                       label=f"Youden opt {roc['optimal_threshold']:g}")
+            ax.set_xlabel("False-positive rate (1 - specificity)", fontsize=9)
+            ax.set_ylabel("True-positive rate (sensitivity)", fontsize=9)
+            ax.set_title(f"Threshold-calibration ROC (AUC = {roc['auc']:.3f})",
+                         fontsize=10, fontweight="bold")
+            ax.set_xlim(-0.02, 1.02)
+            ax.set_ylim(-0.02, 1.02)
+            ax.legend(fontsize=7, loc="lower right")
+            for sp in ("top", "right"):
+                ax.spines[sp].set_visible(False)
+            fig.tight_layout()
+            made = []
+            for ext in ("png", "svg", "pdf"):
+                p = out_dir / f"roc_curve.{ext}"
+                fig.savefig(p, dpi=300 if ext == "png" else None, bbox_inches="tight")
+                made.append(str(p))
+            plt.close(fig)
+            return made
+        except Exception:
+            return []
+
     def summary(self) -> dict:
         """Return a compact summary dict for the UI.
 
@@ -481,6 +630,10 @@ class ControlReport:
             "sensitivity_strict":   sens,
             "sensitivity_moderate": self.sensitivity(self.moderate_threshold),
             "specificity_strict":   spec,
+            # Advisory ROC calibration (AUC + Youden's-J optimal cutoff). Does NOT
+            # change the fixed strict/moderate tiers — it reports whether the strict
+            # bit threshold sits near the calibrated optimum.
+            "roc":                  self.roc(),
             "results":              self.results,
         }
 

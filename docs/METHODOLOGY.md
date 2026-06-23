@@ -95,6 +95,16 @@ Sensitivity, specificity, and false-positive rate are written to
 that hits above threshold are not an artefact of amino-acid composition or generic
 similarity to unrelated proteins. (Disable with `--no-controls`.)
 
+The positive and negative score distributions are also summarised as an **ROC
+curve** (`controls/roc_curve.{png,svg,pdf}`): the area under the curve (AUC, exact
+Mann–Whitney form) measures how cleanly the profile separates true family members
+from negatives, and the **Youden's-J optimal** bit-score cutoff (the maximum-margin
+threshold) is reported alongside the fixed strict threshold. The ROC is **advisory**
+— it shows whether the fixed strict threshold sits within the separating gap; the
+pipeline keeps the fixed strict/moderate tiers so results stay comparable across
+runs. AUC and the optimal cutoff are recorded in `run_manifest.json`
+(`threshold_calibration.roc`) and `METHODS.md`.
+
 ## 8. Reproducibility
 The whole workflow runs from a single command requiring only a seed FASTA. Tool
 versions, database URLs, access dates, and checksums are recorded in the run's

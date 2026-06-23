@@ -119,13 +119,24 @@ def generate(discovery: Path) -> Path:
             p.append(f"<p class='muted'>Iteration stopping criterion: {e(str(stop))}</p>")
         if cal:
             p.append("<div class='cards'>")
+            _roc = cal.get("roc") or {}
             for lbl, k in [("Sensitivity (seeds)", "sensitivity"),
                            ("Specificity (controls)", "specificity"),
                            ("False-positive rate", "false_positive_rate")]:
                 if k in cal:
                     p.append(f"<div class='card'><div class='l'>{e(lbl)}</div>"
                              f"<div class='v'>{e(str(cal.get(k)))}</div></div>")
+            if _roc.get("auc") is not None:
+                p.append(f"<div class='card'><div class='l'>ROC AUC</div>"
+                         f"<div class='v'>{e(str(_roc.get('auc')))}</div></div>")
+                p.append(f"<div class='card'><div class='l'>Optimal bit (Youden)</div>"
+                         f"<div class='v'>{e(str(_roc.get('optimal_threshold')))}</div></div>")
             p.append("</div>")
+            if _roc.get("auc") is not None:
+                p.append(f"<p class='muted'>ROC over {e(str(_roc.get('n_positive','?')))} positive vs "
+                         f"{e(str(_roc.get('n_negative','?')))} negative control sequences (advisory; the "
+                         f"fixed strict threshold is kept for tiering). Curve: "
+                         f"<code>controls/roc_curve.svg</code>.</p>")
             p.append(f"<p class='muted'>At the strict bit-score threshold: "
                      f"{e(str(cal.get('true_positives','?')))}/{e(str(cal.get('total_positives','?')))} "
                      f"seed sequences recovered; {e(str(cal.get('false_positives','?')))}/"

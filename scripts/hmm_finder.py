@@ -302,6 +302,14 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                   f"- Negative controls: composition-matched shuffled seeds"
                   + (" + unrelated-proteome sets" if (cs.get('n_negative_controls') or 0) > 1 else "")
                   + f" ({cs.get('n_negative_controls')} set(s)). Full detail: `controls/control_report.json`."]
+            _roc = cs.get("roc") or {}
+            if _roc:
+                L += [f"- **ROC calibration (advisory):** AUC {_roc.get('auc')} over "
+                      f"{_roc.get('n_positive')} positive vs {_roc.get('n_negative')} negative "
+                      f"control sequences. The Youden's-J optimal bit-score cutoff is "
+                      f"{_roc.get('optimal_threshold')} (sensitivity {_roc.get('sensitivity_at_optimum')}, "
+                      f"specificity {_roc.get('specificity_at_optimum')} there); the pipeline's fixed "
+                      f"strict threshold (45) is retained for tiering. See `controls/roc_curve.svg`."]
         if seed_recovery:
             sr = seed_recovery
             miss = sr.get("not_recovered_after") or []
@@ -465,10 +473,18 @@ def run_controls(hmm_path: Path, seed_faa: Path, out: Path, mode: str,
             rep.to_dataframe().to_csv(cdir / "controls_summary.csv", index=False)
         except Exception:
             pass
+        try:
+            rep.plot_roc(cdir)  # roc_curve.{png,svg,pdf} — advisory calibration figure
+        except Exception:
+            pass
         log(f"  Controls (strict bit≥{strict}): sensitivity {summary.get('sensitivity')}, "
             f"specificity {summary.get('specificity')}, FPR {summary.get('false_positive_rate')} "
             f"({summary.get('true_positives',0)}/{summary.get('total_positives',0)} seeds recovered; "
             f"{summary.get('false_positives',0)}/{summary.get('total_negatives',0)} negatives passed)")
+        _roc = summary.get("roc") or {}
+        if _roc:
+            log(f"  Calibration ROC: AUC {_roc.get('auc')}; Youden-optimal bit "
+                f"{_roc.get('optimal_threshold')} (strict threshold in use: {strict:g})")
         return summary
     except Exception as e:
         log(f"  (controls skipped: {e})")

@@ -129,6 +129,49 @@ check("package_layout: README describes a known file",
 check("package_layout: per-run README written",
       (_pk / PL.DIRS["sequences"] / PL.PER_RUN / "run1" / "README.txt").exists())
 
+# --- ROC threshold calibration (engine controls.ControlReport.roc) -----------
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+try:
+    from pipeline.controls import ControlReport  # noqa: E402
+    # Perfectly separable: positives 60-70, negatives 2-10 -> AUC 1.0, cut in the gap.
+    _sep = ControlReport([
+        {"role": "positive", "n_seqs": 5, "scores": [60.0, 62, 65, 68, 70]},
+        {"role": "negative", "n_seqs": 5, "scores": [2.0, 4, 6, 8, 10]},
+    ], 45.0, 30.0)
+    _r = _sep.roc()
+    check("ROC AUC = 1.0 for separable controls", abs(_r["auc"] - 1.0) < 1e-9)
+    check("ROC optimal cutoff falls in the separation gap (10..60)",
+          10.0 < _r["optimal_threshold"] < 60.0)
+    check("ROC sens/spec = 1.0 at the optimum",
+          _r["sensitivity_at_optimum"] == 1.0 and _r["specificity_at_optimum"] == 1.0)
+    # Undetected negatives (n_seqs > len(scores)) must count as below-threshold.
+    _pad = ControlReport([
+        {"role": "positive", "n_seqs": 3, "scores": [50.0, 55, 60]},
+        {"role": "negative", "n_seqs": 100, "scores": [40.0]},  # 99 undetected
+    ], 45.0, 30.0)
+    check("ROC pads undetected negatives (AUC = 1.0)", abs(_pad.roc()["auc"] - 1.0) < 1e-9)
+    # All negatives undetected (the real gp75 case): noise floor is 0 bits, so the
+    # max-margin optimum is mid-way between 0 and the lowest positive.
+    _none = ControlReport([
+        {"role": "positive", "n_seqs": 2, "scores": [60.0, 70.0]},
+        {"role": "negative", "n_seqs": 10, "scores": []},  # nothing hit
+    ], 45.0, 30.0)
+    _rn = _none.roc()
+    check("ROC all-undetected negatives -> AUC 1.0", abs(_rn["auc"] - 1.0) < 1e-9)
+    check("ROC all-undetected optimum is mid-gap (0..60), not min_pos-1",
+          25.0 < _rn["optimal_threshold"] < 35.0)
+    # Identical distributions -> AUC ~ 0.5 (no discrimination).
+    _ovl = ControlReport([
+        {"role": "positive", "n_seqs": 4, "scores": [20.0, 30, 40, 50]},
+        {"role": "negative", "n_seqs": 4, "scores": [20.0, 30, 40, 50]},
+    ], 45.0, 30.0)
+    check("ROC AUC ~ 0.5 for identical distributions", abs(_ovl.roc()["auc"] - 0.5) < 1e-9)
+    check("summary() carries the advisory roc block",
+          isinstance(_sep.summary().get("roc", {}).get("auc"), float))
+except Exception as _e:
+    check(f"ROC calibration import/compute failed: {_e}", False)
+
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
 dna = td / "x.fna"
