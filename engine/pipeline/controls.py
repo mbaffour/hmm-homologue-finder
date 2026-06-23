@@ -461,7 +461,11 @@ class ControlReport:
             for r in results:
                 scores = [float(s) for s in r.get("scores", [])]
                 v.extend(scores)
-                missing = max(0, int(r.get("n_seqs", len(scores))) - len(scores))
+                # n_seqs may be absent OR present-but-None (the builtin catalogue
+                # uses None); both fall back to the detected count.
+                n = r.get("n_seqs")
+                n = len(scores) if n is None else int(n)
+                missing = max(0, n - len(scores))
                 v.extend([self._UNDETECTED] * missing)
             return v
         return vec(self.positive_results()), vec(self.negative_results())

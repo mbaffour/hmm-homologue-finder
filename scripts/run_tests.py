@@ -169,6 +169,12 @@ try:
     check("ROC AUC ~ 0.5 for identical distributions", abs(_ovl.roc()["auc"] - 0.5) < 1e-9)
     check("summary() carries the advisory roc block",
           isinstance(_sep.summary().get("roc", {}).get("auc"), float))
+    # n_seqs present-but-None (the builtin control catalogue uses None) must not crash.
+    _noneN = ControlReport([
+        {"role": "positive", "n_seqs": None, "scores": [60.0, 70.0]},
+        {"role": "negative", "n_seqs": None, "scores": [5.0, 8.0]},
+    ], 45.0, 30.0)
+    check("ROC tolerates n_seqs=None (no TypeError)", abs(_noneN.roc()["auc"] - 1.0) < 1e-9)
 except Exception as _e:
     check(f"ROC calibration import/compute failed: {_e}", False)
 
