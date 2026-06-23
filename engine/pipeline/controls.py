@@ -446,7 +446,11 @@ class ControlReport:
 
     # ---- ROC / threshold calibration (advisory) -----------------------------
 
-    _UNDETECTED = 0.0  # a sequence with no hit carries 0 bits (the natural noise floor)
+    # A sequence with no reported hit ranks below ANY detected score (use -inf, so
+    # AUC stays correct even when a weak hit's full-sequence bit score is slightly
+    # negative — possible at the lenient control e-value). Threshold candidates use a
+    # finite noise floor instead (see roc()).
+    _UNDETECTED = float("-inf")
 
     def _score_vectors(self):
         """Full per-sequence bit-score vectors for positives and negatives.
@@ -481,22 +485,27 @@ class ControlReport:
         if npos == 0 or nneg == 0:
             return {}
         # Exact AUC = P(pos>neg) + 0.5 P(pos==neg) = Mann-Whitney U / (npos*nneg).
+        # Undetected (-inf) sequences rank below every detection, regardless of sign.
         negs = sorted(neg)
         wins = ties = 0
         for p in pos:
-            wins += bisect.bisect_left(negs, p)
-            ties += bisect.bisect_right(negs, p) - bisect.bisect_left(negs, p)
+            lo = bisect.bisect_left(negs, p)
+            wins += lo
+            ties += bisect.bisect_right(negs, p) - lo
         auc = (wins + 0.5 * ties) / (npos * nneg)
-        # Youden's J over candidate cutoffs (all observed scores incl. the 0-bit
-        # noise floor of undetected sequences, + midpoints + bounds), so a clean
-        # separation gap above the floor yields a sensible mid-gap optimum.
-        finite = sorted(set(pos + neg))
-        cands = [(finite[0] - 1.0) if finite else 0.0]
-        for i, s in enumerate(finite):
+        # Youden's J over candidate cutoffs built from the DETECTED (finite) scores
+        # plus a finite noise floor (0 bits, or just below the lowest negative score
+        # if any are negative) + midpoints + bounds, so a clean separation gap above
+        # the floor yields a sensible mid-gap optimum (undetected -inf are excluded).
+        det = sorted({s for s in pos + neg if s != self._UNDETECTED})
+        floor = 0.0 if (not det or det[0] >= 0.0) else det[0] - 1.0
+        base = sorted(set(det) | {floor})
+        cands = [base[0] - 1.0]
+        for i, s in enumerate(base):
             cands.append(s)
-            if i + 1 < len(finite):
-                cands.append((s + finite[i + 1]) / 2.0)
-        cands.append((finite[-1] + 1.0) if finite else 1.0)
+            if i + 1 < len(base):
+                cands.append((s + base[i + 1]) / 2.0)
+        cands.append(base[-1] + 1.0)
 
         def _tpr_fpr(t):
             tp = sum(1 for s in pos if s >= t)
@@ -517,12 +526,12 @@ class ControlReport:
         # resolve toward the lower threshold.
         if jmax_ts:
             def _margin(t):
-                i = bisect.bisect_left(finite, t)
+                i = bisect.bisect_left(base, t)
                 d = []
-                if i < len(finite):
-                    d.append(abs(finite[i] - t))
+                if i < len(base):
+                    d.append(abs(base[i] - t))
                 if i > 0:
-                    d.append(abs(t - finite[i - 1]))
+                    d.append(abs(t - base[i - 1]))
                 return min(d) if d else 0.0
             best_t = max(jmax_ts, key=lambda t: (_margin(t), -t))
         else:
@@ -562,9 +571,13 @@ class ControlReport:
                 fp = sum(1 for s in neg if s >= t)
                 return fp / nneg, tp / npos
 
-            finite = sorted(set(pos + neg), reverse=True)
-            cutoffs = [(finite[0] + 1.0) if finite else 1.0] + finite + [(finite[-1] - 1.0) if finite else 0.0]
-            xs, ys = zip(*[_pt(t) for t in cutoffs]) if cutoffs else ([0, 1], [0, 1])
+            # Sweep over DETECTED (finite) scores + a finite noise floor, high→low;
+            # undetected (-inf) sequences sit below every finite cutoff.
+            det = sorted({s for s in pos + neg if s != self._UNDETECTED}, reverse=True)
+            floor = 0.0 if (not det or det[-1] >= 0.0) else det[-1] - 1.0
+            base = sorted(set(det) | {floor}, reverse=True)
+            cutoffs = [base[0] + 1.0] + base + [base[-1] - 1.0]
+            xs, ys = zip(*[_pt(t) for t in cutoffs])
 
             out_dir = Path(out_dir)
             out_dir.mkdir(parents=True, exist_ok=True)

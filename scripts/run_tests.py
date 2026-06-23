@@ -175,6 +175,14 @@ try:
         {"role": "negative", "n_seqs": None, "scores": [5.0, 8.0]},
     ], 45.0, 30.0)
     check("ROC tolerates n_seqs=None (no TypeError)", abs(_noneN.roc()["auc"] - 1.0) < 1e-9)
+    # A DETECTED hit with a (rare) negative bit score must still rank above an
+    # UNDETECTED sequence — undetected is -inf, not a 0.0 floor that would outrank it.
+    _negbit = ControlReport([
+        {"role": "positive", "n_seqs": 2, "scores": [-2.0, 50.0]},
+        {"role": "negative", "n_seqs": 3, "scores": []},  # all undetected
+    ], 45.0, 30.0)
+    check("ROC: undetected ranks below a negative-scoring detection (AUC=1.0)",
+          abs(_negbit.roc()["auc"] - 1.0) < 1e-9)
 except Exception as _e:
     check(f"ROC calibration import/compute failed: {_e}", False)
 
