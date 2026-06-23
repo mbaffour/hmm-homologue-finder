@@ -79,85 +79,110 @@ def _frames(seq: str):
                 yield strand, frame, search, marker
 
 
-def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=print) -> dict:
-    tmp = Path(tempfile.mkdtemp(prefix="interrupted_"))
-    search_faa = tmp / "readthrough_search.faa"
-    marker_faa = tmp / "readthrough_marker.faa"
-    n_frames = 0
-    # Pass 1: stream contigs -> read-through frames (search + marker), low memory.
-    with open_maybe_gz(genomes) as fh, open(search_faa, "w") as sf, open(marker_faa, "w") as mf:
-        for rec in SeqIO.parse(fh, "fasta"):
-            cid = rec.id
-            for strand, frame, search, marker in _frames(str(rec.seq)):
-                name = f"{cid}__{strand}{frame}"
-                sf.write(f">{name}\n{search}\n")
-                mf.write(f">{name}\n{marker}\n")
-                n_frames += 1
-    log(f"  read-through: {n_frames} frames written; searching with the family HMM…")
-    # hmmsearch the family HMM against the read-through frames.
-    domtbl = tmp / "hits.domtbl"
-    try:
-        subprocess.run(["hmmsearch", "--noali", "--cpu", str(cpu), "--domtblout", str(domtbl),
-                        str(hmm), str(search_faa)], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception as e:
-        log(f"  (find-interrupted: hmmsearch failed: {e})")
-        return {"error": str(e)}
-    # Index markers so we only load the (few) sequences that actually hit.
-    marker_idx = SeqIO.index(str(marker_faa), "fasta")
-    rows, n_total, n_interrupted = [], 0, 0
-    for ln in domtbl.read_text(errors="replace").splitlines():
+BATCH_CONTIGS = 500   # search this many contigs per hmmsearch call (bounds temp + memory)
+ROW_COLS = ["contig", "strand", "frame", "env_from_aa", "env_to_aa", "domain_aa_len",
+            "internal_stops", "stop_aa_positions", "domain_bit_score", "i_evalue",
+            "domain_aa_with_stops"]
+
+
+def _search_batch(frames: list, markers: dict, hmm: Path, workdir: Path,
+                  min_bit: float, cpu: int) -> tuple[int, list]:
+    """hmmsearch one batch of (name, search_aa); return (n_scored, interrupted_rows).
+    markers maps name -> marker_aa (with '*') for the SAME batch (kept small)."""
+    import shutil
+    sfa = workdir / "batch.faa"
+    with open(sfa, "w") as f:
+        for name, search in frames:
+            f.write(f">{name}\n{search}\n")
+    dt = workdir / "batch.domtbl"
+    subprocess.run(["hmmsearch", "--noali", "--cpu", str(cpu), "--domtblout", str(dt),
+                    str(hmm), str(sfa)], check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    n_scored, rows = 0, []
+    for ln in dt.read_text(errors="replace").splitlines():
         if ln.startswith("#") or not ln.strip():
             continue
         p = ln.split()
         if len(p) < 23:
             continue
         try:
-            name = p[0]
-            dom_bits = float(p[13])
-            i_eval = float(p[12])
+            name, dom_bits, i_eval = p[0], float(p[13]), float(p[12])
             env_from, env_to = int(p[19]), int(p[20])
         except (ValueError, IndexError):
             continue
         if dom_bits < min_bit:
             continue
-        n_total += 1
-        marker = str(marker_idx[name].seq) if name in marker_idx else ""
+        n_scored += 1
+        marker = markers.get(name, "")
         n_stops, positions = count_envelope_stops(marker, env_from, env_to)
         if n_stops < 1:
             continue
-        n_interrupted += 1
         contig, sf_tag = name.rsplit("__", 1)
-        strand, frame = sf_tag[0], sf_tag[1]
-        dom_aa = marker[env_from - 1:env_to]
         rows.append({
-            "contig": contig, "strand": strand, "frame": frame,
+            "contig": contig, "strand": sf_tag[0], "frame": sf_tag[1],
             "env_from_aa": env_from, "env_to_aa": env_to,
             "domain_aa_len": env_to - env_from + 1,
             "internal_stops": n_stops,
             "stop_aa_positions": ";".join(str(x) for x in positions),
             "domain_bit_score": round(dom_bits, 1),
             "i_evalue": f"{i_eval:.2g}",
-            "domain_aa_with_stops": dom_aa,
+            "domain_aa_with_stops": marker[env_from - 1:env_to],
         })
-    marker_idx.close()
-    rows.sort(key=lambda r: -r["domain_bit_score"])
+    sfa.unlink(missing_ok=True)
+    dt.unlink(missing_ok=True)
+    return n_scored, rows
+
+
+def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=print) -> dict:
+    """Batched read-through scan — streams the DB in BATCH_CONTIGS-sized chunks so a
+    huge nucleotide DB never produces one giant temp file (which abort hmmsearch).
+    Temp lives next to the output (spacious), not /tmp."""
     import csv
-    cols = ["contig", "strand", "frame", "env_from_aa", "env_to_aa", "domain_aa_len",
-            "internal_stops", "stop_aa_positions", "domain_bit_score", "i_evalue",
-            "domain_aa_with_stops"]
+    import shutil
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    base = out.parent if out.parent.exists() else Path(".")
+    workdir = Path(tempfile.mkdtemp(prefix="interrupted_", dir=str(base)))
+    all_rows, n_scored, n_batches, n_frames = [], 0, 0, 0
+    frames, markers, nctg = [], {}, 0
+    try:
+        with open_maybe_gz(genomes) as fh:
+            for rec in SeqIO.parse(fh, "fasta"):
+                for strand, frame, search, marker in _frames(str(rec.seq)):
+                    name = f"{rec.id}__{strand}{frame}"
+                    frames.append((name, search))
+                    markers[name] = marker
+                    n_frames += 1
+                nctg += 1
+                if nctg >= BATCH_CONTIGS:
+                    try:
+                        ns, rows = _search_batch(frames, markers, hmm, workdir, min_bit, cpu)
+                        n_scored += ns
+                        all_rows += rows
+                    except Exception as e:
+                        log(f"  (find-interrupted: a batch failed, skipped: {e})")
+                    n_batches += 1
+                    frames, markers, nctg = [], {}, 0
+            if frames:
+                try:
+                    ns, rows = _search_batch(frames, markers, hmm, workdir, min_bit, cpu)
+                    n_scored += ns
+                    all_rows += rows
+                    n_batches += 1
+                except Exception as e:
+                    log(f"  (find-interrupted: final batch failed, skipped: {e})")
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    log(f"  read-through: {n_frames} frames in {n_batches} batch(es); "
+        f"{n_scored} matches ≥{min_bit} bits scored")
+    all_rows.sort(key=lambda r: -r["domain_bit_score"])
     with open(out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=cols, delimiter="\t")
+        w = csv.DictWriter(f, fieldnames=ROW_COLS, delimiter="\t")
         w.writeheader()
-        w.writerows(rows)
-    import shutil
-    shutil.rmtree(tmp, ignore_errors=True)
-    summary = {"matches_scored": n_total, "interrupted_candidates": n_interrupted, "out": str(out)}
-    log(f"  find-interrupted: {n_total} read-through matches ≥{min_bit} bits; "
-        f"{n_interrupted} carry an internal stop (interrupted candidates) -> {out.name}")
-    return summary
+        w.writerows(all_rows)
+    log(f"  find-interrupted: {len(all_rows)} match(es) carry an internal stop "
+        f"(interrupted candidates) -> {out.name}")
+    return {"matches_scored": n_scored, "interrupted_candidates": len(all_rows), "out": str(out)}
 
 
 def main() -> None:
