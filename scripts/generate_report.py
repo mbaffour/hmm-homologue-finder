@@ -27,6 +27,14 @@ def _read_csv(p: Path) -> list[dict]:
         return []
 
 
+def _read_tsv(p: Path) -> list[dict]:
+    try:
+        with open(p, newline="") as f:
+            return list(csv.DictReader(f, delimiter="\t"))
+    except Exception:
+        return []
+
+
 def _b64(p: Path) -> str:
     try:
         return base64.b64encode(p.read_bytes()).decode()
@@ -149,6 +157,7 @@ def generate(discovery: Path) -> Path:
                       ("Per-run summary (CSV)", "hit_summary.csv"),
                       ("Database provenance (CSV)", "database_summary.csv"),
                       ("Methods", "METHODS.md"),
+                      ("Interrupted/overprinted homologs (TSV)", "interrupted_homologs.tsv"),
                       ("Threshold calibration (JSON)", "controls/control_report.json"),
                       ("Alignment figure (SVG)", "downstream/tree/alignment_figure.svg"),
                       ("Alignment (FASTA)", "downstream/tree/hits.aln.faa"),
@@ -197,6 +206,37 @@ def generate(discovery: Path) -> Path:
         p.append("</table>")
         if len(paper) > 25:
             p.append(f"<p class='muted'>… and {len(paper) - 25} more in paper_main_table.csv</p>")
+
+    # Stop-interrupted / overprinted homologs (only present with --find-interrupted).
+    interrupted = manifest.get("interrupted_homologs", {}) or {}
+    irows = _read_tsv(discovery / "interrupted_homologs.tsv")
+    if interrupted.get("interrupted_candidates") or irows:
+        n = interrupted.get("interrupted_candidates", len(irows))
+        p.append("<h2>Stop-interrupted / overprinted homologs</h2>")
+        note = (f"Read-through translation of the searched nucleotide databases (stop codons "
+                f"retained, not broken on) scanned with the family HMM: <b>{e(str(n))}</b> "
+                f"match(es) carry &ge;1 internal stop within the domain — candidate homologs "
+                f"interrupted by a premature stop (e.g. overprinted genes whose nonsense "
+                f"mutation is silent in an overlapping reading frame). The normal stop-to-stop "
+                f"search cannot recover these.")
+        if interrupted.get("threshold_basis"):
+            note += (f" Reporting threshold {e(str(interrupted.get('min_bit')))} bits "
+                     f"[{e(str(interrupted.get('threshold_basis')))}].")
+        p.append(f"<p class='muted'>{note}</p>")
+        if irows:
+            show = [c for c in ("contig", "strand", "frame", "domain_nt_start",
+                                "domain_nt_end", "domain_aa_len", "internal_stops",
+                                "stop_nt_positions", "domain_bit_score", "i_evalue")
+                    if c in irows[0]]
+            p.append("<table><tr>")
+            p += [f"<th>{e(c)}</th>" for c in show]
+            p.append("</tr>")
+            for r in irows[:25]:
+                p.append("<tr>" + "".join(f"<td>{e(str(r.get(c, '')))}</td>" for c in show) + "</tr>")
+            p.append("</table>")
+            if len(irows) > 25:
+                p.append(f"<p class='muted'>… and {len(irows) - 25} more in "
+                         f"interrupted_homologs.tsv</p>")
 
     tv = manifest.get("tool_versions", {})
     if tv:

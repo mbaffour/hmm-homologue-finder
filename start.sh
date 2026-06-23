@@ -82,6 +82,12 @@ if [ "$MODE" = "2" ]; then
   echo
   PG="$(ask '  strict mode — also require Prodigal coding-locus overlap? (y/N)' 'N')"
   case "$PG" in y|Y|yes|YES) ARGS+=(--prodigal-gate) ;; esac
+  echo
+  echo "  Stop-interrupted / overprinted homologs: a read-through scan (stops kept) that"
+  echo "  finds homologs broken by a premature stop the normal search can't see. Slower"
+  echo "  (re-scans each nucleotide DB). Writes interrupted_homologs.tsv."
+  FI="$(ask '  also scan for stop-interrupted / overprinted homologs? (y/N)' 'N')"
+  case "$FI" in y|Y|yes|YES) ARGS+=(--find-interrupted) ;; esac
 
   echo
   echo "Step 4 — figures"

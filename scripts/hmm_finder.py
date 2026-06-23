@@ -332,6 +332,10 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                   f"match(es) carry ≥1 internal stop within the domain — candidate homologs interrupted by "
                   f"a premature stop (e.g. overprinted genes whose nonsense mutation is silent in an "
                   f"overlapping reading frame). The stop-to-stop search cannot recover these."]
+            if ic.get("threshold_basis"):
+                L += [f"- Reporting threshold: {ic.get('min_bit')} bits "
+                      f"[{ic.get('threshold_basis')}] — never looser than the run's own "
+                      f"evidence bar, raised to the family-calibrated noise floor."]
         if tool_versions:
             L += ["", "## Tool versions"]
             for t, info in sorted(tool_versions.items()):
@@ -502,10 +506,17 @@ def run_controls(hmm_path: Path, seed_faa: Path, out: Path, mode: str,
 
 
 def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
-                         cpu, log) -> dict:
+                         cpu, log, control_summary: dict | None = None) -> dict:
     """Read-through scan of the searched NUCLEOTIDE databases for homologs that are
     interrupted by a premature stop codon (e.g. overprinted genes). Writes
-    out/interrupted_homologs.tsv and returns a summary. Never raises."""
+    out/interrupted_homologs.tsv and returns a summary. Never raises.
+
+    Reporting threshold is family-calibrated, never looser than the run's own
+    evidence bar: the read-through scan covers a much larger, noisier space (every
+    frame, stops retained, windowed) than the stop-to-stop search, so we floor the
+    bit score at the validation lenient bound (30) and RAISE it to the family's ROC
+    Youden-optimal cutoff when controls were run — only ever tightening. With no
+    calibration (--no-controls) it falls back to the floor."""
     try:
         from find_interrupted import _run as _fi  # noqa: E402  (sibling)
     except Exception as e:
@@ -530,15 +541,25 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
     if not targets:
         log("  (find-interrupted: no cached nucleotide DBs from this run to scan)")
         return {}
+    # Family-calibrated reporting floor (see docstring): max(30, ROC-Youden).
+    FLOOR = 30.0
+    _roc = (control_summary or {}).get("roc") or {}
+    try:
+        min_bit = max(FLOOR, float(_roc.get("optimal_threshold")))
+        thr_basis = f"max(floor {FLOOR:g}, ROC-Youden {float(_roc['optimal_threshold']):g})"
+    except (TypeError, ValueError):
+        min_bit = FLOOR
+        thr_basis = f"floor {FLOOR:g} bits (no ROC calibration available)"
     log(f"Read-through scan for interrupted/overprinted homologs "
-        f"({len(targets)} nucleotide DB file(s))…")
+        f"({len(targets)} nucleotide DB file(s)); reporting threshold {min_bit:g} bits "
+        f"[{thr_basis}]…")
     import csv as _csv
     out_tsv = out / "interrupted_homologs.tsv"
     all_rows, scored = [], 0
     for fa in targets:
         tmp = out / f".interrupted_{fa.stem}.part.tsv"
         try:
-            s = _fi(fa, Path(hmm), tmp, 30.0, int(cpu), log)
+            s = _fi(fa, Path(hmm), tmp, min_bit, int(cpu), log)
             scored += s.get("matches_scored", 0)
             if tmp.exists():
                 all_rows += list(_csv.DictReader(open(tmp), delimiter="\t"))
@@ -551,6 +572,7 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
             w = _csv.DictWriter(f, fieldnames=list(all_rows[0].keys()), delimiter="\t")
             w.writeheader(); w.writerows(all_rows)
     summary = {"matches_scored": scored, "interrupted_candidates": len(all_rows),
+               "min_bit": min_bit, "threshold_basis": thr_basis,
                "tsv": str(out_tsv) if all_rows else ""}
     log(f"  interrupted-homolog scan: {len(all_rows)} candidate(s) carrying an internal stop"
         + (f" -> {out_tsv.name}" if all_rows else " (none found)"))
@@ -978,7 +1000,7 @@ def main() -> None:
     if getattr(args, "find_interrupted", False) and not args.smoke:
         interrupted_summary = run_find_interrupted(
             out, rbest / "hmm" / "benchmark_profile.hmm", args.db_cache,
-            args.databases, args.cpu, log)
+            args.databases, args.cpu, log, control_summary)
 
     # Consolidated methodology / reproducibility record at the run root.
     write_methods_log(out, args, fasta, label, args.databases, iter_hits,
