@@ -138,6 +138,23 @@ fi
 command -v clinker >/dev/null 2>&1 || pip install clinker
 python -c "import Bio, pandas" 2>/dev/null || pip install biopython pandas
 
+# Optional: headless browser for STATIC clinker figures (PNG export of clinker's
+# JS-rendered plot). Entirely optional and non-fatal — the pipeline runs fine
+# without it (static SVG/PNG/PDF synteny panels are produced regardless).
+if python -c "import playwright" 2>/dev/null; then
+  echo "Setting up the headless browser for static clinker figures (optional)…"
+  python -m playwright install chromium >/dev/null 2>&1 || echo "  (chromium download skipped)"
+  # chromium needs some OS libraries, installed via apt/dnf (root). Try unattended;
+  # if sudo needs a password, print the one-time command instead of blocking setup.
+  if sudo -n "$(command -v python)" -m playwright install-deps chromium >/dev/null 2>&1; then
+    echo "  static clinker enabled (browser + OS libs installed)."
+  else
+    echo "  Static clinker PNGs need chromium OS libraries (one-time, needs your password):"
+    echo "      sudo \$(command -v python) -m playwright install-deps chromium"
+    echo "  (Skipping for now — the static synteny panels in downstream/synteny/ are produced regardless.)"
+  fi
+fi
+
 # 4. final report
 echo ""
 python3 "$(dirname "$0")/scripts/check_tools.py"
