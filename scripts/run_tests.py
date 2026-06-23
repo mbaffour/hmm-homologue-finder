@@ -212,6 +212,17 @@ check("find_interrupted: aa_to_nt (-) gives the reverse-complement frame DNA",
       str(_Seq(FI.aa_to_nt(_g, "-", 0, 1, 5)[2]).translate())
       == str(_Seq(_g).reverse_complement().translate()))
 check("find_interrupted: stop_nt (+) points at the stop codon", FI.stop_nt(_g, "+", 0, 3) == 7)
+# write_aa_fastas: emit domain + full-ORF protein FASTAs with the internal stop kept '*'
+_fid = Path(tempfile.mkdtemp())
+_rows = [{"contig": "c1", "strand": "+", "frame": "0", "domain_nt_start": "1",
+          "domain_nt_end": "12", "internal_stops": "1", "stop_aa_positions": "3",
+          "domain_bit_score": "40.0", "i_evalue": "1e-10",
+          "domain_aa_with_stops": "MK*G", "full_orf_aa": "MK*GAR*"}]
+_domf, _orff = FI.write_aa_fastas(_rows, _fid / "interrupted_homologs.tsv")
+check("find_interrupted: domain FASTA keeps '*' at the internal stop",
+      _domf.name == "interrupted_homologs_domain_aa.faa" and "MK*G" in _domf.read_text())
+check("find_interrupted: full-ORF FASTA keeps the read-through ORF with stops",
+      _orff.name == "interrupted_homologs_full_orf_aa.faa" and "MK*GAR*" in _orff.read_text())
 
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())

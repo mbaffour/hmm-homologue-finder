@@ -132,6 +132,34 @@ ROW_COLS = ["contig", "strand", "frame", "domain_nt_start", "domain_nt_end",
             "domain_nt", "domain_aa_with_stops", "full_orf_aa"]
 
 
+def _fasta_header(r: dict) -> str:
+    """Descriptive, unique FASTA header for one interrupted-homolog row."""
+    return (f"{r['contig']}__{r['strand']}{r['frame']}__"
+            f"{r.get('domain_nt_start', '?')}-{r.get('domain_nt_end', '?')} "
+            f"stops={r.get('internal_stops', '?')}@{r.get('stop_aa_positions', '')} "
+            f"bit={r.get('domain_bit_score', '?')} ievalue={r.get('i_evalue', '')}")
+
+
+def write_aa_fastas(rows: list, out_tsv: Path) -> list:
+    """Write the PROTEIN sequences of the interrupted homologs beside the TSV, with
+    the internal stop(s) shown as '*':
+      <stem>_domain_aa.faa   — the HMM-matched domain ('*' at every internal stop)
+      <stem>_full_orf_aa.faa — the full read-through ORF (premature stops kept '*',
+                               terminal stop is the natural gene end)
+    Returns the two paths (always written, even if empty, so links never dangle)."""
+    stem = Path(out_tsv).with_suffix("")          # strip .tsv
+    dom = Path(f"{stem}_domain_aa.faa")
+    orf = Path(f"{stem}_full_orf_aa.faa")
+    with open(dom, "w") as dh, open(orf, "w") as oh:
+        for r in rows:
+            hdr = _fasta_header(r)
+            if r.get("domain_aa_with_stops"):
+                dh.write(f">{hdr}\n{r['domain_aa_with_stops']}\n")
+            if r.get("full_orf_aa"):
+                oh.write(f">{hdr}\n{r['full_orf_aa']}\n")
+    return [dom, orf]
+
+
 def _windows(n: int):
     """Yield (offset, length) windows covering a length-n frame with WIN overlap."""
     if n <= WIN_AA:
@@ -213,7 +241,8 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
     return n_scored, rows
 
 
-def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=print) -> dict:
+def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=print,
+         emit_fasta: bool = True) -> dict:
     """Batched read-through scan — streams the DB in BATCH_CONTIGS-sized chunks so a
     huge nucleotide DB never produces one giant temp file (which abort hmmsearch).
     Temp lives next to the output (spacious), not /tmp."""
@@ -276,7 +305,13 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
         w.writerows(all_rows)
     log(f"  find-interrupted: {len(all_rows)} match(es) carry an internal stop "
         f"(interrupted candidates) -> {out.name}")
-    return {"matches_scored": n_scored, "interrupted_candidates": len(all_rows), "out": str(out)}
+    summary = {"matches_scored": n_scored, "interrupted_candidates": len(all_rows),
+               "out": str(out)}
+    if emit_fasta:
+        dom, orf = write_aa_fastas(all_rows, out)
+        summary["domain_faa"], summary["orf_faa"] = str(dom), str(orf)
+        log(f"  find-interrupted: protein sequences -> {dom.name}, {orf.name}")
+    return summary
 
 
 def main() -> None:

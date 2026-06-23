@@ -336,6 +336,11 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                 L += [f"- Reporting threshold: {ic.get('min_bit')} bits "
                       f"[{ic.get('threshold_basis')}] — never looser than the run's own "
                       f"evidence bar, raised to the family-calibrated noise floor."]
+            if ic.get("domain_faa"):
+                L += ["- Protein sequences emitted with the internal stop(s) shown as `*`: "
+                      "`interrupted_homologs_domain_aa.faa` (matched domain) and "
+                      "`interrupted_homologs_full_orf_aa.faa` (full read-through ORF, "
+                      "premature stops kept, terminal `*` = the natural gene end)."]
         if tool_versions:
             L += ["", "## Tool versions"]
             for t, info in sorted(tool_versions.items()):
@@ -559,24 +564,59 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
     for fa in targets:
         tmp = out / f".interrupted_{fa.stem}.part.tsv"
         try:
-            s = _fi(fa, Path(hmm), tmp, min_bit, int(cpu), log)
+            # emit_fasta=False: per-DB temp runs only produce partial TSVs; the
+            # protein FASTAs are written once below, from the aggregated rows.
+            s = _fi(fa, Path(hmm), tmp, min_bit, int(cpu), log, emit_fasta=False)
             scored += s.get("matches_scored", 0)
             if tmp.exists():
                 all_rows += list(_csv.DictReader(open(tmp), delimiter="\t"))
                 tmp.unlink()
         except Exception as e:
             log(f"  (find-interrupted: {fa.name} skipped: {e})")
+    domain_faa = orf_faa = ""
     if all_rows:
         all_rows.sort(key=lambda r: -float(r.get("domain_bit_score", 0) or 0))
         with open(out_tsv, "w", newline="") as f:
             w = _csv.DictWriter(f, fieldnames=list(all_rows[0].keys()), delimiter="\t")
             w.writeheader(); w.writerows(all_rows)
+        # Protein sequences, internal stop(s) shown as '*' (domain + full ORF).
+        from find_interrupted import write_aa_fastas as _wfa  # noqa: E402
+        _dom, _orf = _wfa(all_rows, out_tsv)
+        domain_faa, orf_faa = str(_dom), str(_orf)
+        log(f"  interrupted-homolog proteins -> {_dom.name}, {_orf.name}")
     summary = {"matches_scored": scored, "interrupted_candidates": len(all_rows),
                "min_bit": min_bit, "threshold_basis": thr_basis,
-               "tsv": str(out_tsv) if all_rows else ""}
+               "tsv": str(out_tsv) if all_rows else "",
+               "domain_faa": domain_faa, "orf_faa": orf_faa}
     log(f"  interrupted-homolog scan: {len(all_rows)} candidate(s) carrying an internal stop"
         + (f" -> {out_tsv.name}" if all_rows else " (none found)"))
     return summary
+
+
+def run_perhit_hmm_alignment(hmm: Path, faa: Path, out_dir: Path, log) -> dict:
+    """Align every unique homolog to the family HMM (hmmalign) so each hit's match
+    to the model is explicit — match states vs insertions, not just the all-vs-all
+    MSA. Writes hits_hmmalign.sto (Stockholm) + hits_hmmalign.a2m (A2M). Non-fatal."""
+    out_dir = Path(out_dir)
+    if not (Path(hmm).exists() and Path(faa).exists()):
+        return {}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    sto = out_dir / "hits_hmmalign.sto"
+    a2m = out_dir / "hits_hmmalign.a2m"
+    try:
+        subprocess.run(["hmmalign", "--amino", "--trim", "-o", str(sto), str(hmm), str(faa)],
+                       check=True, capture_output=True, text=True)
+        try:
+            subprocess.run(["esl-reformat", "-o", str(a2m), "a2m", str(sto)],
+                           check=True, capture_output=True, text=True)
+        except Exception as e:
+            log(f"  (per-hit HMM alignment: A2M reformat skipped: {e})")
+            a2m = None
+        log(f"  per-hit HMM alignment -> {sto.name}" + (f", {a2m.name}" if a2m else ""))
+        return {"sto": str(sto), "a2m": str(a2m) if a2m else ""}
+    except Exception as e:
+        log(f"  (per-hit HMM alignment skipped: {e})")
+        return {}
 
 
 def main() -> None:
@@ -1046,6 +1086,10 @@ def main() -> None:
         "--out-dir", str(down / "tree"), "--cpu", args.cpu,
         "--hits-tsv", str(rbest / "validated" / "hits.tsv"),
         "--seeds", str(fasta)])   # place the (marked) seeds within the homolog tree
+    # Per-hit alignment to the family HMM (each hit mapped onto the model), beside
+    # the all-vs-all MSA the tree is built from.
+    run_perhit_hmm_alignment(rbest / "hmm" / "benchmark_profile.hmm",
+                             rbest / "validated" / "hits_unique_aa.faa", down / "tree", log)
 
     # --- per-run GFF3 (genome-browser tracks) --------------------------------
     log("Writing GFF3 tracks per run")
@@ -1103,8 +1147,11 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
     # Provenance + the human-facing report copied in so the package is self-contained.
     for f in ("METHODS.md", "run_manifest.json"):
         cp(out / f, pkg / f)
-    # Stop-interrupted/overprinted homolog table (only present with --find-interrupted).
+    # Stop-interrupted/overprinted homolog table + protein FASTAs (only present
+    # with --find-interrupted). The .faa keep '*' at each internal stop.
     cp(out / "interrupted_homologs.tsv", pkg / DIRS["tables"] / "interrupted_homologs.tsv")
+    for f in ("interrupted_homologs_domain_aa.faa", "interrupted_homologs_full_orf_aa.faa"):
+        cp(out / f, pkg / DIRS["sequences"] / f)
     # Publish the most refined HMM (from the canonical/most-complete run), which
     # is what the figures + paper table describe — not necessarily run1's model.
     cp(out / f"run{best_i}" / "benchmark" / "hmm" / "benchmark_profile.hmm",

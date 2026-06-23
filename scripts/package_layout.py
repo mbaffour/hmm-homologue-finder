@@ -50,6 +50,8 @@ _REGISTRY = {
             "all_hits_aa.faa": "Every validated hit, amino-acid (all iterations).",
             "all_hits_nt.fna": "Every validated hit, nucleotide (all iterations).",
             "unique_homologs_aa.faa": "One sequence per unique homolog, rich headers (organism, #organisms, #databases).",
+            "interrupted_homologs_domain_aa.faa": "(--find-interrupted) Protein of each stop-interrupted/overprinted homolog's matched domain, with every internal stop shown as '*'.",
+            "interrupted_homologs_full_orf_aa.faa": "(--find-interrupted) Full read-through ORF protein for each interrupted homolog — premature stops kept as '*', terminal '*' = the natural gene end.",
             PER_RUN: "Per-iteration sequences and the full per-hit evidence table (see per_run/README.txt).",
         },
     },

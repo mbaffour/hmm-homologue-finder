@@ -59,6 +59,39 @@ from Bio.SeqFeature import SeqFeature, FeatureLocation
 from env_paths import ensure_env_on_path  # noqa: E402  (sibling helper in scripts/)
 ensure_env_on_path()
 
+_BROWSER_WARNED = [False]
+
+
+def _html_to_png(html: Path, png: Path) -> bool:
+    """Render a clinker HTML plot to a static PNG via headless chromium (playwright),
+    when available. clinker's plot is JS-rendered (clustermap.js), so a static image
+    needs a browser. No-op + a one-time note when none is installed — the SVG/PNG/PDF
+    synteny panels from synteny_figure.py remain the primary static figures.
+    Enable with: pip install playwright && playwright install chromium."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        if not _BROWSER_WARNED[0]:
+            print("  (static clinker PNG skipped: no headless browser — enable with "
+                  "`pip install playwright && playwright install chromium`; the static "
+                  "synteny panels in downstream/synteny/ are produced regardless)")
+            _BROWSER_WARNED[0] = True
+        return False
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page(viewport={"width": 1600, "height": 1000})
+            page.goto(html.resolve().as_uri())
+            page.wait_for_timeout(2500)        # let clustermap.js draw the SVG
+            page.screenshot(path=str(png), full_page=True)
+            browser.close()
+        return png.exists() and png.stat().st_size > 1000
+    except Exception as e:
+        if not _BROWSER_WARNED[0]:
+            print(f"  (static clinker PNG skipped: {e})")
+            _BROWSER_WARNED[0] = True
+        return False
+
 FLANKS = 7  # ORFs each side of the family gene (publication default for phage neighbourhoods)
 
 
@@ -365,6 +398,7 @@ def main() -> None:
     figdir = out / "clinker_figures"
     figdir.mkdir(exist_ok=True)
     produced = {}
+    static_png = {}
     shown_counts = {}
     for cid in sorted(by_cluster):
         gbks_all = sorted(set(by_cluster[cid]))
@@ -385,6 +419,9 @@ def main() -> None:
                 shown_counts[cid] = (len(gbks), len(gbks_all))
                 note = f"showing {len(gbks)} of {len(gbks_all)}" if len(gbks) < len(gbks_all) else f"{len(gbks)} loci"
                 print(f"  cluster_{cid}: {note} -> {html.stat().st_size // 1024} KB")
+                png = figdir / f"cluster_{cid}.png"
+                if _html_to_png(html, png):
+                    static_png[cid] = png
         except Exception as e:
             print(f"  cluster_{cid}: clinker failed: {e}")
 
@@ -396,16 +433,18 @@ def main() -> None:
            "<p>The central <b>FAMILY HOMOLOGUE</b> gene is named identically in every "
            "track so clinker colours/links it consistently. Tracks are labelled by "
            "organism. Large clusters show an evenly-sampled, readable subset.</p><table>",
-           "<tr><th>Cluster</th><th>Loci shown / total</th><th>Figure</th></tr>"]
+           "<tr><th>Cluster</th><th>Loci shown / total</th><th>Interactive</th><th>Static PNG</th></tr>"]
     for cid in sorted(by_cluster):
         n = len(set(by_cluster[cid]))
         shown = shown_counts.get(cid, (0, n))[0]
         cell = f"{shown} / {n}" if cid in produced else f"&mdash; / {n}"
         link = f'<a href="clinker_figures/cluster_{cid}.html">open</a>' if cid in produced else "&mdash;"
-        idx.append(f"<tr><td>{cid}</td><td>{cell}</td><td>{link}</td></tr>")
+        spng = f'<a href="clinker_figures/cluster_{cid}.png">PNG</a>' if cid in static_png else "&mdash;"
+        idx.append(f"<tr><td>{cid}</td><td>{cell}</td><td>{link}</td><td>{spng}</td></tr>")
     idx.append("</table></body></html>")
     (out / "index.html").write_text("\n".join(idx))
-    print(f"Done. {len(produced)} clinker figures. Index: {out/'index.html'}")
+    print(f"Done. {len(produced)} clinker figures ({len(static_png)} static PNG). "
+          f"Index: {out/'index.html'}")
 
 
 if __name__ == "__main__":

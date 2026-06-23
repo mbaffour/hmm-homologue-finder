@@ -43,10 +43,14 @@ else DEF_CPU=8; fi
 
 # 1. seed FASTA
 echo
-echo "Step 1 — seed protein FASTA"
+echo "Step 1 — seed FASTA (protein, OR nucleotide CDS — auto-detected & translated)"
 echo "  Drag the file into this window, or type its path. Enter = bundled example."
 FASTA="$(resolve_path "$(ask '  seed FASTA' "$HERE/examples/example_seeds.fasta")")"
 if [ ! -f "$FASTA" ]; then echo "  !! File not found: $FASTA"; exit 1; fi
+echo "  A nucleotide CDS seed is auto-detected and translated (default genetic code 11,"
+echo "  bacterial/phage). Press Enter to accept, or set a different NCBI translation table."
+TT="$(ask '  genetic code table for a nucleotide seed' '')"
+[ -n "$TT" ] && ARGS_TT=(--trans-table "$TT") || ARGS_TT=()
 
 # 2. mode
 echo
@@ -56,6 +60,7 @@ echo "  2) Full run    — your databases, multiple iterations"
 MODE="$(ask '  choose 1 or 2' '1')"
 
 ARGS=(--fasta "$FASTA")
+[ "${#ARGS_TT[@]}" -gt 0 ] && ARGS+=("${ARGS_TT[@]}")   # nucleotide-seed genetic code, if set
 NAME="$(ask '  output label (folder name)' "$(basename "${FASTA%.*}")")"; ARGS+=(--name "$NAME")
 EMAIL="$(ask '  NCBI email for genome/protein fetch (blank = run offline)' '')"
 [ -n "$EMAIL" ] && ARGS+=(--email "$EMAIL")   # never send a placeholder address to NCBI

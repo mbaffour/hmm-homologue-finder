@@ -58,7 +58,39 @@ _CSS = (
     "border:1px solid #d4dae1;border-radius:8px;text-decoration:none;color:#1558b0;font-size:13px}"
     "img{max-width:100%;border:1px solid #e3e7ec;border-radius:8px;background:#fff}"
     ".muted{color:#6b7888;font-size:13px}"
+    ".msa{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.3;"
+    "white-space:pre;overflow-x:auto;border:1px solid #e3e7ec;border-radius:8px;background:#fff;padding:8px}"
+    ".msa .lbl{color:#6b7888;display:inline-block;width:16ch;overflow:hidden;vertical-align:bottom}"
+    ".msa .r{padding:0 .5px}"
+    ".hydro{background:#bcd6ff}.pos{background:#ffc9c9}.neg{background:#efbdff}"
+    ".polar{background:#c5efc5}.gly{background:#ffe0ad}.pro{background:#fff0a6}"
+    ".his{background:#cdddff}.tyr{background:#cdf3e8}"
 )
+
+
+def _read_fasta(p: Path) -> list:
+    """Minimal (name, sequence) FASTA reader — no Bio dependency in the report."""
+    recs, name, seq = [], None, []
+    try:
+        with open(p) as f:
+            for ln in f:
+                if ln.startswith(">"):
+                    if name is not None:
+                        recs.append((name, "".join(seq)))
+                    name, seq = ln[1:].rstrip("\n"), []
+                elif name is not None:
+                    seq.append(ln.strip())
+        if name is not None:
+            recs.append((name, "".join(seq)))
+    except Exception:
+        return []
+    return recs
+
+
+# Clustal-ish residue classes -> CSS class (for the inline coloured MSA)
+_AA_CLASS = {a: g for g, aas in {
+    "hydro": "AILMFWVC", "pos": "KR", "neg": "DE", "polar": "STNQ",
+    "gly": "G", "pro": "P", "his": "H", "tyr": "Y"}.items() for a in aas}
 
 
 def generate(discovery: Path) -> Path:
@@ -158,9 +190,13 @@ def generate(discovery: Path) -> Path:
                       ("Database provenance (CSV)", "database_summary.csv"),
                       ("Methods", "METHODS.md"),
                       ("Interrupted/overprinted homologs (TSV)", "interrupted_homologs.tsv"),
+                      ("Interrupted homolog proteins — domain (FASTA)", "interrupted_homologs_domain_aa.faa"),
+                      ("Interrupted homolog proteins — full ORF (FASTA)", "interrupted_homologs_full_orf_aa.faa"),
                       ("Threshold calibration (JSON)", "controls/control_report.json"),
                       ("Alignment figure (SVG)", "downstream/tree/alignment_figure.svg"),
                       ("Alignment (FASTA)", "downstream/tree/hits.aln.faa"),
+                      ("Per-hit HMM alignment (Stockholm)", "downstream/tree/hits_hmmalign.sto"),
+                      ("Per-hit HMM alignment (A2M)", "downstream/tree/hits_hmmalign.a2m"),
                       ("Publication synteny figures", "downstream/synteny/index.html"),
                       ("Synteny figures (clinker, interactive)", "downstream/clinker/index.html")]:
         if (discovery / href).exists():
@@ -189,6 +225,34 @@ def generate(discovery: Path) -> Path:
         if aln_b64:
             p.append(f"<img alt='coloured multiple sequence alignment' "
                      f"src='data:image/png;base64,{aln_b64}'>")
+
+    # Inline, residue-coloured MSA of the final hits (text, beyond the static figure).
+    aln_fa = discovery / "downstream" / "tree" / "hits.aln.faa"
+    if not aln_fa.exists():
+        aln_fa = discovery / "PACKAGE" / DIRS["phylo"] / "hits.aln.faa"
+    msa = _read_fasta(aln_fa)
+    if msa:
+        MAXSEQ, MAXCOL = 30, 180
+        shown = msa[:MAXSEQ]
+        ncol = max((len(s) for _, s in shown), default=0)
+        col0 = min(ncol, MAXCOL)
+        rows_html = []
+        for name, seq in shown:
+            lbl = e(name.split()[0][:16])
+            cells = []
+            for ch in seq[:col0]:
+                cls = _AA_CLASS.get(ch.upper())
+                cells.append(f"<span class='r {cls}'>{e(ch)}</span>" if cls
+                             else f"<span class='r'>{e(ch)}</span>")
+            rows_html.append(f"<div><span class='lbl' title='{e(name)}'>{lbl}</span> "
+                             + "".join(cells) + "</div>")
+        p.append("<h2>Coloured alignment (final hits)</h2>")
+        note = (f"Showing {len(shown)} of {len(msa)} hit sequences"
+                + (f" × first {col0} of {ncol} columns" if ncol > col0 else f" × {ncol} columns")
+                + " — residues coloured by class. Full MSA in <code>hits.aln.faa</code>; "
+                  "each hit aligned to the family HMM in <code>hits_hmmalign.a2m</code>.")
+        p.append(f"<p class='muted'>{note}</p>")
+        p.append("<div class='msa'>" + "".join(rows_html) + "</div>")
 
     if tree_b64:
         p.append("<h2>Phylogeny (unique homologs)</h2>")
@@ -222,6 +286,10 @@ def generate(discovery: Path) -> Path:
         if interrupted.get("threshold_basis"):
             note += (f" Reporting threshold {e(str(interrupted.get('min_bit')))} bits "
                      f"[{e(str(interrupted.get('threshold_basis')))}].")
+        if (discovery / "interrupted_homologs_domain_aa.faa").exists():
+            note += (" Protein sequences (internal stop shown as <code>*</code>) are in "
+                     "<code>interrupted_homologs_domain_aa.faa</code> (domain) and "
+                     "<code>interrupted_homologs_full_orf_aa.faa</code> (full ORF).")
         p.append(f"<p class='muted'>{note}</p>")
         if irows:
             show = [c for c in ("contig", "strand", "frame", "domain_nt_start",
