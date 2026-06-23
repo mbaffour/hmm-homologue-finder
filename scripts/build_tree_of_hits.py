@@ -5,7 +5,7 @@ build_tree_of_hits.py
 Build a maximum-likelihood phylogenetic tree of the DISCOVERED homologues
 (distinct from the seed-only tree the pipeline makes).
 
-Steps: MAFFT align -> trimAl (-gt 0.5) -> IQ-TREE (ModelFinder + 1000 UFBoot).
+Steps: MAFFT align -> trimAl (-gt 0.5) -> IQ-TREE (ModelFinder + 1000 UFBoot + 1000 SH-aLRT).
 
 INPUT  : a FASTA of unique, ORF-validated family domain proteins
          (e.g. runA/benchmark/validated/hits_unique_aa.faa)
@@ -191,8 +191,8 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
     """Render a publication tree to {stem}.svg/.png/.pdf — editable vector (Inkscape
     / Illustrator) + 300-dpi raster, on an OPAQUE WHITE background (toytree's default
     canvas is transparent → black on dark viewers). Tips are coloured by host genus
-    (first token of the organism label) with a legend, and well-supported nodes
-    (UFBoot >= 80) carry a dot. layout 'r' = rectangular, 'c' = circular. Graceful
+    (first token of the organism label) with a legend, and robustly-supported nodes
+    (SH-aLRT >= 80 AND UFBoot >= 95) carry a dot. layout 'r' = rectangular, 'c' = circular. Graceful
     if toytree/toyplot/matplotlib are absent."""
     try:
         import math
@@ -213,10 +213,26 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
         cmap = matplotlib.colormaps["tab20"].resampled(max(len(uniq), 1))
         gcol = {g: mcolors.to_hex(cmap(i)) for i, g in enumerate(uniq)}
         tip_colors = [gcol[g] for g in genera]
-        # support dots (UFBoot >= 80) on internal nodes
+        # Robust-support dots. IQ-TREE (-alrt -B) labels each internal node
+        # "SH-aLRT/UFBoot"; a split is robustly supported when SH-aLRT >= 80 AND
+        # UFBoot >= 95 (Minh et al. 2020). toytree keeps that "a/b" string in `name`
+        # (support becomes NaN). Fall back to a single value (UFBoot >= 80) for
+        # older single-measure trees.
+        names = list(tre.get_node_data("name"))
+        sups = list(tre.get_node_data("support"))
+
+        def _supported(name, sup) -> bool:
+            if isinstance(name, str):
+                m = re.match(r"^\s*([0-9.]+)\s*/\s*([0-9.]+)\s*$", name)
+                if m:
+                    return float(m.group(1)) >= 80 and float(m.group(2)) >= 95
+                if re.match(r"^[0-9.]+$", name.strip()):
+                    return float(name) >= 80
+            return isinstance(sup, (int, float)) and not math.isnan(sup) and sup >= 80
+
         sizes, ncolors = [], []
-        for v in list(tre.get_node_data("support")):
-            ok = isinstance(v, (int, float)) and not math.isnan(v) and v >= 80
+        for name, sup in zip(names, sups):
+            ok = _supported(name, sup)
             sizes.append(7 if ok else 0)
             ncolors.append("#222222" if ok else "transparent")
         if layout == "c":
@@ -233,7 +249,7 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
         try:
             entries = [(g, toyplot.marker.create(shape="o", size=11, mstyle={"fill": gcol[g]}))
                        for g in uniq]
-            entries.append(("UFBoot >= 80", toyplot.marker.create(shape="o", size=9,
+            entries.append(("SH-aLRT>=80 and UFBoot>=95", toyplot.marker.create(shape="o", size=9,
                                                                   mstyle={"fill": "#222222"})))
             canvas.legend(entries, corner=("right", 6, 150, 16 * len(entries)))
         except Exception as e:
@@ -355,7 +371,10 @@ def main() -> None:
     # IQ-TREE abort with "more threads than CPU cores available".)
     # -seed fixes the stochastic ML search + UFBoot resampling so reruns on the
     # same alignment yield an identical tree (needed for golden-output regression).
-    run(["iqtree", "-s", str(trim), "-m", "MFP", "-B", "1000",
+    # -alrt 1000 adds SH-aLRT support beside UFBoot: reviewers expect two support
+    # measures because UFBoot alone can be over-optimistic; a split is well supported
+    # when SH-aLRT >= 80 AND UFBoot >= 95 (both printed on each branch as "aLRT/UFBoot").
+    run(["iqtree", "-s", str(trim), "-m", "MFP", "-B", "1000", "-alrt", "1000",
          "-T", "AUTO", "-ntmax", str(args.cpu), "-seed", "12345",
          "--prefix", str(prefix), "-redo"])
 
