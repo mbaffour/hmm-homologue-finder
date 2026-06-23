@@ -70,6 +70,21 @@ def count_envelope_stops(marker_aa: str, env_from: int, env_to: int) -> tuple[in
     return len(pos), pos
 
 
+def extend_orf(marker_aa: str, env_from: int, env_to: int) -> tuple[int, int, str]:
+    """Extend the domain envelope to the flanking stops in the read-through frame —
+    the full ORF the gene occupies, read THROUGH any premature internal stops — so
+    the sequence AFTER the premature stop (the rest of the gene, to its natural
+    stop) is captured. Returns (orf_from, orf_to, full_aa): 1-based inclusive bounds
+    and the full amino-acid sequence with '*' kept at every stop (premature ones in
+    the middle; the terminal one is the natural gene end)."""
+    n = len(marker_aa)
+    left = marker_aa.rfind("*", 0, max(0, env_from - 1))     # upstream stop (0-based) or -1
+    orf_from = left + 2 if left >= 0 else 1                   # first residue after it (1-based)
+    right = marker_aa.find("*", env_to)                       # first stop at/after the domain
+    orf_to = (right + 1) if right >= 0 else n                 # include the natural terminal stop
+    return orf_from, orf_to, marker_aa[orf_from - 1:orf_to]
+
+
 def _frames(seq: str):
     """Yield (strand, frame, search_aa, marker_aa) for all six frames."""
     for strand in ("+", "-"):
@@ -85,7 +100,9 @@ WIN_STEP = 4400       # genome-length sequences (10k-100k+ aa). Overlap = WIN_AA
                       # (>> any domain), so every domain lies fully inside >=1 window.
 ROW_COLS = ["contig", "strand", "frame", "env_from_aa", "env_to_aa", "domain_aa_len",
             "internal_stops", "stop_aa_positions", "domain_bit_score", "i_evalue",
-            "domain_aa_with_stops"]
+            "orf_from_aa", "orf_to_aa", "orf_aa_len",
+            "aa_before_first_stop", "aa_after_last_stop",
+            "domain_aa_with_stops", "full_orf_aa"]
 
 
 def _windows(n: int):
@@ -135,6 +152,11 @@ def _search_batch(frames: list, markers: dict, hmm: Path, workdir: Path,
             continue
         contig, sf_tag, off_s = name.rsplit("__", 2)   # name = contig__SF__windowOffset
         offset = int(off_s)
+        # full read-through ORF (through the premature stop to the natural stop).
+        orf_from, orf_to, full_aa = extend_orf(marker, env_from, env_to)
+        terminal_stop = 1 if full_aa.endswith("*") else 0
+        aa_before = positions[0] - orf_from              # intact N-terminal residues
+        aa_after = max(0, orf_to - positions[-1] - terminal_stop)  # C-terminal continuation
         rows.append({
             "contig": contig, "strand": sf_tag[0], "frame": sf_tag[1],
             "env_from_aa": offset + env_from, "env_to_aa": offset + env_to,
@@ -143,7 +165,12 @@ def _search_batch(frames: list, markers: dict, hmm: Path, workdir: Path,
             "stop_aa_positions": ";".join(str(offset + x) for x in positions),
             "domain_bit_score": round(dom_bits, 1),
             "i_evalue": f"{i_eval:.2g}",
+            "orf_from_aa": offset + orf_from, "orf_to_aa": offset + orf_to,
+            "orf_aa_len": orf_to - orf_from + 1,
+            "aa_before_first_stop": aa_before,
+            "aa_after_last_stop": aa_after,
             "domain_aa_with_stops": marker[env_from - 1:env_to],
+            "full_orf_aa": full_aa,
         })
     sfa.unlink(missing_ok=True)
     dt.unlink(missing_ok=True)

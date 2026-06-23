@@ -197,6 +197,11 @@ check("find_interrupted: terminal stop not counted as internal",
       FI.count_envelope_stops("ABC*", 1, 4) == (0, []))
 check("find_interrupted: stop outside the envelope ignored",
       FI.count_envelope_stops("*ABCD", 2, 5) == (0, []))
+# extend_orf: from the upstream stop, through the domain, to the natural stop
+check("find_interrupted: extend_orf spans flanking stops",
+      FI.extend_orf("M*KAR*Q", 3, 4) == (3, 6, "KAR*"))
+check("find_interrupted: extend_orf with no upstream stop starts at residue 1",
+      FI.extend_orf("KAR*Q", 1, 2) == (1, 4, "KAR*"))
 
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())
