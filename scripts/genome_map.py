@@ -56,12 +56,13 @@ MAP_TOOLS = ("pub", "pygenomeviz", "matplotlib", "easyfig", "auto")
 
 
 def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genome",
-         tool="pub", genbank=None):
+         tool="pub", genbank=None, labels=True):
     """Draw a linear genome map (PNG + SVG + PDF) coloured by functional category, your gene
     gold, the track labelled `track_name` (phage name; may be two lines name\\naccession).
-    `tool`: 'pub' (default — publication genome diagram: sense above / antisense below the
-    line, collision-avoiding labels, scale bar), 'pygenomeviz', 'matplotlib', or 'easyfig'
-    (needs a `genbank` + an installed Easyfig; falls back). Returns the base path or None."""
+    Genes are strand arrows (direction = strand); overlapping genes are packed onto separate
+    lanes so nothing is hidden. `labels` toggles the gene-name labels. `tool`: 'pub' (default
+    — the publication genome diagram), 'pygenomeviz', or 'easyfig' (needs a `genbank` + an
+    installed Easyfig; falls back). Returns the base path or None."""
     genes = [g for g in genes if g.get("start") is not None and g.get("end") is not None]
     if not genes:
         return None
@@ -78,10 +79,8 @@ def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genom
         except Exception as e:
             log(f"  (pyGenomeViz unavailable: {e}; using the publication renderer)")
             tool = "pub"
-    if tool == "matplotlib":
-        tool = "pub"
     try:
-        return _draw_pub(genes, anchor, out_base, title, track_name, log)
+        return _draw_pub(genes, anchor, out_base, title, track_name, log, labels=labels)
     except Exception as e:
         log(f"  (genome map skipped: {e})")
         return None
@@ -112,12 +111,30 @@ def _gene_arrow(ax, s, e, st, ymid, h, head, color, ec, lw):
     ax.add_patch(Polygon(pts, closed=True, facecolor=color, edgecolor=ec, lw=lw, zorder=3))
 
 
-def _draw_pub(genes, anchor, out_base, title, track_name, log):
-    """Publication genome diagram: + (sense) genes ABOVE the baseline, - (antisense) BELOW,
-    each a strand arrow coloured by functional category; the gene of interest is bold gold.
-    Labels are stacked into collision-free rows with leader lines; the figure height and the
-    top/bottom margins are sized to the label rows so the title, legend and labels never
-    overlap. A scale bar is drawn; PNG (300 dpi) + SVG + PDF."""
+def _pack(genes):
+    """Assign each gene to a lane so OVERLAPPING genes land on different lanes (greedy
+    interval packing). Returns ({id(gene): lane_index}, n_lanes). Most genomes need 1-2
+    lanes; a gene nested in/over another (e.g. an overprint partner) gets its own lane."""
+    lane_end = []                              # lane_end[i] = end coord of last gene in lane i
+    assign = {}
+    for g in sorted(genes, key=lambda x: (x["start"], x["end"])):
+        for i, end in enumerate(lane_end):
+            if g["start"] >= end:              # fits after the last gene in lane i
+                lane_end[i] = g["end"]
+                assign[id(g)] = i
+                break
+        else:
+            lane_end.append(g["end"])
+            assign[id(g)] = len(lane_end) - 1
+    return assign, max(len(lane_end), 1)
+
+
+def _draw_pub(genes, anchor, out_base, title, track_name, log, labels=True):
+    """Publication genome diagram (works for any genome): genes as strand arrows (direction
+    = strand) coloured by functional category; the gene of interest is bold gold. Overlapping
+    genes are PACKED onto separate lanes so nothing is hidden. Gene-name labels (toggle with
+    `labels`) are stacked into collision-free rows with leader lines, using real label widths.
+    Figure size + margins scale to the genome and the content. PNG (300 dpi) + SVG + PDF."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -125,80 +142,79 @@ def _draw_pub(genes, anchor, out_base, title, track_name, log):
     lo = min(g["start"] for g in genes)
     hi = max(g["end"] for g in genes)
     span = max(hi - lo, 1)
-    H, head = 0.42, max(span * 0.006, 1)
-    lane = {1: 1.0, -1: -1.0}
-    rowstep = 0.62
+    H, head = 0.36, max(span * 0.006, 1)
+    lane_h, rowstep = 0.95, 0.6
     width = min(30.0, max(9.0, span / 2200.0))
     xlo, xhi = lo - span * 0.10, hi + span * 0.03
     xspan, axes_w_in = xhi - xlo, width * 0.94
+    assign, nlanes = _pack(genes)
+    top_y = 0.0                                # lane 0 at top; lanes stack downward
+    bot_y = top_y - (nlanes - 1) * lane_h
 
-    def _hw(text, fs):                       # estimated label half-width in data units
+    def _hw(text, fs):
         return 0.5 * len(text) * (fs * 0.62 / 72.0) * (xspan / axes_w_in) + xspan * 0.004
-    # --- pre-pass: stack labels into collision-free rows per strand lane (real widths) ---
-    labelled = sorted([g for g in genes if g.get("label")
-                       and g["role"] in ("anchor", "overlap", "flank")],
-                      key=lambda x: (x["start"] + x["end"]) / 2)
-    occ = {1: [], -1: []}                    # each row -> right edge (data x) of the last label
-    place = {}
-    for g in labelled:
-        st = 1 if int(g.get("strand", 1)) >= 0 else -1
-        cx = (g["start"] + g["end"]) / 2
-        hw = _hw(str(g["label"])[:30], 8.5 if g["role"] == "anchor" else 6.6)
-        lst = occ[st]
-        r = 0
-        while r < len(lst) and (cx - hw) < lst[r]:
-            r += 1
-        if r == len(lst):
-            lst.append(-1e18)
-        lst[r] = cx + hw
-        place[id(g)] = (st, r)
-    mt, mb = len(occ[1]), len(occ[-1])
-    height = 3.6 + 0.42 * (mt + mb)
+    # label rows (above the top lane), collision-free, only if requested
+    place, label_rows = {}, 0
+    if labels:
+        occ = []
+        for g in sorted([g for g in genes if g.get("label")
+                         and g["role"] in ("anchor", "overlap", "flank")],
+                        key=lambda x: (x["start"] + x["end"]) / 2):
+            cx = (g["start"] + g["end"]) / 2
+            hw = _hw(str(g["label"])[:30], 8.5 if g["role"] == "anchor" else 6.6)
+            r = 0
+            while r < len(occ) and (cx - hw) < occ[r]:
+                r += 1
+            if r == len(occ):
+                occ.append(-1e18)
+            occ[r] = cx + hw
+            place[id(g)] = r
+        label_rows = len(occ)
+    height = max(4.2, 2.8 + 0.5 * nlanes + 0.42 * label_rows)
     fig, ax = plt.subplots(figsize=(width, height))
-    # --- arrows ---
+    # arrows on their packed lanes
     for g in sorted(genes, key=lambda x: x["start"]):
         st = 1 if int(g.get("strand", 1)) >= 0 else -1
         is_a = g["role"] == "anchor"
-        _gene_arrow(ax, g["start"], g["end"], st, lane[st], H * (1.3 if is_a else 1.0), head,
+        _gene_arrow(ax, g["start"], g["end"], st, top_y - assign[id(g)] * lane_h,
+                    H * (1.3 if is_a else 1.0), head,
                     FAM if is_a else CC.get(g.get("category", ""), HYPO),
                     "#1a1a1a" if is_a else "#333333", 1.8 if is_a else 0.5)
-    ax.plot([lo, hi], [0, 0], color="#888", lw=1.0, zorder=1)
-    # --- labels (stacked rows + leader lines) ---
-    for g in labelled:
-        st, r = place[id(g)]
-        cx = (g["start"] + g["end"]) / 2
-        is_a = g["role"] == "anchor"
-        d = 1 if st >= 0 else -1
-        ytip = lane[st] + d * (H + 0.05)
-        ytxt = lane[st] + d * (H + 0.25 + rowstep * (r + 1))
-        ax.plot([cx, cx], [ytip, ytxt], color="#bbb", lw=0.4, zorder=1)
-        ax.text(cx, ytxt, str(g["label"])[:30], ha="center", va=("bottom" if d > 0 else "top"),
-                fontsize=(8.5 if is_a else 6.6), fontweight=("bold" if is_a else "normal"),
-                color=("#806000" if is_a else "#1a2230"), zorder=4)
-    # --- strand guides + scale bar ---
-    ax.text(lo - span * 0.015, lane[1], "+ sense →", ha="right", va="center", fontsize=7.5, color="#777")
-    ax.text(lo - span * 0.015, lane[-1], "← antisense −", ha="right", va="center", fontsize=7.5, color="#777")
+    # labels above, with leader lines down to each gene's lane
+    lbase = top_y + H + 0.25
+    if labels:
+        for g, r in ((g, place[id(g)]) for g in genes if id(g) in place):
+            cx = (g["start"] + g["end"]) / 2
+            is_a = g["role"] == "anchor"
+            gy = top_y - assign[id(g)] * lane_h + H + 0.05
+            yt = lbase + rowstep * (r + 1)
+            ax.plot([cx, cx], [gy, yt], color="#bbb", lw=0.4, zorder=1)
+            ax.text(cx, yt, str(g["label"])[:30], ha="center", va="bottom",
+                    fontsize=(8.5 if is_a else 6.6), fontweight=("bold" if is_a else "normal"),
+                    color=("#806000" if is_a else "#1a2230"), zorder=4)
+    # scale bar below the lowest lane
     bar = _nice_bar(span)
-    ybar = lane[-1] - (H + 0.4 + rowstep * (mb + 0.7))
+    ybar = bot_y - (H + 0.7)
     ax.plot([lo, lo + bar], [ybar, ybar], color="#333", lw=2.0)
     ax.text(lo + bar / 2.0, ybar - 0.12, (f"{bar // 1000} kb" if bar >= 1000 else f"{bar} bp"),
             ha="center", va="top", fontsize=7.5)
-    ytop = lane[1] + (H + 0.3 + rowstep * (mt + 1))
+    ytop = (lbase + rowstep * (label_rows + 1)) if labels else (top_y + H + 0.4)
     ax.set_xlim(xlo, xhi)
     ax.set_ylim(ybar - 0.5, ytop + 0.3)
     ax.set_xticks([])
     ax.set_yticks([])
     for sp in ax.spines.values():
         sp.set_visible(False)
-    # --- title (name over accession), caption + legend in reserved margins (no tight) ---
+    # title/caption/legend positioned in ABSOLUTE inches from the edges, so spacing is
+    # consistent whatever the figure height (which varies with lanes/label rows).
     nm = str(track_name).split("\n")
-    fig.subplots_adjust(top=0.84, bottom=0.17, left=0.05, right=0.99)
-    fig.suptitle(nm[0], fontsize=12, fontweight="bold", y=0.965)
+    fig.subplots_adjust(top=1 - 1.25 / height, bottom=1.05 / height, left=0.04, right=0.99)
+    fig.suptitle(nm[0], fontsize=12, fontweight="bold", y=1 - 0.38 / height)
     if len(nm) > 1:
-        fig.text(0.5, 0.905, nm[1], ha="center", fontsize=9, color="#555")
-    fig.text(0.5, 0.105, title, ha="center", fontsize=8.5, color="#444")
+        fig.text(0.5, 1 - 0.80 / height, nm[1], ha="center", fontsize=9, color="#555")
+    fig.text(0.5, 0.72 / height, title, ha="center", fontsize=8.5, color="#444")
     fig.legend(handles=_legend_handles(genes, CC, FAM, HYPO), loc="lower center",
-               bbox_to_anchor=(0.5, 0.005), ncol=5, fontsize=7.5, frameon=False)
+               bbox_to_anchor=(0.5, 0.06 / height), ncol=5, fontsize=7.5, frameon=False)
     out_base = Path(out_base)
     try:
         fig.savefig(f"{out_base}.png", dpi=300)

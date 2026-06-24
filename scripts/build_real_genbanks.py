@@ -220,7 +220,7 @@ def build(genome_id: str, seq: str, hits: pd.DataFrame, out_dir: Path,
         a_st = 1 if str(hits.iloc[0].strand) == "+" else -1
         fk = {(g[0], g[1]) for g in nearby}
         GM.draw(GM.build_genes((h_lo, h_hi, a_st),
-                               [(g[0], g[1], g[2], {"product": "flanking CDS"}) for g in nearby],
+                               [(g[0], g[1], g[2], {}) for g in nearby],  # unnamed flanks here
                                flank_keys=fk),
                 (h_lo, h_hi), out_dir / f"{safe}_genome_map",
                 "gene of interest (HMM hit) + neighbours",

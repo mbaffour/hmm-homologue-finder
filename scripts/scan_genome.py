@@ -218,7 +218,7 @@ def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) 
 
 def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupted: bool,
          cpu: int, log, neighbours: bool = False, db_cache=None, annotation_gb=None,
-         flanks: int = 7, map_tool: str = "pub") -> dict:
+         flanks: int = 7, map_tool: str = "pub", gene_labels: bool = True) -> dict:
     """Read-through six-frame scan of one genome with the HMM. Returns a summary dict
     and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt. When
     `neighbours` is set, also describes the flanking genes (from the genome's own
@@ -261,7 +261,8 @@ def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupte
         nb = write_neighbourhoods(
             rows, contig_nt, out_dir,
             db_cache or Path("~/.cache/hmm-homologue-finder"), cpu, log,
-            annotation_gb=annotation_gb, flanks=flanks, map_tool=map_tool)
+            annotation_gb=annotation_gb, flanks=flanks, map_tool=map_tool,
+            gene_labels=gene_labels)
         s["neighbourhood"] = nb
         if nb:
             with open(out_dir / "scan_report.txt", "a") as f:
@@ -350,7 +351,7 @@ def _select_neighbours(genes, a_s, a_e, flanks=FLANKS):
 
 def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: Path,
                          cpu: int, log, annotation_gb=None, flanks=FLANKS,
-                         map_tool="pub") -> str:
+                         map_tool="pub", gene_labels=True) -> str:
     """Write an ordered neighbourhood table for each hit, anchored on the gene of
     interest, and a genome-map figure. Gene names come from **the genome's OWN
     annotation** (gene / gp number, product, locus_tag, protein_id) when a GenBank record
@@ -455,10 +456,10 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
             gba = GM.write_locus_genbank(whole, seq, org, contig, out_dir / f"scan_genome_map_{hl}_whole.gb")
             GM.draw(win, (a_s, a_e), out_dir / f"scan_genome_map_{hl}",
                     f"your gene + {flanks} genes each side", log,
-                    track_name=tname, tool=map_tool, genbank=gbw)
+                    track_name=tname, tool=map_tool, genbank=gbw, labels=gene_labels)
             GM.draw(whole, (a_s, a_e), out_dir / f"scan_genome_map_{hl}_whole",
                     f"whole genome — {len(genes_list)} genes; your gene in gold",
-                    log, track_name=tname, tool=map_tool, genbank=gba)
+                    log, track_name=tname, tool=map_tool, genbank=gba, labels=gene_labels)
         except Exception as e:
             log(f"  (genome-map figure skipped: {e})")
     if not all_rows:
@@ -552,6 +553,8 @@ def main() -> None:
     ap.add_argument("--flanks", type=int, default=7,
                     help="number of flanking genes to report EACH side of your gene (default 7); "
                          "overlapping genes are always included")
+    ap.add_argument("--no-gene-labels", dest="gene_labels", action="store_false",
+                    help="draw the genome map WITHOUT gene-name labels (just coloured arrows)")
     ap.add_argument("--map-tool", choices=["pub", "pygenomeviz", "easyfig"],
                     default="pub",
                     help="genome-map renderer (default 'pub' = publication diagram: sense above / "
@@ -580,7 +583,7 @@ def main() -> None:
         hmm = build_hmm_from_seeds(args.seeds, args.trans_table, args.out, args.cpu, log)
     s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log,
              neighbours=args.neighbours, db_cache=args.db_cache, annotation_gb=annotation_gb,
-             flanks=args.flanks, map_tool=args.map_tool)
+             flanks=args.flanks, map_tool=args.map_tool, gene_labels=args.gene_labels)
     # exit code 0 if the gene was detected (clean or interrupted), 1 if absent — handy in scripts
     sys.exit(0 if (s["n_clean"] or s["n_interrupted"]) else 1)
 
