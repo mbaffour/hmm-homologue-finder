@@ -148,6 +148,21 @@ def genbank_genes(gb_path) -> dict:
     return out
 
 
+def genbank_organisms(gb_path) -> dict:
+    """{contig_id: organism/phage name} from a GenBank file (the record's /organism)."""
+    out = {}
+    try:
+        for rec in SeqIO.parse(str(gb_path), "genbank"):
+            org = rec.annotations.get("organism") or ""
+            src = next((f for f in rec.features if f.type == "source"), None)
+            if not org and src:
+                org = src.qualifiers.get("organism", [""])[0]
+            out[rec.id] = (org or rec.id).strip()
+    except Exception:
+        pass
+    return out
+
+
 def resolve_local_genome(path: Path, out_dir: Path, log):
     """Return (fasta_path, genbank_path_or_None) for a local genome. A GenBank input
     (.gb/.gbk/.gbff, or a file starting with LOCUS) is used for its annotation and its
@@ -349,6 +364,7 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
         log(f"  (neighbour table unavailable: {e})")
         return ""
     gb_genes = genbank_genes(annotation_gb) if annotation_gb else {}
+    gb_org = genbank_organisms(annotation_gb) if annotation_gb else {}
     cache = Path(db_cache).expanduser()
     try:
         ann_ready = __import__("annotate_genes").is_ready(cache)
@@ -427,13 +443,15 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
         try:
             import genome_map as GM
             hl = f"hit{hi}"
+            org = gb_org.get(contig, contig)
             fk = {(g[0], g[1]) for g in up} | {(g[0], g[1]) for g in down}
             GM.draw(GM.build_genes((a_s, a_e, a_st), list(up) + list(down) + list(over), flank_keys=fk),
                     (a_s, a_e), out_dir / f"scan_genome_map_{hl}",
-                    f"Your gene + {flanks} genes each side — {contig}", log)
+                    f"{org} ({contig}) — your gene + {flanks} genes each side", log, track_name=org)
             GM.draw(GM.build_genes((a_s, a_e, a_st), genes_list, flank_keys=fk),
                     (a_s, a_e), out_dir / f"scan_genome_map_{hl}_whole",
-                    f"Whole-genome map — {contig} ({len(genes_list)} genes; your gene in red)", log)
+                    f"{org} ({contig}) — whole-genome map ({len(genes_list)} genes; your gene in gold)",
+                    log, track_name=org)
         except Exception as e:
             log(f"  (genome-map figure skipped: {e})")
     if not all_rows:

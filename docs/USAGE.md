@@ -170,13 +170,13 @@ genome's OWN annotation** — `gene` (often the gp number), `product`, `locus_ta
 `protein_id` — for any annotated record (a fetched `--accession`, pulled as GenBank, or a
 GenBank `--genome` `.gb/.gbk/.gbff`); for a plain unannotated FASTA the neighbours are
 called **de novo with Prodigal** (the database workflow's gene-caller) + optional VOGDB
-VFAM (`--db-cache`); the `annotation_source` column says which. **Two genome-map figures**
-are drawn per hit with **pyGenomeViz** (genes labelled from the genome's own annotation;
-your gene in red, overlapping/overprint genes in orange, flanks grey-blue):
-`scan_genome_map_<hit>.png/.svg` — a **window** of your gene + `--flanks N` genes each side
-(controllable) — and `scan_genome_map_<hit>_whole.png/.svg` — **the whole contig**, your
-gene marked among all of them. Tune the window with `--flanks N`; disable everything with
-`--no-neighbours`.
+VFAM (`--db-cache`); the `annotation_source` column says which. **Two genome-map figures** are drawn per hit with **pyGenomeViz**: genes labelled from the
+genome's own annotation (gp numbers / products), **coloured by functional category** (the
+same scheme as the synteny figures — structural, transcription/regulation, lysis, …), your
+gene of interest in **bold gold**, and the track labelled with the **phage/organism name**
+(from the record). `scan_genome_map_<hit>.png/.svg` is a **window** of your gene +
+`--flanks N` genes each side (controllable); `scan_genome_map_<hit>_whole.png/.svg` is **the
+whole contig**, your gene marked among all of them. Disable with `--no-neighbours`.
 
 *Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
 --find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`
