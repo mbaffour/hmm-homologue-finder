@@ -218,7 +218,7 @@ def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) 
 
 def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupted: bool,
          cpu: int, log, neighbours: bool = False, db_cache=None, annotation_gb=None,
-         flanks: int = 7) -> dict:
+         flanks: int = 7, map_tool: str = "pygenomeviz") -> dict:
     """Read-through six-frame scan of one genome with the HMM. Returns a summary dict
     and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt. When
     `neighbours` is set, also describes the flanking genes (from the genome's own
@@ -261,7 +261,7 @@ def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupte
         nb = write_neighbourhoods(
             rows, contig_nt, out_dir,
             db_cache or Path("~/.cache/hmm-homologue-finder"), cpu, log,
-            annotation_gb=annotation_gb, flanks=flanks)
+            annotation_gb=annotation_gb, flanks=flanks, map_tool=map_tool)
         s["neighbourhood"] = nb
         if nb:
             with open(out_dir / "scan_report.txt", "a") as f:
@@ -349,7 +349,8 @@ def _select_neighbours(genes, a_s, a_e, flanks=FLANKS):
 
 
 def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: Path,
-                         cpu: int, log, annotation_gb=None, flanks=FLANKS) -> str:
+                         cpu: int, log, annotation_gb=None, flanks=FLANKS,
+                         map_tool="pygenomeviz") -> str:
     """Write an ordered neighbourhood table for each hit, anchored on the gene of
     interest, and a genome-map figure. Gene names come from **the genome's OWN
     annotation** (gene / gp number, product, locus_tag, protein_id) when a GenBank record
@@ -444,14 +445,20 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
             import genome_map as GM
             hl = f"hit{hi}"
             org = gb_org.get(contig, contig)
+            tname = f"{org}\n{contig}" if org and org != contig else contig   # name over accession
+            seq = contig_nt.get(contig, "")
             fk = {(g[0], g[1]) for g in up} | {(g[0], g[1]) for g in down}
-            GM.draw(GM.build_genes((a_s, a_e, a_st), list(up) + list(down) + list(over), flank_keys=fk),
-                    (a_s, a_e), out_dir / f"scan_genome_map_{hl}",
-                    f"{org} ({contig}) — your gene + {flanks} genes each side", log, track_name=org)
-            GM.draw(GM.build_genes((a_s, a_e, a_st), genes_list, flank_keys=fk),
-                    (a_s, a_e), out_dir / f"scan_genome_map_{hl}_whole",
+            win = GM.build_genes((a_s, a_e, a_st), list(up) + list(down) + list(over), flank_keys=fk)
+            whole = GM.build_genes((a_s, a_e, a_st), genes_list, flank_keys=fk)
+            # tool-agnostic locus GenBank (open in Easyfig / Artemis / clinker / pyGenomeViz)
+            gbw = GM.write_locus_genbank(win, seq, org, contig, out_dir / f"scan_genome_map_{hl}.gb")
+            gba = GM.write_locus_genbank(whole, seq, org, contig, out_dir / f"scan_genome_map_{hl}_whole.gb")
+            GM.draw(win, (a_s, a_e), out_dir / f"scan_genome_map_{hl}",
+                    f"{org} ({contig}) — your gene + {flanks} genes each side", log,
+                    track_name=tname, tool=map_tool, genbank=gbw)
+            GM.draw(whole, (a_s, a_e), out_dir / f"scan_genome_map_{hl}_whole",
                     f"{org} ({contig}) — whole-genome map ({len(genes_list)} genes; your gene in gold)",
-                    log, track_name=org)
+                    log, track_name=tname, tool=map_tool, genbank=gba)
         except Exception as e:
             log(f"  (genome-map figure skipped: {e})")
     if not all_rows:
@@ -545,6 +552,11 @@ def main() -> None:
     ap.add_argument("--flanks", type=int, default=7,
                     help="number of flanking genes to report EACH side of your gene (default 7); "
                          "overlapping genes are always included")
+    ap.add_argument("--map-tool", choices=["pygenomeviz", "matplotlib", "easyfig"],
+                    default="pygenomeviz",
+                    help="genome-map renderer (default pygenomeviz). 'easyfig' needs Easyfig "
+                         "installed + $EASYFIG_PY set (a locus GenBank is always written so you "
+                         "can open the map in Easyfig/Artemis/clinker yourself).")
     ap.add_argument("--cpu", type=int, default=4)
     ap.set_defaults(neighbours=True)
     args = ap.parse_args()
@@ -567,7 +579,7 @@ def main() -> None:
         hmm = build_hmm_from_seeds(args.seeds, args.trans_table, args.out, args.cpu, log)
     s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log,
              neighbours=args.neighbours, db_cache=args.db_cache, annotation_gb=annotation_gb,
-             flanks=args.flanks)
+             flanks=args.flanks, map_tool=args.map_tool)
     # exit code 0 if the gene was detected (clean or interrupted), 1 if absent — handy in scripts
     sys.exit(0 if (s["n_clean"] or s["n_interrupted"]) else 1)
 

@@ -176,7 +176,13 @@ same scheme as the synteny figures — structural, transcription/regulation, lys
 gene of interest in **bold gold**, and the track labelled with the **phage/organism name**
 (from the record). `scan_genome_map_<hit>.png/.svg` is a **window** of your gene +
 `--flanks N` genes each side (controllable); `scan_genome_map_<hit>_whole.png/.svg` is **the
-whole contig**, your gene marked among all of them. Disable with `--no-neighbours`.
+whole contig**, your gene marked among all of them. The track is labelled with the phage
+name **over the accession**. Choose the renderer with `--map-tool {pygenomeviz, matplotlib,
+easyfig}` (default pygenomeviz; `easyfig` needs Easyfig installed + `$EASYFIG_PY` set — it
+falls back to pyGenomeViz otherwise). A **locus GenBank** (`scan_genome_map_<hit>.gb`) is
+always written, so you can open the map in **Easyfig**, Artemis, clinker, or pyGenomeViz
+yourself. Disable the whole step with `--no-neighbours`. *(The database run honours
+`GENOME_MAP_TOOL=easyfig` and writes the same per-hit GenBanks.)*
 
 *Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
 --find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`

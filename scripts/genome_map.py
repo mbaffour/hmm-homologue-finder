@@ -52,13 +52,29 @@ def build_genes(anchor, called, flank_keys=None, label_of=None) -> list:
     return genes
 
 
-def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genome"):
+MAP_TOOLS = ("pygenomeviz", "matplotlib", "easyfig", "auto")
+
+
+def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genome",
+         tool="pygenomeviz", genbank=None):
     """Draw a linear genome map (PNG + SVG) coloured by functional category, your gene gold,
-    the track labelled `track_name` (the phage/organism name). Tries pyGenomeViz, falls back
-    to matplotlib. Returns the base path or None."""
+    the track labelled `track_name` (the phage/organism name; may be two lines name\\naccession).
+    `tool` selects the renderer: 'pygenomeviz' (default), 'matplotlib', 'easyfig' (needs a
+    `genbank` + an installed Easyfig, falls back), or 'auto'. Returns the base path or None."""
     genes = [g for g in genes if g.get("start") is not None and g.get("end") is not None]
     if not genes:
         return None
+    tool = (tool or "pygenomeviz").lower()
+    if tool == "easyfig":
+        try:
+            return _draw_easyfig(genbank, out_base, title, log)
+        except Exception as e:
+            log(f"  (Easyfig unavailable: {e}; using pyGenomeViz)")
+    if tool == "matplotlib":
+        try:
+            return _draw_mpl(genes, anchor, out_base, title, track_name, log)
+        except Exception as e:
+            log(f"  (matplotlib renderer failed: {e}; trying pyGenomeViz)")
     try:
         return _draw_pgv(genes, out_base, title, track_name, log)
     except Exception as e:
@@ -68,6 +84,63 @@ def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genom
         except Exception as e2:
             log(f"  (genome map skipped: {e2})")
             return None
+
+
+def write_locus_genbank(genes, contig_seq, organism, accession, out_path):
+    """Write a GenBank of the locus (the window spanning `genes`, with the contig sequence),
+    CDS features carrying the annotation/gp-number labels and the gene of interest marked
+    /gene=gene_of_interest. This is the tool-agnostic deliverable — open it in **Easyfig**,
+    Artemis, clinker, pyGenomeViz, etc. Returns the path (or None if the sequence is absent)."""
+    if not contig_seq:
+        return None
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+    from Bio.SeqFeature import SeqFeature, FeatureLocation
+    from Bio import SeqIO
+    wlo = min(g["start"] for g in genes)
+    whi = max(g["end"] for g in genes)
+    sub = contig_seq[max(0, wlo - 1):whi]
+    acc = (accession or "locus")
+    rec = SeqRecord(Seq(sub), id=acc[:16], name=acc[:16],
+                    description=f"{organism} ({acc}) — gene-of-interest neighbourhood",
+                    annotations={"molecule_type": "DNA", "topology": "linear",
+                                 "organism": organism or acc})
+    feats = []
+    for g in genes:
+        if g["role"] == "anchor":
+            q = {"gene": ["gene_of_interest"], "product": ["gene of interest (HMM hit)"]}
+        else:
+            q = {"product": [g.get("label") or "CDS"]}
+        feats.append(SeqFeature(FeatureLocation(max(0, g["start"] - wlo), max(1, g["end"] - wlo),
+                     strand=int(g.get("strand", 1))), type="CDS", qualifiers=q))
+    rec.features = sorted(feats, key=lambda f: int(f.location.start))
+    SeqIO.write(rec, str(out_path), "genbank")
+    return out_path
+
+
+def _draw_easyfig(genbank, out_base, title, log):
+    """Render with Easyfig (github.com/mjsull/Easyfig) — a Python-2 standalone script, NOT a
+    pip/conda package. Enable by installing it and setting $EASYFIG_PY to Easyfig.py (and
+    $EASYFIG_PYTHON to a python2 if needed). Raises (-> caller falls back) when unavailable."""
+    import os
+    import shutil
+    import subprocess
+    if not genbank or not Path(genbank).exists():
+        raise RuntimeError("Easyfig needs a locus GenBank (none provided)")
+    ef = os.environ.get("EASYFIG_PY") or shutil.which("Easyfig.py") or shutil.which("Easyfig")
+    if not ef:
+        raise RuntimeError("Easyfig not found — install github.com/mjsull/Easyfig and set "
+                           "$EASYFIG_PY to Easyfig.py (the locus GenBank is written for it)")
+    py = (os.environ.get("EASYFIG_PYTHON") or shutil.which("python2")
+          or shutil.which("python2.7") or shutil.which("python"))
+    png = f"{out_base}.png"
+    subprocess.run([py, ef, "-f", "-i", str(genbank), "-o", png, "-legend", "single",
+                    "-leg_name", "product"], check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not Path(png).exists() or Path(png).stat().st_size < 1000:
+        raise RuntimeError("Easyfig produced no usable output")
+    log(f"  genome map (Easyfig) -> {Path(out_base).name}.png")
+    return Path(out_base)
 
 
 def _legend_handles(genes, CC, FAM, HYPO):

@@ -221,8 +221,10 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     partner is shown — e.g. gp75's antisense RNA polymerase. Two <b>pyGenomeViz genome-map figures</b> are
     drawn per hit (<code>scan_genome_map_*</code>): a controllable <code>--flanks N</code> window AND the whole
     contig — genes <b>coloured by functional category</b>, your gene in <b>gold</b>, the track labelled with the
-    <b>phage name</b> (from the record). <code>--no-neighbours</code> to skip. (The database run draws a per-hit
-    genome map too.) With <code>--find-interrupted</code> it also
+    <b>phage name over the accession</b>. Choose the renderer with <code>--map-tool {pygenomeviz, matplotlib,
+    easyfig}</code>; a <b>locus GenBank</b> (<code>scan_genome_map_*.gb</code>) is always written so you can open
+    the map in <b>Easyfig</b>/Artemis/clinker yourself. <code>--no-neighbours</code> to skip. (The database run
+    draws a per-hit genome map too; set <code>GENOME_MAP_TOOL=easyfig</code> to switch it.) With <code>--find-interrupted</code> it also
     reports stop-interrupted / overprinted copies and the overprinting verdict (e.g. <code>--accession KX098390</code>
     finds gp75 <b>interrupted</b>, <code>overprinting=strong</code>).
     <b>Exit code 0 = gene found, 1 = absent</b> — so you can loop it over many genomes. Interactive:

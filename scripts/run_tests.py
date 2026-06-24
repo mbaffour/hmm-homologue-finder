@@ -444,6 +444,15 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
         check("genome_map: overlapping gene flagged, flank labelled from annotation",
               any(it["role"] == "overlap" for it in _gr)
               and any(it["role"] == "flank" and it["label"] == "nbr" for it in _gr))
+        _lg = _GMm.write_locus_genbank(
+            [{"start": 1, "end": 300, "strand": 1, "role": "anchor", "label": "GOI"},
+             {"start": 400, "end": 700, "strand": -1, "role": "flank", "label": "nbr"}],
+            "ATGC" * 300, "Test phage", "ACC123", _sg / "locus.gb")
+        _lgt = _lg.read_text() if _lg else ""
+        check("genome_map: locus GenBank written (openable in Easyfig/Artemis/clinker)",
+              bool(_lg) and "CDS" in _lgt and "gene_of_interest" in _lgt)
+        check("genome_map: renderer options enumerated (incl. easyfig)",
+              {"pygenomeviz", "matplotlib", "easyfig"} <= set(_GMm.MAP_TOOLS))
     except Exception as _e:
         check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
 else:
