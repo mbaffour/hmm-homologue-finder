@@ -223,6 +223,16 @@ check("find_interrupted: domain FASTA keeps '*' at the internal stop",
       _domf.name == "interrupted_homologs_domain_aa.faa" and "MK*G" in _domf.read_text())
 check("find_interrupted: full-ORF FASTA keeps the read-through ORF with stops",
       _orff.name == "interrupted_homologs_full_orf_aa.faa" and "MK*GAR*" in _orff.read_text())
+# full-ORF nucleotide: coding DNA that translates back to full_orf_aa (incl. the stop codons)
+_orfg = "ATGAAATAAGGGGCACGTTAA"   # + frame 0: M K * G A R *  (== full_orf_aa)
+_rows2 = [dict(_rows[0], full_orf_nt=_orfg, full_orf_aa="MK*GAR*")]
+_ntf = FI.write_orf_nt_fasta(_rows2, _fid / "interrupted_homologs.tsv")
+check("find_interrupted: full-ORF nt FASTA written with the ORF DNA",
+      _ntf.name == "interrupted_homologs_full_orf_nt.fna" and _orfg in _ntf.read_text())
+check("find_interrupted: full-ORF nt translates back to full_orf_aa (incl. actual stop codon)",
+      str(_Seq(_orfg).translate()) == "MK*GAR*")
+check("find_interrupted: ORF nt columns present in ROW_COLS",
+      {"orf_nt_start", "orf_nt_end", "natural_stop_nt", "full_orf_nt"} <= set(FI.ROW_COLS))
 
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())

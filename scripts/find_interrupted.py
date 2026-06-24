@@ -129,7 +129,8 @@ ROW_COLS = ["contig", "strand", "frame", "domain_nt_start", "domain_nt_end",
             "domain_aa_len", "internal_stops", "stop_nt_positions", "stop_aa_positions",
             "domain_bit_score", "i_evalue", "orf_aa_len",
             "aa_before_first_stop", "aa_after_last_stop",
-            "domain_nt", "domain_aa_with_stops", "full_orf_aa"]
+            "orf_nt_start", "orf_nt_end", "natural_stop_nt",
+            "domain_nt", "domain_aa_with_stops", "full_orf_aa", "full_orf_nt"]
 
 
 def _fasta_header(r: dict) -> str:
@@ -158,6 +159,18 @@ def write_aa_fastas(rows: list, out_tsv: Path) -> list:
             if r.get("full_orf_aa"):
                 oh.write(f">{hdr}\n{r['full_orf_aa']}\n")
     return [dom, orf]
+
+
+def write_orf_nt_fasta(rows: list, out_tsv: Path) -> Path:
+    """Write the NUCLEOTIDE of each interrupted homolog's full read-through ORF
+    (coding 5'->3', ending in the actual stop codon triplet) -> <stem>_full_orf_nt.fna.
+    Translates back to full_orf_aa. Always written so report/PACKAGE links never dangle."""
+    nt = Path(f"{Path(out_tsv).with_suffix('')}_full_orf_nt.fna")
+    with open(nt, "w") as nh:
+        for r in rows:
+            if r.get("full_orf_nt"):
+                nh.write(f">{_fasta_header(r)}\n{r['full_orf_nt']}\n")
+    return nt
 
 
 def _windows(n: int):
@@ -220,6 +233,14 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
                                     if nt else (0, 0, ""))
         stop_nt_pos = ";".join(str(stop_nt(nt, strand, frame, offset + x))
                                for x in positions) if nt else ""
+        # Map the FULL read-through ORF back to genome DNA — its coding sequence
+        # 5'->3' includes the actual stop codon triplet at the end; and locate the
+        # natural/terminal stop codon's forward coordinate (0 if the ORF ran to the
+        # contig/window edge without one).
+        ofrom, oto = offset + orf_from, offset + orf_to
+        orf_nt_start, orf_nt_end, orf_nt = (aa_to_nt(nt, strand, frame, ofrom, oto)
+                                            if nt else (0, 0, ""))
+        natural_stop_nt = (stop_nt(nt, strand, frame, oto) if (nt and terminal_stop) else 0)
         rows.append({
             "contig": contig, "strand": strand, "frame": frame,
             "domain_nt_start": nt_start, "domain_nt_end": nt_end,
@@ -232,9 +253,13 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
             "orf_aa_len": orf_to - orf_from + 1,
             "aa_before_first_stop": aa_before,
             "aa_after_last_stop": aa_after,
+            "orf_nt_start": orf_nt_start,
+            "orf_nt_end": orf_nt_end,
+            "natural_stop_nt": natural_stop_nt,
             "domain_nt": dom_nt,
             "domain_aa_with_stops": marker[env_from - 1:env_to],
             "full_orf_aa": full_aa,
+            "full_orf_nt": orf_nt,
         })
     sfa.unlink(missing_ok=True)
     dt.unlink(missing_ok=True)
@@ -309,8 +334,10 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
                "out": str(out)}
     if emit_fasta:
         dom, orf = write_aa_fastas(all_rows, out)
+        nt = write_orf_nt_fasta(all_rows, out)
         summary["domain_faa"], summary["orf_faa"] = str(dom), str(orf)
-        log(f"  find-interrupted: protein sequences -> {dom.name}, {orf.name}")
+        summary["orf_fna"] = str(nt)
+        log(f"  find-interrupted: sequences -> {dom.name}, {orf.name}, {nt.name}")
     return summary
 
 

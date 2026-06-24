@@ -192,6 +192,7 @@ def generate(discovery: Path) -> Path:
                       ("Interrupted/overprinted homologs (TSV)", "interrupted_homologs.tsv"),
                       ("Interrupted homolog proteins — domain (FASTA)", "interrupted_homologs_domain_aa.faa"),
                       ("Interrupted homolog proteins — full ORF (FASTA)", "interrupted_homologs_full_orf_aa.faa"),
+                      ("Interrupted homolog full-ORF nucleotide (FASTA)", "interrupted_homologs_full_orf_nt.fna"),
                       ("Threshold calibration (JSON)", "controls/control_report.json"),
                       ("Alignment figure (SVG)", "downstream/tree/alignment_figure.svg"),
                       ("Alignment (FASTA)", "downstream/tree/hits.aln.faa"),
@@ -289,7 +290,10 @@ def generate(discovery: Path) -> Path:
         if (discovery / "interrupted_homologs_domain_aa.faa").exists():
             note += (" Protein sequences (internal stop shown as <code>*</code>) are in "
                      "<code>interrupted_homologs_domain_aa.faa</code> (domain) and "
-                     "<code>interrupted_homologs_full_orf_aa.faa</code> (full ORF).")
+                     "<code>interrupted_homologs_full_orf_aa.faa</code> (full ORF); the full-ORF "
+                     "nucleotide (ending in the actual stop codon) is in "
+                     "<code>interrupted_homologs_full_orf_nt.fna</code> "
+                     "(<code>natural_stop_nt</code> gives its genome coordinate).")
         p.append(f"<p class='muted'>{note}</p>")
         if irows:
             show = [c for c in ("contig", "strand", "frame", "domain_nt_start",

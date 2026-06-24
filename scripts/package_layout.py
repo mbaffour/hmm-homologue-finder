@@ -41,7 +41,7 @@ _REGISTRY = {
             "homolog_stats.csv": "Supplementary S3 — per-hit homology statistics (E-value, bit, domain length/coverage, confidence tier).",
             "all_runs_hits.csv": "The complete, un-collapsed hit table across all iterations (every hit, every column).",
             "database_summary.csv": "Raw engine per-database summary across all iterations.",
-            "interrupted_homologs.tsv": "(--find-interrupted) Homologs interrupted by a premature stop codon, found by read-through translation — candidate overprinted/pseudogenized genes the stop-to-stop search misses. Columns: contig, strand, frame, genome coordinates (domain_nt_start/end), internal_stops, stop positions in the genome (stop_nt_positions) and in aa, bit score, residues before/after the stop, the domain DNA (domain_nt) and AA (with '*'), and the full read-through ORF (full_orf_aa).",
+            "interrupted_homologs.tsv": "(--find-interrupted) Homologs interrupted by a premature stop codon, found by read-through translation — candidate overprinted/pseudogenized genes the stop-to-stop search misses. Columns: contig, strand, frame, genome coordinates (domain_nt_start/end), internal_stops, stop positions in the genome (stop_nt_positions) and in aa, bit score, residues before/after the stop, the domain DNA (domain_nt) and AA (with '*'), the full read-through ORF protein (full_orf_aa) and nucleotide (full_orf_nt, ending in the actual stop codon), the ORF genome bounds (orf_nt_start/end), and the natural/actual stop codon coordinate (natural_stop_nt).",
         },
     },
     DIRS["sequences"]: {
@@ -52,6 +52,7 @@ _REGISTRY = {
             "unique_homologs_aa.faa": "One sequence per unique homolog, rich headers (organism, #organisms, #databases).",
             "interrupted_homologs_domain_aa.faa": "(--find-interrupted) Protein of each stop-interrupted/overprinted homolog's matched domain, with every internal stop shown as '*'.",
             "interrupted_homologs_full_orf_aa.faa": "(--find-interrupted) Full read-through ORF protein for each interrupted homolog — premature stops kept as '*', terminal '*' = the natural gene end.",
+            "interrupted_homologs_full_orf_nt.fna": "(--find-interrupted) Full read-through ORF nucleotide (coding 5'->3', ending in the actual stop codon triplet; translates back to the full ORF protein).",
             PER_RUN: "Per-iteration sequences and the full per-hit evidence table (see per_run/README.txt).",
         },
     },

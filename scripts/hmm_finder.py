@@ -340,7 +340,11 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                 L += ["- Protein sequences emitted with the internal stop(s) shown as `*`: "
                       "`interrupted_homologs_domain_aa.faa` (matched domain) and "
                       "`interrupted_homologs_full_orf_aa.faa` (full read-through ORF, "
-                      "premature stops kept, terminal `*` = the natural gene end)."]
+                      "premature stops kept, terminal `*` = the natural gene end).",
+                      "- Full read-through ORF **nucleotide** in `interrupted_homologs_full_orf_nt.fna` "
+                      "(coding 5'→3', ending in the actual stop codon triplet; translates back to "
+                      "`full_orf_aa`). TSV columns `orf_nt_start/end`, `natural_stop_nt` (genome "
+                      "coordinate of the actual stop codon), and `full_orf_nt` carry the same."]
         if tool_versions:
             L += ["", "## Tool versions"]
             for t, info in sorted(tool_versions.items()):
@@ -573,21 +577,23 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
                 tmp.unlink()
         except Exception as e:
             log(f"  (find-interrupted: {fa.name} skipped: {e})")
-    domain_faa = orf_faa = ""
+    domain_faa = orf_faa = orf_fna = ""
     if all_rows:
         all_rows.sort(key=lambda r: -float(r.get("domain_bit_score", 0) or 0))
         with open(out_tsv, "w", newline="") as f:
             w = _csv.DictWriter(f, fieldnames=list(all_rows[0].keys()), delimiter="\t")
             w.writeheader(); w.writerows(all_rows)
-        # Protein sequences, internal stop(s) shown as '*' (domain + full ORF).
-        from find_interrupted import write_aa_fastas as _wfa  # noqa: E402
+        # Protein (domain + full ORF, internal stop '*') and the full-ORF nucleotide
+        # (incl. the actual stop codon triplet).
+        from find_interrupted import write_aa_fastas as _wfa, write_orf_nt_fasta as _wnt  # noqa: E402
         _dom, _orf = _wfa(all_rows, out_tsv)
-        domain_faa, orf_faa = str(_dom), str(_orf)
-        log(f"  interrupted-homolog proteins -> {_dom.name}, {_orf.name}")
+        _nt = _wnt(all_rows, out_tsv)
+        domain_faa, orf_faa, orf_fna = str(_dom), str(_orf), str(_nt)
+        log(f"  interrupted-homolog sequences -> {_dom.name}, {_orf.name}, {_nt.name}")
     summary = {"matches_scored": scored, "interrupted_candidates": len(all_rows),
                "min_bit": min_bit, "threshold_basis": thr_basis,
                "tsv": str(out_tsv) if all_rows else "",
-               "domain_faa": domain_faa, "orf_faa": orf_faa}
+               "domain_faa": domain_faa, "orf_faa": orf_faa, "orf_fna": orf_fna}
     log(f"  interrupted-homolog scan: {len(all_rows)} candidate(s) carrying an internal stop"
         + (f" -> {out_tsv.name}" if all_rows else " (none found)"))
     return summary
@@ -1150,7 +1156,8 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
     # Stop-interrupted/overprinted homolog table + protein FASTAs (only present
     # with --find-interrupted). The .faa keep '*' at each internal stop.
     cp(out / "interrupted_homologs.tsv", pkg / DIRS["tables"] / "interrupted_homologs.tsv")
-    for f in ("interrupted_homologs_domain_aa.faa", "interrupted_homologs_full_orf_aa.faa"):
+    for f in ("interrupted_homologs_domain_aa.faa", "interrupted_homologs_full_orf_aa.faa",
+              "interrupted_homologs_full_orf_nt.fna"):
         cp(out / f, pkg / DIRS["sequences"] / f)
     # Publish the most refined HMM (from the canonical/most-complete run), which
     # is what the figures + paper table describe — not necessarily run1's model.
