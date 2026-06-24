@@ -106,10 +106,27 @@ the main paper table, so tables and figures describe the same homolog set.
   neighbour with its order relative to the gene of interest (`pos_index`: 0 = the gene,
   ± = down/upstream), position (`rel_start/rel_end`, `distance_to_anchor_bp`), strand
   vs. the gene, and function — so the bordering genes can be described or manually
-  labelled. Real-sequence GenBank files are also written, each with a **genome-map
-  figure** (`<name>_genome_map.png/.svg`, rendered with **pyGenomeViz**) marking the gene
-  of interest (the HMM hit, red) among its neighbours — the same linear genome map the
-  single-genome scan produces (`scan_genome_map_*`: a controllable window and a whole-contig view).
+  labelled. A locus GenBank file is **always** written (so the map can also be opened
+  in Easyfig / Artemis / clinker / pyGenomeViz directly), each accompanied by a
+  **genome-map figure** (`<name>_genome_map.{png,svg,pdf}`; PNG at 300 dpi). The default
+  renderer is **DNA Features Viewer** (`--map-tool dfv`, the Edinburgh Genome Foundry
+  library): clean strand arrows, a real genome-coordinate axis spanning the whole locus,
+  overlapping genes automatically stacked onto their own level (so an overprint partner
+  never hides the gene of interest), and de-overlapped label boxes with leader lines.
+  Genes are coloured by broad functional category (the synteny colour scheme used
+  elsewhere); the gene of interest (the HMM hit) is bold **gold**. A smart label policy
+  keeps any locus legible — the gene of interest and any gene overlapping it are always
+  labelled, while other genes are labelled only when the locus is small enough to stay
+  clean (so a ~279-gene phage genome is not a wall of text); all gene-name labels can be
+  turned off with `--no-gene-labels`. Other `--map-tool` choices are `pub` (the built-in
+  matplotlib diagram — strand shown as arrow direction, overlapping genes packed onto
+  separate lanes, a full-length coordinate ruler; always available and used as the
+  automatic fallback when a chosen renderer is not installed), `pygenomeviz`, and
+  `easyfig` (needs Easyfig installed + `$EASYFIG_PY` set); any unavailable renderer falls
+  back to `pub`. This is the same linear genome map the single-genome scan produces
+  (`scan_genome_map_*`: a controllable window via `--flanks N` and a whole-contig view).
+  The database discovery run emits a per-hit genome map the same way and honours the
+  `GENOME_MAP_TOOL` environment variable as a renderer override.
 - **Alignment of homologs** — the unique ORF-validated domains are aligned with
   the same accuracy-first MAFFT strategy (L-INS-i where tractable, else `--auto`).
   The alignment is a first-class deliverable: the full MSA (`hits.aln.faa`), a

@@ -170,19 +170,31 @@ genome's OWN annotation** — `gene` (often the gp number), `product`, `locus_ta
 `protein_id` — for any annotated record (a fetched `--accession`, pulled as GenBank, or a
 GenBank `--genome` `.gb/.gbk/.gbff`); for a plain unannotated FASTA the neighbours are
 called **de novo with Prodigal** (the database workflow's gene-caller) + optional VOGDB
-VFAM (`--db-cache`); the `annotation_source` column says which. **Two genome-map figures** are drawn per hit with **pyGenomeViz**: genes labelled from the
-genome's own annotation (gp numbers / products), **coloured by functional category** (the
-same scheme as the synteny figures — structural, transcription/regulation, lysis, …), your
-gene of interest in **bold gold**, and the track labelled with the **phage/organism name**
-(from the record). `scan_genome_map_<hit>.png/.svg` is a **window** of your gene +
-`--flanks N` genes each side (controllable); `scan_genome_map_<hit>_whole.png/.svg` is **the
-whole contig**, your gene marked among all of them. The track is labelled with the phage
-name **over the accession**. Choose the renderer with `--map-tool {pygenomeviz, matplotlib,
-easyfig}` (default pygenomeviz; `easyfig` needs Easyfig installed + `$EASYFIG_PY` set — it
-falls back to pyGenomeViz otherwise). A **locus GenBank** (`scan_genome_map_<hit>.gb`) is
-always written, so you can open the map in **Easyfig**, Artemis, clinker, or pyGenomeViz
-yourself. Disable the whole step with `--no-neighbours`. *(The database run honours
-`GENOME_MAP_TOOL=easyfig` and writes the same per-hit GenBanks.)*
+VFAM (`--db-cache`); the `annotation_source` column says which. **Two genome-map figures** are drawn per hit with
+**DNA Features Viewer** (the default renderer): clean strand **arrows**, **overlapping genes
+automatically stacked onto their own level** (so an overprint partner never hides your gene),
+label boxes **de-overlapped automatically with leader lines**, and a real **genome-coordinate
+axis** spanning the whole locus. Genes are labelled from the genome's own annotation (gp
+numbers / products) and **coloured by functional category** (the same scheme as the synteny
+figures — structural, transcription/regulation, lysis, …), with your gene of interest in
+**bold gold** and the track labelled with the **phage/organism name** (from the record). A
+**smart label policy** keeps any genome legible: your gene of interest **and any gene
+overlapping it are always labelled**, while other genes are labelled only when the locus is
+small enough to stay clean (so a ~279-gene phage genome is not a wall of text). Turn off all
+gene-name labels with `--no-gene-labels`. `scan_genome_map_<hit>.png/.svg/.pdf` is a
+**window** of your gene + `--flanks N` genes each side (controllable);
+`scan_genome_map_<hit>_whole.png/.svg/.pdf` is **the whole contig**, your gene marked among
+all of them. The track is labelled with the phage name **over the accession**. Output is
+**PNG (300 dpi) + SVG + PDF**. Choose the renderer with `--map-tool {dfv, pub, pygenomeviz,
+easyfig}` (default `dfv`, DNA Features Viewer): `pub` is the built-in matplotlib diagram
+(strand = arrow direction, overlapping genes packed onto separate lanes, a full-length
+coordinate ruler) — it is **always available and is the automatic fallback** when a chosen
+renderer is not installed; `easyfig` needs Easyfig installed + `$EASYFIG_PY` set. Any
+unavailable renderer falls back to `pub`. A **locus GenBank** (`scan_genome_map_<hit>.gb`) is
+**always written regardless of renderer**, so you can open the map in **Easyfig**, Artemis,
+clinker, or pyGenomeViz yourself. Disable the whole step with `--no-neighbours`. *(The database
+run draws a per-hit genome map too, honours the `GENOME_MAP_TOOL` environment variable as an
+override, and writes the same per-hit GenBanks.)*
 
 *Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
 --find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`

@@ -213,18 +213,29 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     The genome is either a local <code>--genome</code> FASTA or an <code>--accession</code> fetched from NCBI
     nucleotide (comma-separate several). Writes <code>scan_report.txt</code> (present / not-detected verdict +
     best hits), <code>scan_hits.tsv</code>, <code>scan_hits_{aa.faa,nt.fna}</code>, and — by default —
-    <code>scan_neighbourhood.csv</code> + a <b>genome-map figure</b> (<code>scan_genome_map_*.png/svg</code>): the genes
+    <code>scan_neighbourhood.csv</code> + a <b>genome-map figure</b> (<code>scan_genome_map_*.png/svg/pdf</code>): the genes
     around your gene, ordered (pos_index 0 = your gene, ± up/downstream; a <code>relationship</code> column flags
     upstream / downstream / <b>overlapping</b>), named from the <b>genome's own annotation</b> (gene / gp number,
     product, locus_tag, protein_id) for an annotated record (fetched <code>--accession</code> or a GenBank
     <code>--genome</code>), else Prodigal + optional VOGDB. <b>Overlapping genes are kept</b>, so an overprint
-    partner is shown — e.g. gp75's antisense RNA polymerase. Two <b>pyGenomeViz genome-map figures</b> are
-    drawn per hit (<code>scan_genome_map_*</code>): a controllable <code>--flanks N</code> window AND the whole
-    contig — genes <b>coloured by functional category</b>, your gene in <b>gold</b>, the track labelled with the
-    <b>phage name over the accession</b>. Choose the renderer with <code>--map-tool {pygenomeviz, matplotlib,
-    easyfig}</code>; a <b>locus GenBank</b> (<code>scan_genome_map_*.gb</code>) is always written so you can open
-    the map in <b>Easyfig</b>/Artemis/clinker yourself. <code>--no-neighbours</code> to skip. (The database run
-    draws a per-hit genome map too; set <code>GENOME_MAP_TOOL=easyfig</code> to switch it.) With <code>--find-interrupted</code> it also
+    partner is shown — e.g. gp75's antisense RNA polymerase. Two <b>genome-map figures</b> are
+    drawn per hit (<code>scan_genome_map_*</code>, as PNG at 300 dpi + SVG + PDF): a controllable
+    <code>--flanks N</code> window AND the whole contig — genes <b>coloured by functional category</b>, your gene
+    in bold <b>gold</b>, the track labelled with the <b>phage name over the accession</b>. The default renderer is
+    <b>DNA Features Viewer</b> (the Edinburgh Genome Foundry library): clean strand arrows, a real
+    genome-coordinate axis spanning the whole locus, and automatic de-overlapping — <b>overlapping genes are
+    stacked onto their own level</b> (so an overprint partner never hides the gene of interest) and label boxes
+    are spread apart with leader lines. A <b>smart label policy</b> keeps any genome legible: the gene of interest
+    and anything overlapping it are <i>always</i> labelled, while other genes are labelled only when the locus is
+    small enough to stay clean (so a ~279-gene phage genome isn't a wall of text); turn all gene-name labels off
+    with <code>--no-gene-labels</code>. Choose the renderer with <code>--map-tool {dfv, pub, pygenomeviz,
+    easyfig}</code> (default <code>dfv</code>); <code>pub</code> is the always-available built-in matplotlib diagram
+    (strand = arrow direction, overlapping genes packed onto separate lanes, a full-length coordinate ruler) and
+    is also the automatic fallback whenever the chosen renderer isn't installed (<code>easyfig</code> needs Easyfig
+    + <code>$EASYFIG_PY</code>). A <b>locus GenBank</b> (<code>scan_genome_map_*.gb</code>) is always written
+    regardless of renderer, so you can open the map in <b>Easyfig</b>/Artemis/clinker/pyGenomeViz yourself.
+    <code>--no-neighbours</code> to skip. (The database run draws a per-hit genome map too — also DNA Features
+    Viewer by default; set <code>GENOME_MAP_TOOL=easyfig</code> to override it.) With <code>--find-interrupted</code> it also
     reports stop-interrupted / overprinted copies and the overprinting verdict (e.g. <code>--accession KX098390</code>
     finds gp75 <b>interrupted</b>, <code>overprinting=strong</code>).
     <b>Exit code 0 = gene found, 1 = absent</b> — so you can loop it over many genomes. Interactive:

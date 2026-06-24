@@ -2,12 +2,15 @@
 """genome_map.py — a linear genome map that marks a gene of interest among its neighbours.
 
 Shared by the single-genome scan (scan_genome.py) and the database discovery run
-(build_real_genbanks.py). Renders with **pyGenomeViz** (already a dependency) — genes drawn
-as strand arrows labelled with the genome's own annotation / gp numbers — and falls back to
-a basic matplotlib renderer if pyGenomeViz is unavailable. Genes are coloured by broad
-FUNCTIONAL CATEGORY using the same scheme as the synteny figures (structural, packaging,
-replication, transcription/regulation, lysis, …); the gene of interest is bold gold and
-labelled by the phage/organism name from the record.
+(build_real_genbanks.py). Renders by default with **DNA Features Viewer** (the Edinburgh
+Genome Foundry library, tool key 'dfv') — genes drawn as clean strand arrows labelled with
+the genome's own annotation / gp numbers, overlapping genes auto-stacked onto their own
+level, and a real genome-coordinate axis spanning the whole locus — and falls back to the
+built-in matplotlib 'pub' renderer (arrow-direction strand, packed lanes, a full-length
+coordinate ruler) when DNA Features Viewer is unavailable. 'pygenomeviz' and 'easyfig' are
+also selectable. Genes are coloured by broad FUNCTIONAL CATEGORY using the same scheme as the
+synteny figures (structural, packaging, replication, transcription/regulation, lysis, …); the
+gene of interest is bold gold and labelled by the phage/organism name from the record.
 """
 from __future__ import annotations
 
