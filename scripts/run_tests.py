@@ -393,7 +393,7 @@ check("report render: inline coloured MSA section present",
       "Coloured alignment (final hits)" in _rhtml)
 check("report render: interrupted + overprinting section present",
       "Stop-interrupted / overprinted homologs" in _rhtml
-      and "Overprinting (silent-stop) test" in _rhtml)
+      and "Overprinting (antisense-open-frame) test" in _rhtml)
 
 # End-to-end find_interrupted: build a tiny family HMM, scan a contig with a known
 # internal stop, assert the whole _search_batch -> ORF/overprinting/FASTA chain.
