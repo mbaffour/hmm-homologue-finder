@@ -333,7 +333,18 @@ def _parse(dt: Path, markers: dict, contig_nt: dict, min_bit: float,
         if key not in best or r["domain_bit_score"] > best[key]["domain_bit_score"]:
             best[key] = r
     out = sorted(best.values(), key=lambda r: -r["domain_bit_score"])
-    return out
+    # Containment dedup: a domain straddling a read-through WINDOW boundary is reported once in
+    # full and once TRUNCATED at the cut (same contig/strand/frame, nt span contained in the full
+    # hit, lower bit score). Drop the contained, lower-scoring partial so one physical gene is not
+    # counted twice. `out` is best-first, so any containing hit is already kept when we reach it.
+    kept: list = []
+    for r in out:
+        if not any(k["contig"] == r["contig"] and k["strand"] == r["strand"]
+                   and k["frame"] == r["frame"]
+                   and k["nt_start"] <= r["nt_start"] and r["nt_end"] <= k["nt_end"]
+                   for k in kept):
+            kept.append(r)
+    return kept
 
 
 FLANKS = 7   # ORFs each side of the gene of interest — matches the discovery neighbourhoods
