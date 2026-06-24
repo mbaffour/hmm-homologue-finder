@@ -86,6 +86,8 @@ _REGISTRY = {
             "hits_tree_homologs_only.*": "Tree with the seed tips pruned (homologs only).",
             "hits.aln.faa": "Multiple sequence alignment of the homologs (MAFFT).",
             "hits.aln.trim.faa": "Trimmed alignment (trimAl) — the tree input.",
+            "hits_hmmalign.sto": "Per-hit alignment of every homolog to the family HMM (hmmalign, Stockholm) — shows each hit's match states vs insertions relative to the model.",
+            "hits_hmmalign.a2m": "Same per-hit HMM alignment in A2M (aligned FASTA; UPPERCASE = match columns, lowercase/'.' = insertions).",
             "hits.aln.stats.json": "Alignment quality: length, gap %, conserved columns, mean pairwise identity.",
             "alignment_figure.*": "ClustalX-coloured alignment figure (PNG/SVG/PDF).",
             "hits.iqtree": "IQ-TREE report (model selection, parameters, support).",
@@ -96,7 +98,7 @@ _REGISTRY = {
     DIRS["synteny"]: {
         "purpose": "Gene-neighbourhood (synteny) comparisons and real-sequence GenBank files.",
         "files": {
-            "clinker": "Interactive clinker comparison — open the .html in any browser ('Save SVG' for figures).",
+            "clinker": "clinker gene-neighbourhood comparison — interactive cluster_*.html (open in any browser) plus, when a headless browser is installed, a static cluster_*.png per cluster (the 'Static PNG' column in clinker/index.html).",
             "publication_figures": "Publication synteny panels (PNG/SVG/PDF) + neighbour_gene_annotations.csv.",
             "genbank_with_sequence": "Real-sequence GenBank neighbourhoods, named by phage (Artemis/Geneious/UGENE).",
         },
@@ -133,6 +135,8 @@ _EXT_DESC = {
     ".contree": "bootstrap consensus tree (Newick)", ".nwk": "phylogenetic tree (Newick)",
     ".md": "documentation", ".html": "interactive web page", ".log": "log file",
     ".txt": "text", ".py": "Python script",
+    ".sto": "Stockholm alignment (per-hit HMM alignment)",
+    ".a2m": "A2M alignment (aligned FASTA; UPPERCASE = HMM match columns)",
 }
 
 

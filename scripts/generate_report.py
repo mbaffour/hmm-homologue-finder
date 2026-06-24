@@ -259,6 +259,24 @@ def generate(discovery: Path) -> Path:
         p.append("<h2>Phylogeny (unique homologs)</h2>")
         p.append(f"<img alt='ML tree of homologs' src='data:image/png;base64,{tree_b64}'>")
 
+    # Gene-neighbourhood synteny — embed a representative static publication panel
+    # (the interactive clinker, incl. its static PNGs, is linked above under Files).
+    syn_dir = discovery / "downstream" / "synteny"
+    if not syn_dir.exists():
+        syn_dir = discovery / "PACKAGE" / DIRS["synteny"] / "publication_figures"
+    syn_png = ""
+    if syn_dir.exists():
+        cands = sorted(syn_dir.glob("cluster_*_synteny*.png")) or sorted(syn_dir.glob("*.png"))
+        if cands:
+            syn_png = _b64(cands[0])
+    if syn_png:
+        p.append("<h2>Gene-neighbourhood synteny</h2>")
+        p.append("<p class='muted'>Representative static synteny panel (orthogroup-coloured). "
+                 "Full set in <code>downstream/synteny/</code>; interactive clinker (with static "
+                 "<code>cluster_*.png</code> exports) in <code>downstream/clinker/</code>.</p>")
+        p.append(f"<img alt='gene-neighbourhood synteny panel' "
+                 f"src='data:image/png;base64,{syn_png}'>")
+
     if paper:
         show = [c for c in ("rank", "representative_organism", "accession", "copies",
                             "domain_aa_len", "best_evalue", "best_bit_score",

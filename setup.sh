@@ -137,6 +137,9 @@ fi
 # clinker (+ biopython/pandas) via pip if absent
 command -v clinker >/dev/null 2>&1 || pip install clinker
 python -c "import Bio, pandas" 2>/dev/null || pip install biopython pandas
+# playwright (Python pkg) for STATIC clinker figures — install if absent so the
+# import gate below isn't a no-op on a fresh env (engine/requirements.txt also pins it).
+python -c "import playwright" 2>/dev/null || pip install "playwright>=1.50" || true
 
 # Optional: headless browser for STATIC clinker figures (PNG export of clinker's
 # JS-rendered plot). Entirely optional and non-fatal — the pipeline runs fine

@@ -20,4 +20,4 @@ pandas>=1.5
 # imports lazily and skips gracefully if absent. Needs a one-time browser install:
 #   python -m playwright install chromium
 #   sudo $(command -v python) -m playwright install-deps chromium   # OS libs (root)
-playwright>=1.50
+playwright==1.60.0
