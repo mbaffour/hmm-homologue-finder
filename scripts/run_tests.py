@@ -233,6 +233,25 @@ check("find_interrupted: full-ORF nt translates back to full_orf_aa (incl. actua
       str(_Seq(_orfg).translate()) == "MK*GAR*")
 check("find_interrupted: ORF nt columns present in ROW_COLS",
       {"orf_nt_start", "orf_nt_end", "natural_stop_nt", "full_orf_nt"} <= set(FI.ROW_COLS))
+# Overprinting / silent-stop analysis (the proof-of-overprinting step)
+check("find_interrupted: codon_covering (+) reads the forward codon",
+      FI._codon_covering("ATGAAATAA", "+", 0, 0) == ("ATG", 0))
+check("find_interrupted: codon_covering (-) reads the reverse-complement codon",
+      FI._codon_covering("ATGAAATAA", "-", 0, 8) == ("TTA", 0))
+# '+' stop TAA aligned to antisense frame 0 -> antisense codon TTA (Leu); T->C removes the
+# small stop (CAA) and is synonymous antisense (TTA->TTG). So the stop is silent there.
+check("find_interrupted: stop silent in an open antisense frame (aligned TAA/Leu wobble)",
+      FI._stop_silent_in_frame("TAAGGG", "+", 1, "-", 0) is True)
+check("find_interrupted: a non-stop position is never 'silent'",
+      FI._stop_silent_in_frame("GGGTAA", "+", 1, "-", 0) is False)
+check("find_interrupted: frame_stop_count 0 over an open antisense frame",
+      FI._frame_stop_count("TAAGGG", "-", 0, 1, 6) == 0)
+_op = FI.analyze_overprinting("TAAGGG", "+", 1, 6, [1])
+check("find_interrupted: analyze_overprinting -> strong when open + synonymous",
+      _op["support"] == "strong" and _op["open_stops"] == 0 and _op["per_stop_silent"] == [True])
+check("find_interrupted: overprinting columns present in ROW_COLS",
+      {"overprinting_support", "antisense_open_frame", "antisense_open_stops",
+       "stop_silent_antisense"} <= set(FI.ROW_COLS))
 
 import hmm_finder as H  # noqa: E402
 td = Path(tempfile.mkdtemp())

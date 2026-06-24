@@ -345,6 +345,19 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                       "(coding 5'→3', ending in the actual stop codon triplet; translates back to "
                       "`full_orf_aa`). TSV columns `orf_nt_start/end`, `natural_stop_nt` (genome "
                       "coordinate of the actual stop codon), and `full_orf_nt` carry the same."]
+            if ic.get("overprinting_strong") is not None:
+                L += ["- **Overprinting (silent-stop) test.** For each premature stop the scan picks "
+                      "the antisense frame with the fewest stops across the domain (the candidate "
+                      "overprinted ORF) and tests whether the stop is **synonymous** in that frame — "
+                      "i.e. whether reverting the nonsense mutation in this gene would leave the "
+                      "antisense protein unchanged. TSV columns: `overprinting_support` "
+                      "(strong/partial/none), `antisense_open_frame`, `antisense_open_stops` "
+                      "(0 = a fully open overlapping ORF), `stop_silent_antisense` (per-stop 1/0). "
+                      f"Result: {ic.get('overprinting_strong')} strong (stop synonymous in an open "
+                      f"antisense ORF) and {ic.get('overprinting_partial')} partial — strong support "
+                      "is direct evidence the gene is overprinted antisense to another gene. "
+                      "A necessary-but-not-sufficient signature: it confirms synonymy in an open "
+                      "frame, not that the antisense ORF is expressed."]
         if tool_versions:
             L += ["", "## Tool versions"]
             for t, info in sorted(tool_versions.items()):
@@ -590,12 +603,19 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
         _nt = _wnt(all_rows, out_tsv)
         domain_faa, orf_faa, orf_fna = str(_dom), str(_orf), str(_nt)
         log(f"  interrupted-homolog sequences -> {_dom.name}, {_orf.name}, {_nt.name}")
+    # Overprinting (silent-stop) evidence tallied across the candidates.
+    strong = sum(1 for r in all_rows if r.get("overprinting_support") == "strong")
+    partial = sum(1 for r in all_rows if r.get("overprinting_support") == "partial")
     summary = {"matches_scored": scored, "interrupted_candidates": len(all_rows),
                "min_bit": min_bit, "threshold_basis": thr_basis,
                "tsv": str(out_tsv) if all_rows else "",
-               "domain_faa": domain_faa, "orf_faa": orf_faa, "orf_fna": orf_fna}
+               "domain_faa": domain_faa, "orf_faa": orf_faa, "orf_fna": orf_fna,
+               "overprinting_strong": strong, "overprinting_partial": partial}
     log(f"  interrupted-homolog scan: {len(all_rows)} candidate(s) carrying an internal stop"
         + (f" -> {out_tsv.name}" if all_rows else " (none found)"))
+    if all_rows:
+        log(f"  overprinting (silent-stop) evidence: {strong} strong "
+            f"(stop synonymous in an open antisense ORF), {partial} partial")
     return summary
 
 

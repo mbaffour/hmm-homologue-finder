@@ -28,6 +28,7 @@ whether each stop is silent there).
 from __future__ import annotations
 
 import argparse
+import functools
 import gzip
 import subprocess
 import sys
@@ -112,6 +113,134 @@ def stop_nt(contig_seq: str, strand: str, frame: int, aa_pos: int) -> int:
     return frame + (aa_pos - 1) * 3 + 1
 
 
+# ---------------------------------------------------------------------------
+# Overprinting / silent-stop analysis — the PROOF (not just the location) of an
+# overprinted homolog. A premature stop is the overprinting signature when it (1)
+# sits inside an OPEN overlapping antisense reading frame (a real candidate gene,
+# e.g. gp75's RNA polymerase) and (2) is SYNONYMOUS in that frame — i.e. the
+# nonsense mutation can be reverted to sense in the small gene without changing the
+# antisense protein, so selection on the antisense gene tolerates (or favours) it.
+# ---------------------------------------------------------------------------
+_COMP = str.maketrans("ACGTUNacgtun", "TGCAANtgcaan")
+
+
+def _revcomp(s: str) -> str:
+    return s.translate(_COMP)[::-1]
+
+
+def _comp(b: str) -> str:
+    return b.translate(_COMP)
+
+
+@functools.lru_cache(maxsize=8192)
+def _aa(codon: str, table: int = 11) -> str:
+    """Translate one codon (genetic code 11 = bacterial/phage by default). Ambiguous
+    or short codons -> 'X'. Cached: codons repeat heavily across the scan."""
+    if len(codon) != 3 or any(c not in "ACGT" for c in codon):
+        return "X"
+    return str(Seq(codon).translate(table=table))
+
+
+def _codon_covering(contig: str, strand: str, frame: int, fwd_i0: int):
+    """The codon (read 5'->3' in the gene) and the 0-based index within it that cover
+    forward 0-based position fwd_i0 in reading frame (strand, frame). Returns
+    (codon_str, idx) or None if the position falls outside a complete codon. Works on
+    a local 3-base slice — no whole-contig reverse-complement."""
+    L = len(contig)
+    if strand == "+":
+        k = (fwd_i0 - frame) // 3
+        s0 = frame + 3 * k
+        if s0 < 0 or s0 + 3 > L:
+            return None
+        return contig[s0:s0 + 3], fwd_i0 - s0
+    r = L - 1 - fwd_i0                       # position in the reverse-complement strand
+    k = (r - frame) // 3
+    s0 = frame + 3 * k
+    if s0 < 0 or s0 + 3 > L:
+        return None
+    codon = _revcomp(contig[L - s0 - 3:L - s0])   # R[s0:s0+3] expressed from forward bases
+    return codon, r - s0
+
+
+def _frame_stop_count(contig: str, strand: str, frame: int, lo1: int, hi1: int) -> int:
+    """Number of stop codons in reading frame (strand, frame) whose codon lies fully
+    within forward window [lo1, hi1] (1-based inclusive). 0 == the frame is OPEN across
+    the window (a candidate overlapping ORF)."""
+    L = len(contig)
+    s = contig if strand == "+" else _revcomp(contig)
+    cnt, cs = 0, frame
+    while cs + 3 <= len(s):
+        if strand == "+":
+            flo, fhi = cs + 1, cs + 3
+        else:
+            flo, fhi = L - cs - 2, L - cs
+        if flo >= lo1 and fhi <= hi1 and _aa(s[cs:cs + 3]) == "*":
+            cnt += 1
+        cs += 3
+    return cnt
+
+
+def _stop_silent_in_frame(contig: str, small_strand: str, stop_fwd1: int,
+                          anti: str, frame: int, table: int = 11) -> bool:
+    """Is the premature stop (small-gene codon at forward 1-based stop_fwd1..+2)
+    SYNONYMOUS in antisense reading frame `frame`? True iff some single-base
+    substitution that REMOVES the stop in the small gene leaves the antisense frame's
+    amino acid unchanged (and that antisense codon actually encodes a residue, not a
+    stop)."""
+    L = len(contig)
+    i0 = stop_fwd1 - 1
+    if i0 < 0 or i0 + 3 > L:
+        return False
+    tri = contig[i0:i0 + 3]
+    if any(c not in "ACGT" for c in tri):
+        return False
+    small = tri if small_strand == "+" else _revcomp(tri)
+    if _aa(small, table) != "*":
+        return False                         # not a stop in the small frame -> nothing to test
+    for j in range(3):
+        for b in "ACGT":
+            if b == tri[j]:
+                continue
+            mtri = tri[:j] + b + tri[j + 1:]
+            mc = mtri if small_strand == "+" else _revcomp(mtri)
+            if _aa(mc, table) == "*":
+                continue                     # still a stop -> not a stop-removing change
+            cov = _codon_covering(contig, anti, frame, i0 + j)
+            if not cov:
+                continue
+            codon, idx = cov
+            oaa = _aa(codon, table)
+            if oaa in ("", "X", "*"):
+                continue                     # antisense frame not coding here
+            nb = b if anti == "+" else _comp(b)
+            if _aa(codon[:idx] + nb + codon[idx + 1:], table) == oaa:
+                return True
+    return False
+
+
+def analyze_overprinting(contig: str, small_strand: str, dom_lo1: int, dom_hi1: int,
+                         stop_fwds: list, table: int = 11) -> dict:
+    """Per interrupted homolog: pick the antisense frame with the FEWEST stops across
+    the domain (the candidate overprinted ORF), then test whether each premature stop
+    is synonymous in that frame. Returns {open_frame, open_stops, per_stop_silent,
+    support}. support: 'strong' = the antisense frame is fully open (0 stops) AND every
+    premature stop is silent in it; 'partial' = some stops silent; 'none' = no evidence."""
+    anti = "-" if small_strand == "+" else "+"
+    counts = [(f, _frame_stop_count(contig, anti, f, dom_lo1, dom_hi1)) for f in (0, 1, 2)]
+    open_frame, open_stops = min(counts, key=lambda c: c[1])
+    per_stop = [_stop_silent_in_frame(contig, small_strand, sp, anti, open_frame, table)
+                for sp in stop_fwds]
+    n_sil = sum(per_stop)
+    if per_stop and open_stops == 0 and n_sil == len(per_stop):
+        support = "strong"
+    elif n_sil:
+        support = "partial"
+    else:
+        support = "none"
+    return {"open_frame": open_frame, "open_stops": open_stops,
+            "per_stop_silent": per_stop, "support": support}
+
+
 def _frames(seq: str):
     """Yield (strand, frame, search_aa, marker_aa) for all six frames."""
     for strand in ("+", "-"):
@@ -127,6 +256,8 @@ WIN_STEP = 4400       # genome-length sequences (10k-100k+ aa). Overlap = WIN_AA
                       # (>> any domain), so every domain lies fully inside >=1 window.
 ROW_COLS = ["contig", "strand", "frame", "domain_nt_start", "domain_nt_end",
             "domain_aa_len", "internal_stops", "stop_nt_positions", "stop_aa_positions",
+            "overprinting_support", "antisense_open_frame", "antisense_open_stops",
+            "stop_silent_antisense",
             "domain_bit_score", "i_evalue", "orf_aa_len",
             "aa_before_first_stop", "aa_after_last_stop",
             "orf_nt_start", "orf_nt_end", "natural_stop_nt",
@@ -231,8 +362,17 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
         dfrom, dto = offset + env_from, offset + env_to       # frame-relative aa
         nt_start, nt_end, dom_nt = (aa_to_nt(nt, strand, frame, dfrom, dto)
                                     if nt else (0, 0, ""))
-        stop_nt_pos = ";".join(str(stop_nt(nt, strand, frame, offset + x))
-                               for x in positions) if nt else ""
+        stop_fwds = [stop_nt(nt, strand, frame, offset + x) for x in positions] if nt else []
+        stop_nt_pos = ";".join(str(s) for s in stop_fwds)
+        # Overprinting (silent-stop) test: is the premature stop synonymous in an OPEN
+        # overlapping antisense frame? (the proof of overprinting, not just location).
+        if nt and stop_fwds:
+            opa = analyze_overprinting(nt, strand, nt_start, nt_end, stop_fwds)
+            anti_open_frame, anti_open_stops = opa["open_frame"], opa["open_stops"]
+            stop_silent = ";".join("1" if s else "0" for s in opa["per_stop_silent"])
+            overpr = opa["support"]
+        else:
+            anti_open_frame, anti_open_stops, stop_silent, overpr = -1, -1, "", "none"
         # Map the FULL read-through ORF back to genome DNA — its coding sequence
         # 5'->3' includes the actual stop codon triplet at the end; and locate the
         # natural/terminal stop codon's forward coordinate (0 if the ORF ran to the
@@ -248,6 +388,10 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
             "internal_stops": n_stops,
             "stop_nt_positions": stop_nt_pos,
             "stop_aa_positions": ";".join(str(offset + x) for x in positions),
+            "overprinting_support": overpr,
+            "antisense_open_frame": anti_open_frame,
+            "antisense_open_stops": anti_open_stops,
+            "stop_silent_antisense": stop_silent,
             "domain_bit_score": round(dom_bits, 1),
             "i_evalue": f"{i_eval:.2g}",
             "orf_aa_len": orf_to - orf_from + 1,

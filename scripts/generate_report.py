@@ -295,10 +295,27 @@ def generate(discovery: Path) -> Path:
                      "<code>interrupted_homologs_full_orf_nt.fna</code> "
                      "(<code>natural_stop_nt</code> gives its genome coordinate).")
         p.append(f"<p class='muted'>{note}</p>")
+        strong = interrupted.get("overprinting_strong")
+        if strong is None and irows and "overprinting_support" in irows[0]:
+            strong = sum(1 for r in irows if r.get("overprinting_support") == "strong")
+        if strong is not None:
+            partial = interrupted.get("overprinting_partial")
+            if partial is None and irows:
+                partial = sum(1 for r in irows if r.get("overprinting_support") == "partial")
+            p.append(
+                f"<p class='muted'><b>Overprinting (silent-stop) test:</b> "
+                f"<b>{e(str(strong))}</b> candidate(s) show <b>strong</b> support — the premature "
+                f"stop is synonymous in an <em>open</em> overlapping antisense reading frame, direct "
+                f"evidence the gene is overprinted antisense to another gene; {e(str(partial))} partial. "
+                f"Per-row columns <code>overprinting_support</code>, <code>antisense_open_frame</code>, "
+                f"<code>antisense_open_stops</code> (0 = fully open overlapping ORF) and "
+                f"<code>stop_silent_antisense</code> are in the TSV. (Necessary signature, not proof "
+                f"the antisense ORF is expressed.)</p>")
         if irows:
             show = [c for c in ("contig", "strand", "frame", "domain_nt_start",
                                 "domain_nt_end", "domain_aa_len", "internal_stops",
-                                "stop_nt_positions", "domain_bit_score", "i_evalue")
+                                "stop_nt_positions", "overprinting_support",
+                                "domain_bit_score", "i_evalue")
                     if c in irows[0]]
             p.append("<table><tr>")
             p += [f"<th>{e(c)}</th>" for c in show]
