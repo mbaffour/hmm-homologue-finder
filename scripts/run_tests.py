@@ -451,8 +451,11 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
         _lgt = _lg.read_text() if _lg else ""
         check("genome_map: locus GenBank written (openable in Easyfig/Artemis/clinker)",
               bool(_lg) and "CDS" in _lgt and "gene_of_interest" in _lgt)
-        check("genome_map: renderer options enumerated (incl. easyfig)",
-              {"pygenomeviz", "matplotlib", "easyfig"} <= set(_GMm.MAP_TOOLS))
+        check("genome_map: renderer options enumerated (incl. dfv + easyfig)",
+              {"dfv", "pub", "pygenomeviz", "matplotlib", "easyfig"} <= set(_GMm.MAP_TOOLS))
+        import inspect as _insp  # noqa: E402
+        check("genome_map: DNA Features Viewer ('dfv') is the default renderer",
+              _insp.signature(_GMm.draw).parameters["tool"].default == "dfv")
     except Exception as _e:
         check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
 else:

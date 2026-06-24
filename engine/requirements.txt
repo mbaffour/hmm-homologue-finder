@@ -14,6 +14,7 @@ urllib3<2
 scipy>=1.10.0
 toytree>=3.0.0,<3.0.11
 toyplot>=1.0.0
+dna_features_viewer>=3.1.0
 pygenomeviz>=0.4.0
 kaleido>=0.2.1
 # Synteny visualization tools (optional — app works without them)

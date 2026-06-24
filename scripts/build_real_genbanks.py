@@ -225,7 +225,7 @@ def build(genome_id: str, seq: str, hits: pd.DataFrame, out_dir: Path,
                 (h_lo, h_hi), out_dir / f"{safe}_genome_map",
                 "gene of interest (HMM hit) + neighbours",
                 log=print, track_name=f"{label}\n{genome_id}",
-                tool=os.environ.get("GENOME_MAP_TOOL", "pub"), genbank=out)
+                tool=os.environ.get("GENOME_MAP_TOOL", "dfv"), genbank=out)
     except Exception as e:
         print(f"  (genome map skipped for {genome_id}: {e})")
     return out

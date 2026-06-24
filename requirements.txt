@@ -16,8 +16,11 @@
 # Python packages:
 biopython>=1.80
 pandas>=1.5
-# Genome-map figures (linear gene diagrams). Lazily imported with a matplotlib
-# fallback, so it's optional — but recommended for publication-quality maps.
+# Genome-map figures (linear gene diagrams). The DEFAULT renderer is DNA Features
+# Viewer (cleanest: auto level-stacking of overlapping genes, auto label de-overlap,
+# real coordinate axis). All map libraries are lazily imported with a built-in
+# matplotlib fallback, so they're optional — but recommended for publication maps.
+dna_features_viewer>=3.1.0
 pygenomeviz>=0.4.0
 # Optional — STATIC clinker figures (PNG of clinker's JS-rendered plot). The package
 # imports lazily and skips gracefully if absent. Needs a one-time browser install:

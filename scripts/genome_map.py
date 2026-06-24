@@ -52,32 +52,42 @@ def build_genes(anchor, called, flank_keys=None, label_of=None) -> list:
     return genes
 
 
-MAP_TOOLS = ("pub", "pygenomeviz", "matplotlib", "easyfig", "auto")
+MAP_TOOLS = ("dfv", "pub", "pygenomeviz", "matplotlib", "easyfig", "auto")
 
 
 def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genome",
-         tool="pub", genbank=None, labels=True):
+         tool="dfv", genbank=None, labels=True):
     """Draw a linear genome map (PNG + SVG + PDF) coloured by functional category, your gene
     gold, the track labelled `track_name` (phage name; may be two lines name\\naccession).
-    Genes are strand arrows (direction = strand); overlapping genes are packed onto separate
-    lanes so nothing is hidden. `labels` toggles the gene-name labels. `tool`: 'pub' (default
-    — the publication genome diagram), 'pygenomeviz', or 'easyfig' (needs a `genbank` + an
-    installed Easyfig; falls back). Returns the base path or None."""
+    Genes are strand arrows (direction = strand); overlapping genes are stacked onto separate
+    levels so nothing is hidden. `labels` toggles the gene-name labels. `tool`: 'dfv' (default
+    — DNA Features Viewer, the cleanest publication renderer), 'pub' (the built-in matplotlib
+    diagram, always available), 'pygenomeviz', or 'easyfig' (needs a `genbank` + an installed
+    Easyfig; falls back). Any renderer that is unavailable falls back to 'pub'. Returns the
+    base path or None."""
     genes = [g for g in genes if g.get("start") is not None and g.get("end") is not None]
     if not genes:
         return None
-    tool = (tool or "pub").lower()
+    tool = (tool or "dfv").lower()
+    if tool == "auto":
+        tool = "dfv"
     if tool == "easyfig":
         try:
             return _draw_easyfig(genbank, out_base, title, log)
         except Exception as e:
-            log(f"  (Easyfig unavailable: {e}; using the publication renderer)")
-            tool = "pub"
+            log(f"  (Easyfig unavailable: {e}; using DNA Features Viewer)")
+            tool = "dfv"
     if tool == "pygenomeviz":
         try:
             return _draw_pgv(genes, out_base, title, track_name, log)
         except Exception as e:
-            log(f"  (pyGenomeViz unavailable: {e}; using the publication renderer)")
+            log(f"  (pyGenomeViz unavailable: {e}; using DNA Features Viewer)")
+            tool = "dfv"
+    if tool == "dfv":
+        try:
+            return _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=labels)
+        except Exception as e:
+            log(f"  (DNA Features Viewer unavailable: {e}; using the built-in renderer)")
             tool = "pub"
     try:
         return _draw_pub(genes, anchor, out_base, title, track_name, log, labels=labels)
@@ -127,6 +137,68 @@ def _pack(genes):
             lane_end.append(g["end"])
             assign[id(g)] = len(lane_end) - 1
     return assign, max(len(lane_end), 1)
+
+
+def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
+    """Publication genome map via **DNA Features Viewer** (Edinburgh Genome Foundry) — the
+    default, cleanest renderer. Clean strand arrows; OVERLAPPING genes are auto-stacked onto
+    their own level (the overprint partner sits on a separate level, so the gene of interest is
+    never hidden); label boxes are de-overlapped automatically with leader lines; a real
+    genome-coordinate axis runs the whole locus. Genes are coloured by functional category
+    (the synteny scheme); the gene of interest is bold gold. Label policy keeps any genome
+    legible: the gene of interest + any gene overlapping it are ALWAYS labelled; other genes
+    are labelled only when `labels` is on AND the locus is small enough to stay clean (so a
+    278-gene phage doesn't become a wall of text). PNG (300 dpi) + SVG + PDF."""
+    from dna_features_viewer import GraphicFeature, GraphicRecord
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    CC, FAM, HYPO, _ = _scheme()
+    wlo = min(g["start"] for g in genes)
+    whi = max(g["end"] for g in genes)
+    span = max(whi - wlo, 1)
+    label_all = bool(labels) and len(genes) <= 24    # crowded genomes: only key genes labelled
+
+    def _lab(g):
+        if g["role"] == "anchor":
+            return "gene of interest"
+        if g["role"] == "overlap":                   # the overprint partner — always name it
+            return g.get("label") or "overlapping gene"
+        if label_all and g.get("label"):
+            return g["label"]
+        return None
+
+    feats = []
+    for g in genes:
+        is_a = g["role"] == "anchor"
+        feats.append(GraphicFeature(
+            start=g["start"], end=g["end"], strand=int(g.get("strand", 1)),
+            color=(FAM if is_a else CC.get(g.get("category", ""), HYPO)),
+            linecolor=("#1a1a1a" if is_a else "#33373d"),
+            linewidth=(2.2 if is_a else 0.6),
+            label=_lab(g),
+            fontdict=({"fontsize": 9, "fontweight": "bold", "color": "#6b5300"} if is_a
+                      else {"fontsize": 7, "color": "#1a2230"})))
+    rec = GraphicRecord(sequence_length=span + 1, features=feats, first_index=wlo)
+    fig_w = min(30.0, max(9.0, span / 2200.0))
+    ax = rec.plot(figure_width=fig_w)[0]
+    nm = str(track_name).split("\n")
+    ax.set_title(nm[0] + (f"\n{nm[1]}" if len(nm) > 1 else ""),
+                 fontsize=12, fontweight="bold", pad=12)
+    fig = ax.figure
+    fig.legend(handles=_legend_handles(genes, CC, FAM, HYPO), loc="lower center",
+               ncol=5, fontsize=7.5, frameon=False, bbox_to_anchor=(0.5, -0.06))
+    fig.text(0.5, -0.13, title, ha="center", fontsize=8.5, color="#444",
+             transform=ax.transAxes)
+    out_base = Path(out_base)
+    try:
+        fig.savefig(f"{out_base}.png", dpi=300, bbox_inches="tight")
+        fig.savefig(f"{out_base}.svg", bbox_inches="tight")
+        fig.savefig(f"{out_base}.pdf", bbox_inches="tight")
+    finally:
+        plt.close(fig)
+    log(f"  genome map -> {out_base.name}.png / .svg / .pdf")
+    return out_base
 
 
 def _draw_pub(genes, anchor, out_base, title, track_name, log, labels=True):

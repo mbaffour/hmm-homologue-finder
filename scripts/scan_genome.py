@@ -218,7 +218,7 @@ def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) 
 
 def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupted: bool,
          cpu: int, log, neighbours: bool = False, db_cache=None, annotation_gb=None,
-         flanks: int = 7, map_tool: str = "pub", gene_labels: bool = True) -> dict:
+         flanks: int = 7, map_tool: str = "dfv", gene_labels: bool = True) -> dict:
     """Read-through six-frame scan of one genome with the HMM. Returns a summary dict
     and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt. When
     `neighbours` is set, also describes the flanking genes (from the genome's own
@@ -351,7 +351,7 @@ def _select_neighbours(genes, a_s, a_e, flanks=FLANKS):
 
 def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: Path,
                          cpu: int, log, annotation_gb=None, flanks=FLANKS,
-                         map_tool="pub", gene_labels=True) -> str:
+                         map_tool="dfv", gene_labels=True) -> str:
     """Write an ordered neighbourhood table for each hit, anchored on the gene of
     interest, and a genome-map figure. Gene names come from **the genome's OWN
     annotation** (gene / gp number, product, locus_tag, protein_id) when a GenBank record
@@ -555,12 +555,14 @@ def main() -> None:
                          "overlapping genes are always included")
     ap.add_argument("--no-gene-labels", dest="gene_labels", action="store_false",
                     help="draw the genome map WITHOUT gene-name labels (just coloured arrows)")
-    ap.add_argument("--map-tool", choices=["pub", "pygenomeviz", "easyfig"],
-                    default="pub",
-                    help="genome-map renderer (default 'pub' = publication diagram: sense above / "
-                         "antisense below the line, collision-free labels, scale bar, PNG+SVG+PDF). "
-                         "'easyfig' needs Easyfig installed + $EASYFIG_PY set (a locus GenBank is "
-                         "always written so you can open the map in Easyfig/Artemis/clinker yourself).")
+    ap.add_argument("--map-tool", choices=["dfv", "pub", "pygenomeviz", "easyfig"],
+                    default="dfv",
+                    help="genome-map renderer (default 'dfv' = DNA Features Viewer: clean strand "
+                         "arrows, overlapping genes auto-stacked onto their own level, auto label "
+                         "de-overlap, real coordinate axis, PNG+SVG+PDF). 'pub' = the built-in "
+                         "matplotlib diagram (always available); 'pygenomeviz'; 'easyfig' needs "
+                         "Easyfig installed + $EASYFIG_PY set. A locus GenBank is always written so "
+                         "you can also open the map in Easyfig/Artemis/clinker yourself.")
     ap.add_argument("--cpu", type=int, default=4)
     ap.set_defaults(neighbours=True)
     args = ap.parse_args()
