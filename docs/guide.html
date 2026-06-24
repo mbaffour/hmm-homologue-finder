@@ -123,6 +123,7 @@
   <a href="#deepdive">Deep dive — why it works</a>
   <a href="#controls">Calibration &amp; controls</a>
   <a href="#outputs">Outputs</a>
+  <a href="#limits">Scope &amp; limitations</a>
   <a href="#repro">Reproducibility</a>
   <a href="#versions">Tool versions</a>
   <div class="g">Help</div>
@@ -257,7 +258,7 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     <tr><td><code>--biology-mode {generic,phage,bacterial}</code></td><td>phage</td><td>Which control panel to calibrate against.</td></tr>
     <tr><td><code>--download-controls</code></td><td>off</td><td>One-time fetch of the UniProt unrelated-proteome negative controls (fungi/mammalian/archaea).</td></tr>
     <tr><td><code>--prodigal-gate</code></td><td>off</td><td>Stricter: require six-frame hits to overlap a Prodigal gene. Off by default to keep genuine antisense/alternate-frame homologues.</td></tr>
-    <tr><td><code>--find-interrupted</code></td><td>off</td><td>Also <b>read-through</b>-scan the nucleotide databases for homologues interrupted by a premature stop codon — overprinted/pseudogenized genes the stop-to-stop search misses. Writes <code>interrupted_homologs.tsv</code>. <a href="#deepdive">See deep-dive panel 3.</a></td></tr>
+    <tr><td><code>--find-interrupted</code></td><td>off</td><td>Also <b>read-through</b>-scan the nucleotide databases for homologues interrupted by a premature stop codon — overprinted/pseudogenized genes the stop-to-stop search misses. Writes <code>interrupted_homologs.tsv</code> + protein/DNA FASTAs, with an <b>overprinting verdict</b> (<code>overprinting_support</code> = strong/partial/none — is the stop synonymous in an open antisense frame?). <a href="#deepdive">See deep-dive panel 3.</a></td></tr>
     <tr><td><code>--no-seed-tree</code></td><td>off</td><td>Skip the pre-run seed-only QC tree + alignment.</td></tr>
     <tr><td><code>--synteny-gene-labels</code></td><td>off</td><td>Label neighbour genes with functional annotation in synteny figures (can clutter dense regions).</td></tr>
     <tr><td><code>--color-by {function,conservation,both}</code></td><td>both</td><td>How to colour synteny neighbourhood genes: by VOGDB functional category, by cross-locus conservation, or both.</td></tr>
@@ -377,8 +378,20 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     (synonymous) in the polymerase frame</i>, so it's tolerated and the small gene is interrupted. With
     <code>--find-interrupted</code> the pipeline additionally <b>read-through</b>-translates every frame (stops
     kept, not broken on) and searches that, reporting matches whose domain contains ≥1 internal stop —
-    candidate interrupted/overprinted homologues — to <code>interrupted_homologs.tsv</code>, with the stop
-    positions, so you can study the truncation directly.</p>
+    candidate interrupted/overprinted homologues — to <code>interrupted_homologs.tsv</code>. For each it records
+    the genome coordinates, the stop position(s), and the <b>full read-through ORF</b> read through the premature
+    stop to the natural gene end as protein and DNA (<code>full_orf_aa</code>/<code>full_orf_nt</code> — the latter
+    ends in the actual stop codon; <code>natural_stop_nt</code> is its coordinate), with three FASTAs
+    (<code>_domain_aa.faa</code>, <code>_full_orf_aa.faa</code>, <code>_full_orf_nt.fna</code>). The reporting
+    threshold is family-calibrated, <code>max(30&nbsp;bits, ROC-Youden)</code> from the run's controls.</p>
+    <p><b>Does it actually prove overprinting?</b> Locating a premature stop is necessary but not sufficient. So
+    the scan also picks the antisense frame with the <i>fewest stops over the domain</i> (the candidate
+    overlapping ORF — <code>antisense_open_stops=0</code> means fully open) and tests whether each premature stop
+    is <b>synonymous</b> in that frame — i.e. whether reverting the nonsense mutation in this gene would leave the
+    antisense protein unchanged. The verdict <code>overprinting_support</code> is <b>strong</b> when the antisense
+    frame is open <i>and</i> every stop is silent in it (direct evidence the gene is overprinted antisense to
+    another gene), else <b>partial</b>/<b>none</b>. It confirms the sequence signature of overprinting — not that
+    the antisense gene is expressed (see <a href="#limits">Scope &amp; limitations</a>).</p>
   </div></details>
 
   <details><summary>4 · Iteration &amp; convergence — capturing the whole family</summary>
@@ -437,8 +450,11 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     because a sloppy alignment of divergent sequences propagates into a wrong tree. The alignment is a
     first-class deliverable: the full MSA, a trimmed copy, and <code>hits.aln.stats.json</code> reporting
     <b>length, gap %, conserved columns, and mean pairwise identity</b> (e.g. ~18% for gp75 — genuinely
-    divergent, which is the whole point), plus a ClustalX-coloured figure. <b>Significance:</b> the alignment
-    quality stats let a reader judge how much to trust the phylogeny built from it.</p>
+    divergent, which is the whole point), plus a ClustalX-coloured figure (the report also embeds an inline
+    residue-coloured view). Separately, every hit is aligned <b>to the family HMM</b> with <code>hmmalign</code>
+    (<code>hits_hmmalign.sto</code>/<code>.a2m</code>) so each hit's match states vs insertions relative to the
+    model are explicit. <b>Significance:</b> the alignment quality stats let a reader judge how much to trust the
+    phylogeny built from it.</p>
   </div></details>
 
   <details><summary>8 · Phylogeny — the tree, model selection, and two kinds of branch support</summary>
@@ -460,10 +476,12 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
     <p>Homology of a single gene is stronger when its <b>genomic context is conserved</b> too: if the same
     flanking genes sit around your hit across many phages, that's independent evidence the locus is real and
     functionally coherent (and often hints at function). The pipeline anchors each hit, takes ±7 neighbouring
-    ORFs, and compares neighbourhoods with <b>clinker</b> (interactive HTML) plus publication panels coloured by
-    VOGDB functional category and/or cross-locus conservation. It also writes <b>real-sequence GenBank files</b>
-    (named by phage) you can open in Artemis/Geneious/UGENE. <b>Significance:</b> conserved synteny is a classic,
-    reviewer-trusted corroboration of orthology that sequence similarity alone doesn't provide.</p>
+    ORFs, and compares neighbourhoods with <b>clinker</b> (interactive <code>cluster_*.html</code>; a static
+    <code>cluster_*.png</code> is also exported per cluster when a headless browser is installed) plus publication
+    panels (PNG/SVG/PDF) coloured by VOGDB functional category and/or cross-locus conservation. It also writes
+    <b>real-sequence GenBank files</b> (named by phage) you can open in Artemis/Geneious/UGENE. <b>Significance:</b>
+    conserved synteny is a classic, reviewer-trusted corroboration of orthology that sequence similarity alone
+    doesn't provide.</p>
   </div></details>
 
   <details><summary>10 · Motifs (MEME/FIMO) &amp; genome-browser tracks</summary>
@@ -526,11 +544,13 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
 │     paper_main_table.csv          one row per unique homolog (the main result)
 │     hits_deduplicated.csv  hit_summary.csv  database_hit_summary.csv (+ bar chart)
 │     genome_metadata.csv  homolog_stats.csv  all_runs_hits.csv  database_summary.csv
+│     interrupted_homologs.tsv      (--find-interrupted) stop-interrupted / overprinted homologs + overprinting verdict
 ├── 02_sequences/                   all_hits_aa.faa / all_hits_nt.fna, unique_homologs_aa.faa
+│     interrupted_homologs_domain_aa.faa, _full_orf_aa.faa, _full_orf_nt.fna  (--find-interrupted)
 │     └── per_run/runN/             hits.tsv (evidence table), hits.gff3, hits_aa/nt, orfs_aa/nt, hits_unique_aa
 ├── 03_hmm_profile/profile.hmm      the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
-├── 04_alignment_phylogeny/         MSA (+ stats + figure) and the ML tree (seeds marked SEED_*)
-├── 05_synteny/                     clinker/ (interactive) + publication_figures/ + genbank_with_sequence/
+├── 04_alignment_phylogeny/         MSA (+ stats + figure), per-hit HMM alignment (hits_hmmalign.sto/.a2m), ML tree (seeds SEED_*)
+├── 05_synteny/                     clinker/ (interactive .html + static cluster_*.png) + publication_figures/ + genbank_with_sequence/
 ├── 06_database_summaries/runN_summary.tsv   per-database hit counts + provenance
 ├── 07_seed_qc/                     seed_recovery.csv (per-seed before/after) + seed alignment & QC tree
 └── 08_scripts/                     a copy of the scripts that produced this run</code></pre>
@@ -555,12 +575,42 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
       <tr><td><code>*.gff3</code></td><td>IGV, JBrowse, Artemis (with a genome FASTA)</td></tr>
       <tr><td><code>*.gbk</code></td><td>Artemis, Geneious, UGENE, clinker, pyGenomeViz</td></tr>
       <tr><td>clinker <code>*.html</code></td><td>any browser (interactive; "Save SVG")</td></tr>
+      <tr><td><code>*.sto</code> / <code>*.a2m</code> (per-hit HMM alignment)</td><td>Belvu, Jalview, HMMER esl-reformat</td></tr>
       <tr><td><code>*.treefile</code> (Newick)</td><td>iTOL, FigTree, ggtree, Dendroscope</td></tr>
       <tr><td><code>*.hmm</code></td><td>HMMER; submit to Pfam / NCBI CDD / VOGDB</td></tr>
-      <tr><td><code>report.html</code></td><td>any browser — one-page summary linking tables, tree, alignment, synteny</td></tr>
+      <tr><td><code>report.html</code></td><td>any browser — one-page summary with an embedded coloured alignment + synteny panel, linking tables, tree, alignment, synteny, and (with <code>--find-interrupted</code>) the overprinting verdict</td></tr>
+    </table>
+  </div></details>
+  <details><summary><code>interrupted_homologs.tsv</code> — column schema (<code>--find-interrupted</code>)</summary>
+  <div class="inner">
+    <table>
+      <tr><th>Group</th><th>Columns</th></tr>
+      <tr><td>Location</td><td><code>contig</code>, <code>strand</code>, <code>frame</code>, <code>domain_nt_start</code>/<code>domain_nt_end</code>, <code>domain_aa_len</code></td></tr>
+      <tr><td>Premature stop(s)</td><td><code>internal_stops</code>, <code>stop_nt_positions</code>, <code>stop_aa_positions</code></td></tr>
+      <tr><td><b>Overprinting verdict</b></td><td><code>overprinting_support</code> (strong/partial/none), <code>antisense_open_frame</code>, <code>antisense_open_stops</code> (0 = open overlapping ORF), <code>stop_silent_antisense</code> (per-stop 1/0)</td></tr>
+      <tr><td>HMM stats</td><td><code>domain_bit_score</code>, <code>i_evalue</code></td></tr>
+      <tr><td>Full read-through ORF</td><td><code>orf_aa_len</code>, <code>aa_before_first_stop</code>, <code>aa_after_last_stop</code>, <code>orf_nt_start</code>/<code>orf_nt_end</code>, <code>natural_stop_nt</code> (the actual stop codon's coordinate)</td></tr>
+      <tr><td>Sequences</td><td><code>domain_nt</code>, <code>domain_aa_with_stops</code> (stop = <code>*</code>), <code>full_orf_aa</code>, <code>full_orf_nt</code> (also as the three <code>interrupted_homologs_*</code> FASTAs)</td></tr>
     </table>
   </div></details>
   <div class="note"><b>Reading the result.</b> <b>Converged?</b> per-round summaries stop growing. <b>Novel &amp; specific?</b> ~0 hits in SwissProt/Pfam/VOGDB with hits found only via six-frame genome search. <b>Validated?</b> every row is a real ORF — see <code>passes_orf_filter</code>.</div>
+</section>
+
+<section id="limits">
+  <h2>Scope &amp; limitations — what it does <i>not</i> do</h2>
+  <div class="card">
+    Knowing the bounds keeps you from over-reading the output.
+    <table>
+      <tr><th>Boundary</th><th>What that means</th></tr>
+      <tr><td><b>Sequence/HMM homology, not structure</b></td><td>Detection is profile-HMM based (to the ~15–25% twilight zone), not structure-based. Homologs diverged past HMM detectability but with a conserved fold (Foldseek/DALI territory) are out of scope.</td></tr>
+      <tr><td><b>Assembled databases, not raw reads</b></td><td>Input is a seed FASTA vs assembled genome/protein databases. <b>RNA-seq / read-based evidence is planned future work — not wired in now.</b></td></tr>
+      <tr><td><b>Overprinting test is necessary, not sufficient</b></td><td><code>overprinting_support=strong</code> confirms the premature stop is synonymous in an <i>open</i> overlapping antisense frame — strong sequence evidence — but does <b>not</b> prove that frame is a transcribed, translated, selected gene. Confirming expression needs orthogonal data (RNA-seq/ribo-seq, antisense-ORF conservation, dN/dS) the tool does not generate.</td></tr>
+      <tr><td><b>Interrupted threshold is heuristic across families</b></td><td>The read-through bar is <code>max(30 bits, ROC-Youden)</code>; the 30-bit floor is fixed and the ROC cutoff is transferred from the stop-to-stop controls, not re-derived against a read-through null. Validated on gp75 (floor dominates); treat low-scoring interrupted candidates of other families with extra caution.</td></tr>
+      <tr><td><b>Phage/viral &amp; genetic code 11 by default</b></td><td>Translation defaults to code 11 (set <code>--trans-table</code> for others); the curated databases and controls are tuned for phage/viral discovery.</td></tr>
+      <tr><td><b>Candidates, not function</b></td><td>A validated ORF with HMM homology is a <i>candidate</i>; biological function still needs experimental validation. No wet-lab/primer/expression design.</td></tr>
+      <tr><td><b>Optional parts skip gracefully</b></td><td>NCBI annotation needs network + an email (skipped offline); static clinker PNGs need a headless browser (<code>playwright install chromium</code>, skipped if absent) — the run still completes and static synteny panels are produced regardless.</td></tr>
+    </table>
+  </div>
 </section>
 
 <section id="repro">

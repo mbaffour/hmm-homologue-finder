@@ -86,7 +86,9 @@ For each run (under `<fasta>_discovery/PACKAGE/`):
 | phylogenetic tree | IQ-TREE ML tree (fixed seed) of the homologs **with the seeds placed in it, marked** (Newick + PNG + SVG + PDF). A pre-run **seed QC tree** is also produced. |
 | threshold calibration | `controls/control_report.json` — sensitivity / specificity / false-positive rate of the bit-score threshold vs positive & negative controls. |
 | profile `.hmm` | The model — submit to Pfam / NCBI CDD / VOGDB. |
-| convergence + report | Per-round hit counts, calibration, and a self-contained HTML results summary. |
+| per-hit HMM alignment | every homolog aligned to the family model (`hits_hmmalign.sto`/`.a2m`) — match states vs insertions. |
+| **interrupted / overprinted homologs** *(opt-in, `--find-interrupted`)* | homologs broken by a *premature stop* that the stop-to-stop search misses — with the full read-through ORF (protein + DNA, to the real stop codon) **and an overprinting verdict**: whether the stop is synonymous in an open overlapping antisense frame (`overprinting_support` = strong/partial/none). |
+| convergence + report | Per-round hit counts, calibration, an embedded coloured alignment + synteny panel, and a self-contained HTML results summary. |
 
 All vector figures (synteny, alignment, tree) are written as **SVG (editable text — Inkscape) and PDF (Illustrator)** alongside a 300-dpi PNG.
 
@@ -110,11 +112,21 @@ See **[docs/OUTPUTS.md](docs/OUTPUTS.md)** for the full reference.
 - **ORF validation proves they're real genes.** Each hit is reconstructed frame-correctly, required to have **no internal stop codons**, and checked to sit in a coding locus — with the evidence in `hits.tsv`. An HMM score alone is never enough.
 - **Controls + ROC quantify that hits aren't artefacts.** Composition-matched shuffled seeds and unrelated proteomes give sensitivity / specificity / FPR and an **ROC AUC** (1.0 = perfect separation), so you can rule out the "it's just composition bias" objection with numbers.
 - **Convergence proves completeness; dual tree support (SH-aLRT + UFBoot) and conserved synteny corroborate it.** And everything is recorded for exact reproduction.
+- **Overprinting, demonstrated — not just suspected.** `--find-interrupted` reads *through* premature stops to recover interrupted/overprinted homologs, then tests whether each stop is **synonymous in an open overlapping antisense frame** — the sequence signature of overprinting (how gp75 hides antisense to a virion RNA polymerase). Reported as a per-candidate `strong`/`partial`/`none` verdict with the genome coordinates to follow up.
 
 **Full, educational walkthrough — how *and why* each step works:** open
 **[docs/guide.html](docs/guide.html)** → *"Deep dive — why it works."*
 
 Scientific detail: **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
+
+### What it does *not* do (scope & limitations)
+Briefly, so you don't over-read the output: it finds homologs by **sequence/HMM**
+(not structure, e.g. Foldseek), from **assembled databases** (not raw reads).
+**RNA-seq / read-based evidence is planned future work, not wired in now.** The
+overprinting test is a *necessary* sequence signature — it confirms a stop is
+synonymous in an open antisense frame, not that the antisense gene is expressed.
+A validated hit is a **candidate** homolog; biological function still needs
+experimental validation. Full list: **[METHODOLOGY.md §10](docs/METHODOLOGY.md#10-limitations--scope-what-it-does-not-do)**.
 
 ---
 
@@ -174,6 +186,10 @@ hmm-homologue-finder/
   | seqkit | v2.13.0 | | Python | 3.12.13 |
   | Biopython | 1.87 | | pandas | 3.0.3 |
   | NumPy | 2.4.6 | | matplotlib | 3.11.0 |
+  | playwright | 1.60.0 *(opt.)* | | | |
+
+  *playwright + a chromium browser are optional — only for the static clinker PNG
+  export; everything else runs without them.*
 
 - Internet access for database streaming and NCBI organism lookups — **optional**:
   with no email / `--no-annotate` the pipeline runs fully offline (six-frame

@@ -17,12 +17,15 @@ PACKAGE/
 │     paper_main_table.csv            one row per unique homolog (the main result)
 │     hits_deduplicated.csv, hit_summary.csv, database_hit_summary.csv (+ database_hits.png/svg/pdf),
 │     genome_metadata.csv, homolog_stats.csv, all_runs_hits.csv, database_summary.csv
+│     interrupted_homologs.tsv        (--find-interrupted only) stop-interrupted / overprinted homologs (schema below)
 ├── 02_sequences/                     all_hits_aa.faa / all_hits_nt.fna, unique_homologs_aa.faa
+│     interrupted_homologs_domain_aa.faa, _full_orf_aa.faa, _full_orf_nt.fna  (--find-interrupted only)
 │     └── per_run/runN/               hits.tsv (evidence table), hits.gff3, hits_aa.faa/hits_nt.fna,
 │                                     orfs_aa.faa/orfs_nt.fna, hits_unique_aa.faa
 ├── 03_hmm_profile/profile.hmm        the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
-├── 04_alignment_phylogeny/           MSA (hits.aln.faa + stats + figure) and the ML tree (seeds marked)
-├── 05_synteny/                       clinker/ (interactive), publication_figures/, genbank_with_sequence/
+├── 04_alignment_phylogeny/           MSA (hits.aln.faa + stats + figure), per-hit HMM alignment
+│                                     (hits_hmmalign.sto/.a2m), and the ML tree (seeds marked)
+├── 05_synteny/                       clinker/ (interactive .html + static cluster_*.png), publication_figures/ (PNG/SVG/PDF), genbank_with_sequence/
 ├── 06_database_summaries/runN_summary.tsv   per-database hit counts + provenance
 ├── 07_seed_qc/                       seed_recovery.csv (per-seed before/after) + seed alignment & QC tree
 └── 08_scripts/                       a copy of the scripts that produced this run
@@ -55,10 +58,30 @@ PACKAGE/
 **Sequences**
 | `aa_sequence` (amino-acid domain), `nt_sequence` (matching DNA; blank for protein-DB hits) |
 
+## `interrupted_homologs.tsv` — column schema (`--find-interrupted`)
+One row per stop-interrupted / overprinted candidate (the read-through scan).
+| column | meaning |
+|--------|---------|
+| `contig`, `strand`, `frame` | source contig and the read-through reading frame |
+| `domain_nt_start`, `domain_nt_end` | genome coordinates of the matched domain (forward strand, 1-based) |
+| `domain_aa_len`, `internal_stops` | domain length (aa); number of premature internal stops in it |
+| `stop_nt_positions`, `stop_aa_positions` | per-stop genome coordinate(s) and aa position(s) (`;`-separated) |
+| `overprinting_support` | **strong** = stop synonymous in a fully-open overlapping antisense ORF (overprinting evidence); **partial** / **none** |
+| `antisense_open_frame`, `antisense_open_stops` | the antisense frame with the fewest stops over the domain, and that count (0 = fully open overlapping ORF) |
+| `stop_silent_antisense` | per-stop 1/0 — the premature stop is synonymous in that antisense frame |
+| `domain_bit_score`, `i_evalue` | HMM domain score / independent E-value |
+| `orf_aa_len`, `aa_before_first_stop`, `aa_after_last_stop` | full read-through ORF length; intact residues before the first / after the last stop |
+| `orf_nt_start`, `orf_nt_end`, `natural_stop_nt` | full-ORF genome bounds; genome coordinate of the **actual** (natural) stop codon |
+| `domain_nt`, `domain_aa_with_stops` | matched-domain DNA; matched-domain protein (internal stop shown as `*`) |
+| `full_orf_aa`, `full_orf_nt` | full read-through ORF — protein (premature stops `*`, terminal `*` = gene end) and nucleotide (5'→3', ends in the actual stop codon; translates back to `full_orf_aa`) |
+
+The three `interrupted_homologs_*.faa/.fna` files carry these sequences as FASTA.
+
 ## Which tool opens what
 | File | Open in |
 |------|---------|
 | `*.tsv` | Excel, R, pandas |
+| `*.sto` / `*.a2m` | Belvu, Jalview, HMMER (`esl-reformat`), any alignment viewer |
 | `*.faa` / `*.fna` | Jalview, MEGA, AliView, BLAST, any aligner |
 | `*.gff3` | IGV, JBrowse, Artemis (load with a genome FASTA) |
 | `*.gbk` (GenBank) | Artemis, Geneious, UGENE, clinker, pyGenomeViz (sequence + features in one file) |

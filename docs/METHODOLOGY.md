@@ -52,9 +52,35 @@ behaves (a nonsense mutation in the overprinted gene can be synonymous in the
 overlapping reading frame, so it is tolerated). With this flag the nucleotide
 databases are additionally translated with **read-through** (stop codons retained)
 and searched with the family HMM; matches whose domain envelope contains ≥1
-internal stop are written to `interrupted_homologs.tsv` with the stop positions,
-recovering candidate interrupted/overprinted homologs the stop-to-stop search
-cannot see.
+internal stop are candidate interrupted/overprinted homologs the stop-to-stop
+search cannot see. For each candidate the scan records (`interrupted_homologs.tsv`):
+the genome coordinates and DNA of the matched domain; the per-stop genome
+coordinates (`stop_nt_positions`); the **full read-through ORF** read *through* the
+premature stop(s) to the natural gene end, as protein (`full_orf_aa`, internal
+stops shown as `*`) and as nucleotide (`full_orf_nt`, coding 5'→3', ending in the
+actual stop codon triplet — `natural_stop_nt` gives its genome coordinate); and
+three FASTAs (`interrupted_homologs_domain_aa.faa`, `…_full_orf_aa.faa`,
+`…_full_orf_nt.fna`). The **reporting threshold is family-calibrated**:
+`max(30 bits, the ROC Youden-optimal cutoff)` from the same run controls — never
+below the run's lenient evidence bar and raised to the family's calibrated noise
+floor when controls were run (the read-through scan covers a much larger, noisier
+space than the stop-to-stop search, so the bar only ever tightens); with
+`--no-controls` the bare 30-bit floor is used.
+
+*Overprinting (silent-stop) test — the proof, not just the location.* Locating a
+premature stop is necessary but not sufficient to call a gene overprinted. For
+each candidate the scan therefore picks the antisense frame with the **fewest
+stops across the domain** (the candidate overlapping ORF; `antisense_open_frame`,
+`antisense_open_stops` — 0 = a fully open overlapping reading frame) and tests
+whether each premature stop is **synonymous** in that frame — i.e. whether some
+single-base change that reverts the nonsense mutation in *this* gene would leave
+the antisense protein unchanged (`stop_silent_antisense`, per-stop). The verdict
+`overprinting_support` is **strong** when the antisense frame is fully open *and*
+every premature stop is synonymous in it (direct evidence the gene is overprinted
+antisense to another gene), **partial** when only some stops are silent, **none**
+otherwise. This is a *necessary* signature — it confirms synonymy in an open
+overlapping frame — but does not by itself prove the antisense ORF is expressed
+(see Limitations).
 
 ## 6. Iterative refinement and convergence
 Unique, ORF-validated domains from one round seed the next; identical databases,
@@ -73,13 +99,20 @@ the main paper table, so tables and figures describe the same homolog set.
 ## 7. Downstream characterisation
 - **Clustering** — CD-HIT (40% identity, 80% coverage).
 - **Synteny** — Prodigal gene calls provide flanking-gene context; neighbourhoods
-  are compared per cluster with clinker; real-sequence GenBank files are written.
+  are compared per cluster with clinker (interactive `cluster_*.html`; a static
+  `cluster_*.png` is also exported per cluster when a headless browser is installed)
+  and rendered as anchored, orthogroup-coloured publication panels (PNG/SVG/PDF);
+  real-sequence GenBank files are written.
 - **Alignment of homologs** — the unique ORF-validated domains are aligned with
   the same accuracy-first MAFFT strategy (L-INS-i where tractable, else `--auto`).
   The alignment is a first-class deliverable: the full MSA (`hits.aln.faa`), a
   trimmed copy, quality statistics (`hits.aln.stats.json`: length, gap %, conserved
   columns, mean pairwise identity), and a publication-ready ClustalX-coloured
   figure (`alignment_figure.{png,svg,pdf}`) are written and embedded in the report.
+  The report also embeds an inline, residue-coloured view of the first hits.
+  Separately, every unique homolog is aligned **to the family HMM itself** with
+  `hmmalign` (`hits_hmmalign.sto` Stockholm + `hits_hmmalign.a2m` A2M) so each hit's
+  match states vs insertions relative to the model are explicit.
 - **Phylogenetics** — trimAl (`-gt 0.5`) -> IQ-TREE (ModelFinder; 1000 ultrafast
   bootstrap; fixed random seed for reproducibility). The deliverable tree is built
   once, after the runs, on the most-complete run's homologs **with the seeds
@@ -132,3 +165,41 @@ via NCBI Entrez and direct catalogue streaming.
   translation of genome databases.
 - **Validated** — every reported hit is a real ORF (no internal stops; in a
   coding locus), with both DNA and protein sequence recorded.
+
+## 10. Limitations / scope (what it does *not* do)
+The tool is a sequence-homology discovery pipeline; reading these bounds prevents
+over-interpreting its output.
+
+- **Sequence/HMM homology only — no structural search.** Detection is profile-HMM
+  based (down to the ~15–25 % "twilight zone"), not structure-based. Homologs whose
+  sequence has diverged past HMM detectability but whose fold is conserved (the
+  domain of tools like Foldseek/DALI) are out of scope.
+- **Assembled databases, not raw reads.** Input is a seed FASTA searched against
+  assembled genome/protein databases. **Read-level data is not an input.**
+  *RNA-seq / read-based evidence (e.g. expression or transcript support) is planned
+  future work and is **not wired in now**.*
+- **Overprinting test is necessary, not sufficient.** `overprinting_support=strong`
+  confirms the premature stop is synonymous in an *open* overlapping antisense
+  frame — strong sequence evidence of overprinting — but it does **not** prove that
+  antisense frame is a transcribed, translated, selected gene. Confirming
+  expression needs orthogonal data (e.g. RNA-seq/ribo-seq, conservation of the
+  antisense ORF, dN/dS), which the tool does not generate.
+- **Interrupted-scan threshold is heuristic for arbitrary families.** The
+  read-through reporting bar is `max(30 bits, ROC-Youden)`. The 30-bit floor is a
+  fixed heuristic (the validation lenient bound), and the ROC cutoff is calibrated
+  on the *stop-to-stop* control set, then transferred to the larger read-through
+  space; it is not re-derived against a read-through-specific null. It is validated
+  on gp75 (where the floor dominates); for a family where the ROC term would
+  dominate, treat low-scoring interrupted candidates with extra caution.
+- **Genetic code & target domain.** Translation defaults to code **11**
+  (bacterial/phage); set `--trans-table` for others. The database catalog and
+  controls are tuned for **phage/viral** discovery — usable on other families, but
+  the curated databases are viral.
+- **Candidate homologs, not function.** A validated ORF with HMM homology is a
+  *candidate*; biological function still requires experimental validation. The tool
+  does no wet-lab/primer/expression design.
+- **Optional components degrade gracefully.** NCBI annotation (organism names,
+  GenBank neighbourhoods) needs network + an email and is skipped offline; static
+  clinker PNGs need a headless browser (`playwright install chromium`) and are
+  skipped if absent — the run still completes and the static synteny panels are
+  produced regardless.
