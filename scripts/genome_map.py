@@ -50,9 +50,10 @@ def build_genes(anchor, called, flank_keys=None, label_of=None) -> list:
             continue                                   # the gene of interest's own call
         role = "overlap" if ov > 0 else ("flank" if (s, e) in flank_keys else "other")
         cat = m.get("category") or categorize(m.get("product") or m.get("gene") or "", m.get("vfam") or "")
+        # store the name for EVERY gene (so the whole-genome locus GenBank keeps gp/locus names,
+        # not /product="CDS"); the renderer decides which labels to DISPLAY via its density budget.
         genes.append({"start": s, "end": e, "strand": st, "role": role,
-                      "label": (label_of(m) if role in ("overlap", "flank") else ""),
-                      "category": cat})
+                      "label": label_of(m), "category": cat})
     return genes
 
 
@@ -306,6 +307,20 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
         if _orig_cfl is not None:
             _pg["compute_features_levels"] = _orig_cfl
 
+    # Keep the gold gene-of-interest arrow VISIBLE in the raster: DFV draws the (wide) inline
+    # "gene of interest" label box on top of the tiny anchor arrow, which fully occludes it in
+    # the PNG/PDF (the arrow survives only in the SVG). Raise every gold family-colour arrow
+    # above the label boxes so the paper's subject gene is never hidden.
+    import matplotlib.colors as _mc
+    _gold = _mc.to_hex(FAM)
+    for _ax in axes_list:
+        for _p in getattr(_ax, "patches", []):
+            try:
+                if _mc.to_hex(_p.get_facecolor()) == _gold:
+                    _p.set_zorder(30)
+            except Exception:
+                pass
+
     if module_brackets:
         _draw_module_brackets(axes_list, _module_runs(genes, CC))
 
@@ -477,7 +492,11 @@ def write_locus_genbank(genes, contig_seq, organism, accession, out_path):
             q = {"gene": ["gene_of_interest"], "product": ["gene of interest (HMM hit)"]}
         else:
             q = {"product": [g.get("label") or "CDS"]}
-        feats.append(SeqFeature(FeatureLocation(max(0, g["start"] - wlo), max(1, g["end"] - wlo),
+        # g["start"]/g["end"] are 1-based INCLUSIVE; the sub-sequence's first base (1-based wlo)
+        # is index 0. Biopython FeatureLocation is 0-based half-open, so a 1-based-inclusive
+        # [s,e] maps to [s-wlo, e-wlo+1] — the +1 on the end is required or every CDS prints 1 bp
+        # short at its 3' end.
+        feats.append(SeqFeature(FeatureLocation(max(0, g["start"] - wlo), max(1, g["end"] - wlo + 1),
                      strand=int(g.get("strand", 1))), type="CDS", qualifiers=q))
     rec.features = sorted(feats, key=lambda f: int(f.location.start))
     SeqIO.write(rec, str(out_path), "genbank")
@@ -539,7 +558,7 @@ def _draw_pgv(genes, out_base, title, track_name, log):
     track = gv.add_feature_track((str(track_name) or "genome")[:45], L)
     seg = track.get_segment()
     for g in genes:
-        seg.add_feature(g["start"] - wlo, g["end"] - wlo, int(g.get("strand", 1)),
+        seg.add_feature(g["start"] - wlo, g["end"] - wlo + 1, int(g.get("strand", 1)),
                         plotstyle="arrow", label=g.get("label", "") or "",
                         fc=_color_of(g, CC, FAM, HYPO),
                         ec=("#1a1a1a" if g["role"] == "anchor" else "#33373d"),

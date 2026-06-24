@@ -494,6 +494,16 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
         _lgt = _lg.read_text() if _lg else ""
         check("genome_map: locus GenBank written (openable in Easyfig/Artemis/clinker)",
               bool(_lg) and "CDS" in _lgt and "gene_of_interest" in _lgt)
+        # coordinate fidelity with wlo>1: a 1-based-inclusive [s,e] feature must keep its full
+        # length in the exported .gb (the +1 on the FeatureLocation end). wlo here = 101.
+        from Bio import SeqIO as _St
+        _lg2 = _GMm.write_locus_genbank(
+            [{"start": 101, "end": 200, "strand": 1, "role": "anchor", "label": "GOI"},   # 100 bp
+             {"start": 301, "end": 309, "strand": -1, "role": "flank", "label": "nbr"}],   # 9 bp
+            "ATGC" * 100, "Test phage", "ACC9", _sg / "locus2.gb")
+        _lens = sorted(len(f.location) for f in _St.read(str(_lg2), "genbank").features if f.type == "CDS")
+        check("genome_map: locus GenBank CDS keep full 1-based-inclusive length (wlo>1, no 3' truncation)",
+              _lens == [9, 100])
         check("genome_map: renderer options enumerated (incl. dfv + easyfig)",
               {"dfv", "pub", "pygenomeviz", "matplotlib", "easyfig"} <= set(_GMm.MAP_TOOLS))
         import inspect as _insp  # noqa: E402
