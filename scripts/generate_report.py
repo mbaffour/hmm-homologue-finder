@@ -278,9 +278,9 @@ def generate(discovery: Path) -> Path:
                  f"src='data:image/png;base64,{syn_png}'>")
 
     if paper:
-        show = [c for c in ("rank", "representative_organism", "accession", "copies",
-                            "domain_aa_len", "best_evalue", "best_bit_score",
-                            "confidence_tier") if c in paper[0]]
+        show = [c for c in ("rank", "representative_organism", "accession", "n_genomes",
+                            "n_organisms", "database_records", "domain_aa_len", "best_evalue",
+                            "best_bit_score", "confidence_tier") if c in paper[0]]
         p.append("<h2>Top homologs</h2><table><tr>")
         p += [f"<th>{e(c)}</th>" for c in show]
         p.append("</tr>")

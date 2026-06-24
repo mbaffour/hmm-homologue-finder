@@ -38,6 +38,14 @@ def _host_from_organism(org: str) -> str:
     return m.group(1) if m else ""
 
 
+def _base_acc(gid: str) -> str:
+    """Strip the version suffix from an accession so the SAME physical genome catalogued
+    under versioned + unversioned ids (e.g. NC_023589.1 from RefSeq AND NC_023589 from
+    INPHARED) collapses to one genome. Used so genome counts aren't inflated by cross-database
+    accession aliases."""
+    return re.sub(r"\.\d+$", "", str(gid or ""))
+
+
 def _read_tsv(p: Path) -> pd.DataFrame:
     try:
         return pd.read_csv(p, sep="\t", dtype=str).fillna("")
@@ -60,7 +68,11 @@ def _paper_table(df: pd.DataFrame) -> pd.DataFrame:
             "representative_organism": rep.get("organism", ""),
             "accession": rep.get("genome_id", ""),
             "database": rep.get("db_name", ""),
-            "copies": len(g),
+            # number of DATABASE RECORDS carrying this exact sequence (the same gene catalogued
+            # under several accessions/DBs), NOT biological gene copies/paralogs; n_genomes and
+            # n_organisms are the physical counts.
+            "database_records": len(g),
+            "n_genomes": g["genome_id"].map(_base_acc).nunique(),
             "n_organisms": len(_canon_org_set(g)),
             "domain_aa_len": "" if pd.isna(rep["_dl"]) else int(rep["_dl"]),
             "domain_coverage": rep.get("domain_coverage", ""),
@@ -97,7 +109,9 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
         rep = g.sort_values("_bs", ascending=False, na_position="last").iloc[0]
         dbs = _uniq(g.get("db_name", pd.Series(dtype=str)))
         runs = _uniq(g.get("run_label", pd.Series(dtype=str)))
-        genomes = _uniq(g.get("genome_id", pd.Series(dtype=str)))
+        # count PHYSICAL genomes (base accession) so versioned+unversioned aliases of the same
+        # genome across databases don't inflate n_genomes
+        genomes = _uniq(_base_acc(x) for x in g.get("genome_id", pd.Series(dtype=str)))
         orgs = _uniq(g.get("organism", pd.Series(dtype=str)))   # raw names (display)
         # unique organisms by canonical identity (host-genus aliases collapsed;
         # metagenomic/unnamed fall back to genome accession)
@@ -306,9 +320,12 @@ def export(discovery: Path) -> list[str]:
         pd.DataFrame(rows).to_csv(discovery / "hit_summary.csv", index=False)
         written.append(str(discovery / "hit_summary.csv"))
 
-        # Compact main-paper table from the most complete single run (collapsed
-        # to unique homologs). The full all_runs_hits.csv stays as supplementary.
-        best_run = max(run_frames, key=len)
+        # Compact main-paper table from the canonical run = the one recovering the most UNIQUE
+        # homologs; ties break toward the LATER (converged) round so this matches the manifest's
+        # converged headline (run_frames are in run1..runN order). Selecting by raw row count with
+        # a first-tie-wins max() previously picked an earlier round with fewer unique homologs.
+        best_run = max(enumerate(run_frames),
+                       key=lambda t: (int(t[1]["aa_sequence"].nunique()), t[0]))[1]
         paper = _paper_table(best_run)
         if not paper.empty:
             paper.to_csv(discovery / "paper_main_table.csv", index=False)
@@ -325,14 +342,21 @@ def export(discovery: Path) -> list[str]:
             written.append(str(discovery / "database_hit_summary.csv"))
             written += _db_barplot(dbsum, discovery)
 
-        # Supplementary Table S1 — genome metadata (one row per genome/source)
+        # Supplementary Table S1 — genome metadata (one row per PHYSICAL genome). Collapse by
+        # base accession so the same genome under versioned + unversioned ids (NC_023589.1 +
+        # NC_023589, RefSeq + INPHARED) is ONE row, not two — otherwise the genome count is
+        # inflated (~1.3x on gp75) by cross-database accession aliases.
         meta = []
-        for gid, g in allh.groupby("genome_id"):
+        _allh = allh.copy()
+        _allh["_base"] = _allh["genome_id"].map(_base_acc)
+        for base, g in _allh.groupby("_base"):
             # `.get` so offline runs (no NCBI annotation -> no 'organism' column)
             # still export this table instead of aborting the whole CSV export.
             org = next((o for o in g.get("organism", pd.Series(dtype=str)) if o), "")
+            accs = ";".join(sorted(x for x in g["genome_id"].unique() if x))
             meta.append({
-                "genome_id": gid, "organism": org, "host": _host_from_organism(org),
+                "genome_id": base, "accessions": accs, "n_accessions": g["genome_id"].nunique(),
+                "organism": org, "host": _host_from_organism(org),
                 "databases": ";".join(sorted(x for x in g["db_name"].unique() if x)),
                 "source_type": ";".join(sorted(g["source_type"].unique())),
                 "n_hits": len(g),

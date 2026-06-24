@@ -30,7 +30,7 @@ _REGISTRY = {
     DIRS["tables"]: {
         "purpose": "The headline result tables and the per-database hit chart. Start here.",
         "files": {
-            "paper_main_table.csv": "MAIN RESULT — one row per unique homolog (best per sequence): organism, accession, database, copies, #organisms, domain length/coverage, best E-value/bit score, confidence tier.",
+            "paper_main_table.csv": "MAIN RESULT — one row per unique homolog (best per sequence) from the canonical converged run: organism, accession, database, database_records (DB records for this exact sequence, NOT gene copies), n_genomes, n_organisms, domain length/coverage, best E-value/bit score, confidence tier.",
             "hits_deduplicated.csv": "One row per unique homolog sequence, collapsed across databases/iterations, with 'found in N databases / N organisms' provenance.",
             "hit_summary.csv": "Per-iteration totals: hits, passed-filter, six-frame vs protein-DB, unique sequences, unique organisms, databases.",
             "database_hit_summary.csv": "Every database searched (including 0-hit ones), with unique sequence/organism counts.",
