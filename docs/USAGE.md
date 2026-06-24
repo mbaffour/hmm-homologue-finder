@@ -196,6 +196,18 @@ clinker, or pyGenomeViz yourself. Disable the whole step with `--no-neighbours`.
 run draws a per-hit genome map too, honours the `GENOME_MAP_TOOL` environment variable as an
 override, and writes the same per-hit GenBanks.)*
 
+**Map styling (all optional, `dfv` renderer):** genes are coloured by broad functional category
+with a legend that shows **per-category counts** (e.g. `structural (4)`); the gene of interest is
+bold gold. `--palette {default, colorblind}` switches to a **colour-blind-safe** scheme (Paul Tol
+muted; the same scheme is used by the synteny figures so a run is consistent). `--functional-labels`
+tags the gene of interest **and its overprint partner** with their category (e.g. `[transcription]`)
+— colour + legend still carry function for everything else, so it never re-crowds. `--module-brackets`
+draws a bracket over each contiguous run of same-category genes labelled with the **module** name
+(`structural module`, `replication module`, …; hypothetical genes are not bracketed). A genome with
+**>40 genes wraps onto multiple lines** automatically so every gene stays legible (the whole-contig
+map of a large phage no longer collapses into one dense row). *(The database run honours the same
+choices via the `GENOME_MAP_PALETTE` / `GENOME_MAP_FUNCTIONAL=1` / `GENOME_MAP_BRACKETS=1` env vars.)*
+
 *Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
 --find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`
 — its premature stop is synonymous in the open antisense RNA-polymerase frame.
