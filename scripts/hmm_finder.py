@@ -527,6 +527,20 @@ def run_controls(hmm_path: Path, seed_faa: Path, out: Path, mode: str,
         return {}
 
 
+def _interrupted_min_bit(control_summary: dict | None, floor: float = 30.0):
+    """Reporting threshold for the read-through interrupted scan: never below `floor`
+    (the run's lenient evidence bar), raised to the family ROC-Youden optimal cutoff
+    when controls were run. Returns (min_bit, basis_string). The read-through scan
+    covers a much larger, noisier space than the stop-to-stop search, so the bar only
+    ever tightens; with no ROC (--no-controls) the bare floor is used."""
+    roc = (control_summary or {}).get("roc") or {}
+    try:
+        opt = float(roc.get("optimal_threshold"))
+        return max(floor, opt), f"max(floor {floor:g}, ROC-Youden {opt:g})"
+    except (TypeError, ValueError):
+        return floor, f"floor {floor:g} bits (no ROC calibration available)"
+
+
 def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
                          cpu, log, control_summary: dict | None = None) -> dict:
     """Read-through scan of the searched NUCLEOTIDE databases for homologs that are
@@ -564,14 +578,7 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
         log("  (find-interrupted: no cached nucleotide DBs from this run to scan)")
         return {}
     # Family-calibrated reporting floor (see docstring): max(30, ROC-Youden).
-    FLOOR = 30.0
-    _roc = (control_summary or {}).get("roc") or {}
-    try:
-        min_bit = max(FLOOR, float(_roc.get("optimal_threshold")))
-        thr_basis = f"max(floor {FLOOR:g}, ROC-Youden {float(_roc['optimal_threshold']):g})"
-    except (TypeError, ValueError):
-        min_bit = FLOOR
-        thr_basis = f"floor {FLOOR:g} bits (no ROC calibration available)"
+    min_bit, thr_basis = _interrupted_min_bit(control_summary)
     log(f"Read-through scan for interrupted/overprinted homologs "
         f"({len(targets)} nucleotide DB file(s)); reporting threshold {min_bit:g} bits "
         f"[{thr_basis}]…")

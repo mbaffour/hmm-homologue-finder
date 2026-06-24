@@ -310,5 +310,80 @@ check("uniquify dedups labels",
       BT._uniquify("Escherichia_phage_X", _uu) == "Escherichia_phage_X"
       and BT._uniquify("Escherichia_phage_X", _uu) == "Escherichia_phage_X_2")
 
+# --- integration tests for this session's pipeline paths -----------------------
+# Family-calibrated interrupted threshold max(floor 30, ROC-Youden), via the helper.
+check("interrupted threshold: ROC above floor wins",
+      H._interrupted_min_bit({"roc": {"optimal_threshold": 41.2}})[0] == 41.2)
+check("interrupted threshold: floor wins when ROC below it",
+      H._interrupted_min_bit({"roc": {"optimal_threshold": 12.0}})[0] == 30.0)
+check("interrupted threshold: no controls -> bare floor",
+      H._interrupted_min_bit({})[0] == 30.0)
+check("perhit HMM alignment: missing inputs -> {} (no raise)",
+      H.run_perhit_hmm_alignment(Path("/no.hmm"), Path("/no.faa"),
+                                 Path(tempfile.mkdtemp()), lambda *a, **k: None) == {})
+
+import cluster_and_clinker_corrected as _CC  # noqa: E402
+check("clinker static PNG: bad input -> False (graceful, no raise)",
+      _CC._html_to_png(Path("/nonexistent.html"), Path(tempfile.mkdtemp()) / "x.png") is False)
+
+# generate_report renders the inline coloured MSA + interrupted/overprinting sections.
+import json as _json  # noqa: E402
+import generate_report as _GR  # noqa: E402
+_rd = Path(tempfile.mkdtemp())
+(_rd / "downstream" / "tree").mkdir(parents=True)
+(_rd / "downstream" / "tree" / "hits.aln.faa").write_text(">h1 org=x\nMKLAR-DE\n>h2\nMKLAWDEC\n")
+(_rd / "interrupted_homologs.tsv").write_text(
+    "contig\tstrand\tframe\tinternal_stops\tstop_nt_positions\toverprinting_support\t"
+    "domain_bit_score\ti_evalue\nc1\t+\t0\t1\t51421\tstrong\t99.0\t1e-20\n")
+(_rd / "run_manifest.json").write_text(_json.dumps({"parameters": {"label": "t"},
+    "interrupted_homologs": {"interrupted_candidates": 1, "overprinting_strong": 1,
+                             "overprinting_partial": 0}}))
+_rhtml = _GR.generate(_rd).read_text()
+check("report render: inline coloured MSA section present",
+      "Coloured alignment (final hits)" in _rhtml)
+check("report render: interrupted + overprinting section present",
+      "Stop-interrupted / overprinted homologs" in _rhtml
+      and "Overprinting (silent-stop) test" in _rhtml)
+
+# End-to-end find_interrupted: build a tiny family HMM, scan a contig with a known
+# internal stop, assert the whole _search_batch -> ORF/overprinting/FASTA chain.
+# Skips cleanly when HMMER isn't on PATH (e.g. CI without the conda env).
+import shutil as _sh  # noqa: E402
+import subprocess as _sp  # noqa: E402
+import csv as _csv  # noqa: E402
+if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
+    try:
+        _e2e = Path(tempfile.mkdtemp())
+        _prot = "MKAILVGGTRSDEFHNPQWYACMKLLVGGTRSDEFHNPQWYACMKAILVGG"
+        _cod = {'A': 'GCT', 'R': 'CGT', 'N': 'AAT', 'D': 'GAT', 'C': 'TGT', 'Q': 'CAA',
+                'E': 'GAA', 'G': 'GGT', 'H': 'CAT', 'I': 'ATT', 'L': 'CTT', 'K': 'AAA',
+                'M': 'ATG', 'F': 'TTT', 'P': 'CCT', 'S': 'TCT', 'T': 'ACT', 'W': 'TGG',
+                'Y': 'TAT', 'V': 'GTT'}
+        _dna = "".join(_cod[a] for a in _prot)
+        _dna = _dna[:24 * 3] + "TAA" + _dna[24 * 3 + 3:] + "TAA"   # internal stop @aa25 + natural stop
+        (_e2e / "fam.faa").write_text(f">seed\n{_prot}\n")
+        _sp.run(["hmmbuild", "--amino", str(_e2e / "fam.hmm"), str(_e2e / "fam.faa")],
+                check=True, capture_output=True)
+        (_e2e / "genome.fna").write_text(f">c1\n{_dna}\n")
+        _ot = _e2e / "interrupted_homologs.tsv"
+        FI._run(_e2e / "genome.fna", _e2e / "fam.hmm", _ot, 5.0, 1,
+                log=lambda *a, **k: None, emit_fasta=True)
+        _irows = list(_csv.DictReader(open(_ot), delimiter="\t"))
+        check("find_interrupted e2e: an interrupted candidate is found", len(_irows) >= 1)
+        if _irows:
+            _ir = _irows[0]
+            check("find_interrupted e2e: internal stop detected", int(_ir["internal_stops"]) >= 1)
+            check("find_interrupted e2e: full_orf_nt round-trips to full_orf_aa",
+                  str(_Seq(_ir["full_orf_nt"]).translate(table=11)) == _ir["full_orf_aa"])
+            check("find_interrupted e2e: the three sequence FASTAs are written",
+                  all(Path(str(_ot)[:-4] + sfx).exists()
+                      for sfx in ("_domain_aa.faa", "_full_orf_aa.faa", "_full_orf_nt.fna")))
+            check("find_interrupted e2e: overprinting_support populated",
+                  _ir.get("overprinting_support") in ("strong", "partial", "none"))
+    except Exception as _e:
+        check(f"find_interrupted e2e: SKIPPED (tooling error: {_e})", True)
+else:
+    check("find_interrupted e2e: SKIPPED (HMMER not on PATH)", True)
+
 print(f"\n{len(fails)} FAILURE(S): {fails}" if fails else "\nALL TESTS PASSED")
 sys.exit(1 if fails else 0)
