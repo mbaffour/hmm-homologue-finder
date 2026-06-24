@@ -226,6 +226,14 @@ check("extract: met_anchor with no near Met anchors at the domain start (no upst
 # it must be ignored, anchoring at the domain start, so orf_aa_len is not inflated ~10x.
 check("extract: met_anchor ignores a far-upstream Met on a long stop-free frame",
       EVH.met_anchor("M" + "A" * 108 + "K" * 30, 110) == (109, "K" * 30))
+# run_pipeline launcher: presets + the flag/out-dir helpers used to inject no-prompt defaults
+import run_pipeline as RP  # noqa: E402
+check("run_pipeline: presets defined", {"phage-discovery", "offline", "smoke"} <= set(RP.PRESETS))
+check("run_pipeline: _has detects a flag and its '=' form",
+      RP._has(["--email=x"], "--email") and RP._has(["--fasta", "s"], "--fasta")
+      and not RP._has(["--x"], "--email"))
+check("run_pipeline: _out_dir reads --out-dir and --out (space + '=')",
+      RP._out_dir(["--out-dir", "/a"]) == "/a" and RP._out_dir(["--out=/b"]) == "/b")
 # aa_to_nt / stop_nt: genome coordinates + DNA that translate back (frame/strand-correct)
 from Bio.Seq import Seq as _Seq  # noqa: E402
 _g = "ATGAAATAAGGGCCC"   # + frame 0: M K * G P
