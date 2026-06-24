@@ -23,10 +23,12 @@ discovery pipeline uses.
     # also report stop-interrupted / overprinted copies (with the overprinting test):
     python3 scan_genome.py --seeds gene_seeds.faa --genome genome.fna --find-interrupted
 
-The flanking genes are called with Prodigal (the same gene-caller the database workflow
-uses) and written to scan_neighbourhood.csv — an ordered table relative to your gene
-(pos_index 0 = your gene, ± up/downstream), annotated with VOGDB VFAM when that DB is
-cached. Disable with --no-neighbours.
+The flanking genes are written to scan_neighbourhood.csv — an ordered table relative to
+your gene (pos_index 0 = your gene, ± up/downstream). Their names come from the genome's
+OWN annotation (gene / gp number, product, locus_tag, protein_id) when an annotated
+GenBank record is available (a fetched --accession, or a .gb/.gbk/.gbff --genome);
+otherwise they are called with Prodigal (the database workflow's caller) and optionally
+labelled with VOGDB VFAM. Disable with --no-neighbours.
 """
 from __future__ import annotations
 
@@ -53,41 +55,121 @@ ROW_COLS = ["contig", "strand", "frame", "nt_start", "nt_end", "domain_aa_len",
             "domain_aa", "orf_aa", "orf_nt"]
 
 
-def fetch_genome(accessions: str, email: str | None, out_dir: Path, log) -> Path:
-    """Pull one or more NCBI **nucleotide** accessions (comma-separated) into a single
-    genome FASTA via Entrez efetch, so you can scan a genome by accession instead of a
-    local file. NCBI requires an email. Retries transient failures. Returns the path."""
+def _efetch(ids, rettype, email, log):
     from Bio import Entrez
+    Entrez.email = email
+    socket.setdefaulttimeout(120)
+    for attempt in (1, 2, 3):
+        try:
+            with Entrez.efetch(db="nucleotide", id=",".join(ids),
+                               rettype=rettype, retmode="text") as h:
+                data = h.read()
+            if data and data.strip():
+                return data
+        except Exception as e:
+            log(f"  (NCBI {rettype} fetch attempt {attempt} failed: {e})")
+        time.sleep(3 * attempt)
+    return ""
+
+
+def _genbank_to_fasta(recs, fa_path: Path):
+    with open(fa_path, "w") as f:
+        for rec in recs:
+            f.write(f">{rec.id}\n{str(rec.seq)}\n")
+
+
+def fetch_genome(accessions: str, email: str | None, out_dir: Path, log):
+    """Pull NCBI nucleotide accession(s) (comma-separated) as a **GenBank** record so the
+    genome's OWN gene annotation (names, products, locus tags, protein IDs, gp numbers)
+    is available to describe the neighbours; extract the nucleotide FASTA for scanning.
+    Returns (fasta_path, genbank_path_or_None). Falls back to FASTA-only. Needs an email."""
     email = email or os.environ.get("NCBI_EMAIL")
     if not email:
         sys.exit("--accession needs an email for NCBI Entrez: pass --email you@inst.edu "
                  "(or set $NCBI_EMAIL).")
-    Entrez.email = email
-    socket.setdefaulttimeout(60)
     ids = [a.strip() for a in accessions.replace(",", " ").split() if a.strip()]
     if not ids:
         sys.exit("no accession given to --accession")
-    out_fa = out_dir / ((ids[0].replace("/", "_") + ".fna") if len(ids) == 1
-                        else "fetched_genome.fna")
-    log(f"Fetching {len(ids)} accession(s) from NCBI nucleotide: {', '.join(ids)} …")
-    data = ""
-    for attempt in (1, 2, 3):
+    stem = ids[0].replace("/", "_") if len(ids) == 1 else "fetched_genome"
+    fa_path, gb_path = out_dir / f"{stem}.fna", out_dir / f"{stem}.gb"
+    log(f"Fetching {len(ids)} accession(s) from NCBI (GenBank + annotation): {', '.join(ids)} …")
+    gb = _efetch(ids, "gbwithparts", email, log)
+    if gb.lstrip().startswith("LOCUS"):
+        gb_path.write_text(gb)
         try:
-            with Entrez.efetch(db="nucleotide", id=",".join(ids),
-                               rettype="fasta", retmode="text") as h:
-                data = h.read()
-            if data.strip().startswith(">"):
-                break
-        except Exception as e:
-            log(f"  (NCBI fetch attempt {attempt} failed: {e})")
-        time.sleep(3 * attempt)
-    if not data.strip().startswith(">"):
-        sys.exit(f"NCBI returned no FASTA for: {accessions} "
-                 "(check the accession is a nucleotide record; assembly GCF_/GCA_ ids "
-                 "aren't fetched directly — use their nucleotide/contig accessions).")
-    out_fa.write_text(data)
-    log(f"  fetched {data.count('>')} sequence(s) -> {out_fa.name}")
-    return out_fa
+            recs = list(SeqIO.parse(str(gb_path), "genbank"))
+        except Exception:
+            recs = []
+        if recs and any(len(r.seq) for r in recs):
+            _genbank_to_fasta(recs, fa_path)
+            n_cds = sum(1 for r in recs for ft in r.features if ft.type == "CDS")
+            log(f"  {len(recs)} record(s), {n_cds} annotated CDS -> {fa_path.name}"
+                + (f" (+ {gb_path.name}, using the genome's own gene names)" if n_cds else ""))
+            return fa_path, (gb_path if n_cds else None)
+    # fallback: sequence-only FASTA (no annotation) -> Prodigal will call neighbours
+    log("  (no usable GenBank annotation; fetching FASTA only — neighbours via Prodigal)")
+    fa = _efetch(ids, "fasta", email, log)
+    if not fa.strip().startswith(">"):
+        sys.exit(f"NCBI returned nothing for: {accessions} (is it a nucleotide record? "
+                 "assembly GCF_/GCA_ ids aren't fetched directly — use their contig accessions).")
+    fa_path.write_text(fa)
+    log(f"  fetched {fa.count('>')} sequence(s) -> {fa_path.name}")
+    return fa_path, None
+
+
+def genbank_genes(gb_path) -> dict:
+    """{contig_id: [(start_1based, end, strand, meta)]} from a GenBank file's CDS features.
+    meta carries the genome's OWN annotation: gene (or locus_tag) — often the gp number —
+    product, locus_tag, protein_id."""
+    out = {}
+    try:
+        recs = list(SeqIO.parse(str(gb_path), "genbank"))
+    except Exception:
+        return out
+    for rec in recs:
+        genes = []
+        for ft in rec.features:
+            if ft.type != "CDS":
+                continue
+            try:
+                s, e = int(ft.location.start) + 1, int(ft.location.end)
+            except Exception:
+                continue
+            q = ft.qualifiers
+            genes.append((s, e, -1 if ft.location.strand == -1 else 1, {
+                "gene": (q.get("gene", [""])[0] or q.get("locus_tag", [""])[0]),
+                "product": q.get("product", [""])[0],
+                "locus_tag": q.get("locus_tag", [""])[0],
+                "protein_id": q.get("protein_id", [""])[0]}))
+        genes.sort()
+        out[rec.id] = genes
+    return out
+
+
+def resolve_local_genome(path: Path, out_dir: Path, log):
+    """Return (fasta_path, genbank_path_or_None) for a local genome. A GenBank input
+    (.gb/.gbk/.gbff, or a file starting with LOCUS) is used for its annotation and its
+    sequence is extracted to FASTA; a plain FASTA is used as-is (neighbours via Prodigal)."""
+    path = Path(path)
+    is_gb = path.suffix.lower() in (".gb", ".gbk", ".gbff", ".genbank", ".gbf")
+    if not is_gb:
+        try:
+            with FI.open_maybe_gz(path) as fh:
+                is_gb = fh.read(64).lstrip().startswith("LOCUS")
+        except Exception:
+            is_gb = False
+    if not is_gb:
+        return path, None
+    try:
+        recs = list(SeqIO.parse(str(path), "genbank"))
+    except Exception:
+        return path, None
+    fa = out_dir / (path.stem + ".fna")
+    _genbank_to_fasta(recs, fa)
+    n_cds = sum(1 for r in recs for ft in r.features if ft.type == "CDS")
+    log(f"GenBank input: {len(recs)} record(s), {n_cds} annotated CDS"
+        + (" -> using the genome's own gene names for neighbours" if n_cds else ""))
+    return fa, (path if n_cds else None)
 
 
 def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) -> Path:
@@ -118,11 +200,11 @@ def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) 
 
 
 def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupted: bool,
-         cpu: int, log, neighbours: bool = False, db_cache=None) -> dict:
+         cpu: int, log, neighbours: bool = False, db_cache=None, annotation_gb=None) -> dict:
     """Read-through six-frame scan of one genome with the HMM. Returns a summary dict
     and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt. When
-    `neighbours` is set, also calls the flanking genes (Prodigal — the discovery
-    workflow's caller) and writes the ordered scan_neighbourhood.csv."""
+    `neighbours` is set, also describes the flanking genes (from the genome's own
+    annotation `annotation_gb` when available, else Prodigal) -> scan_neighbourhood.csv."""
     out_dir.mkdir(parents=True, exist_ok=True)
     workdir = Path(tempfile.mkdtemp(prefix="scan_", dir=str(out_dir)))
     frames, markers, contig_nt = [], {}, {}
@@ -160,7 +242,8 @@ def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupte
     if rows and neighbours:
         nb = write_neighbourhoods(
             rows, contig_nt, out_dir,
-            db_cache or Path("~/.cache/hmm-homologue-finder"), cpu, log)
+            db_cache or Path("~/.cache/hmm-homologue-finder"), cpu, log,
+            annotation_gb=annotation_gb)
         s["neighbourhood"] = nb
         if nb:
             with open(out_dir / "scan_report.txt", "a") as f:
@@ -230,81 +313,122 @@ def _parse(dt: Path, markers: dict, contig_nt: dict, min_bit: float,
 
 
 FLANKS = 7   # ORFs each side of the gene of interest — matches the discovery neighbourhoods
+SCAN_NB_COLS = ["hit", "contig", "pos_index", "is_anchor", "gene", "product",
+                "locus_tag", "protein_id", "rel_start", "rel_end", "strand_vs_gene",
+                "length_bp", "distance_to_anchor_bp", "annotation_source", "category", "vfam"]
+
+
+def _nearest_flanks(genes, a_s, a_e):
+    """The FLANKS nearest genes each side of the gene of interest (excluding any that
+    overlap it). genes: [(s, e, st, meta)]."""
+    centre = (a_s + a_e) // 2
+    cand = [g for g in genes if not (g[0] <= a_e and g[1] >= a_s)]
+    return sorted(cand, key=lambda g: abs((g[0] + g[1]) // 2 - centre))[:2 * FLANKS]
 
 
 def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: Path,
-                         cpu: int, log) -> str:
-    """Call the genes flanking each hit with **Prodigal — the same gene-caller the
-    database workflow uses** (build_real_genbanks.prodigal_genes) — and write an ordered
-    neighbourhood table relative to the gene of interest (the same columns as the
-    discovery synteny table, via synteny_figure.neighbourhood_rows): pos_index (0 = your
-    gene, ± up/downstream), rel_start/rel_end, distance_to_anchor_bp, strand_vs_gene,
-    function. Neighbours are functionally annotated with VOGDB VFAM when that DB is
-    cached (same as discovery). Writes scan_neighbourhood.csv. Never raises."""
+                         cpu: int, log, annotation_gb=None) -> str:
+    """Write an ordered neighbourhood table for each hit, anchored on the gene of
+    interest. Genes are taken from **the genome's OWN annotation** (gene names / gp
+    numbers, products, locus tags, protein IDs) when a GenBank record is available
+    (`annotation_gb`); otherwise they are called de novo with **Prodigal — the same
+    caller the database workflow uses** and optionally labelled with VOGDB VFAM when that
+    DB is cached. Columns give the order (pos_index: 0 = your gene, ± up/downstream),
+    position relative to your gene, strand vs. your gene, and the names — so you can
+    describe / manually label the bordering genes. Writes scan_neighbourhood.csv."""
     import csv as _csv
     try:
-        import build_real_genbanks as BRG     # the SAME Prodigal caller as discovery
-        import synteny_figure as SY           # anchor() + neighbourhood_rows() + categorize()
-        import annotate_genes as AG
+        import synteny_figure as SY           # anchor() + categorize()
     except Exception as e:
-        log(f"  (neighbour gene-calling unavailable: {e})")
+        log(f"  (neighbour table unavailable: {e})")
         return ""
+    gb_genes = genbank_genes(annotation_gb) if annotation_gb else {}
     cache = Path(db_cache).expanduser()
-    ann_ready = False
     try:
-        ann_ready = AG.is_ready(cache)
+        ann_ready = __import__("annotate_genes").is_ready(cache)
     except Exception:
         ann_ready = False
     all_rows = []
     for hi, r in enumerate(rows, 1):
         contig = r["contig"]
-        seq = contig_nt.get(contig, "")
-        if not seq:
-            continue
-        try:
-            pg = BRG.prodigal_genes(f"{contig}__scan{hi}", seq)
-        except Exception as e:
-            log(f"  (neighbour gene-calling skipped for {contig}: {e})")
-            continue
         a_s, a_e = int(r["nt_start"]), int(r["nt_end"])
         a_st = 1 if r["strand"] == "+" else -1
-        centre = (a_s + a_e) // 2
-        # neighbours = Prodigal genes NOT overlapping the gene of interest, nearest first
-        cand = [g for g in pg if not (g[0] <= a_e and g[1] >= a_s)]
-        cand = sorted(cand, key=lambda g: abs((g[0] + g[1]) // 2 - centre))[:2 * FLANKS]
-        genes = [{"s": a_s, "e": a_e, "st": a_st, "fam": True, "og": None,
-                  "func": "", "vfam": "", "category": "gene of interest"}]
-        prot_of = {}
-        for j, (gs, ge, gst, prot) in enumerate(cand):
-            gid = f"n{j}"
-            genes.append({"s": gs, "e": ge, "st": gst, "fam": False, "og": None,
-                          "func": "unannotated ORF", "vfam": "", "category": "", "_id": gid})
-            if prot:
-                prot_of[gid] = prot
-        if ann_ready and prot_of:
+        # 1) prefer the genome's own annotation for this contig
+        if gb_genes.get(contig):
+            source = "genome annotation"
+            neigh = _nearest_flanks(gb_genes[contig], a_s, a_e)
+        else:
+            # 2) fall back to Prodigal (the discovery caller), optionally + VOGDB VFAM
+            seq = contig_nt.get(contig, "")
+            if not seq:
+                continue
             try:
-                hits = AG.annotate(prot_of, cache, cpu=cpu)
-                for g in genes:
-                    h = hits.get(g.get("_id"))
-                    if h:
-                        g["func"] = h.get("function", g["func"])
-                        g["vfam"] = h.get("vfam", "")
-                        g["category"] = SY.categorize(h.get("function", ""), h.get("category", ""))
+                import build_real_genbanks as BRG
+                pg = BRG.prodigal_genes(f"{contig}__scan{hi}", seq)
             except Exception as e:
-                log(f"  (neighbour annotation skipped: {e})")
-        loc = {"genome_id": contig, "organism": contig, "genes": genes}
-        if SY.anchor(loc) is None:
+                log(f"  (neighbour gene-calling skipped for {contig}: {e})")
+                continue
+            source = "Prodigal"
+            picked = _nearest_flanks([(s, e, st, p) for (s, e, st, p) in pg], a_s, a_e)
+            neigh, prot_of = [], {}
+            for j, (s, e, st, prot) in enumerate(picked):
+                gid = f"n{j}"
+                neigh.append((s, e, st, {"gene": "", "product": "", "locus_tag": "",
+                                         "protein_id": "", "_id": gid}))
+                if prot:
+                    prot_of[gid] = prot
+            if ann_ready and prot_of:
+                try:
+                    hits = __import__("annotate_genes").annotate(prot_of, cache, cpu=cpu)
+                    for (_s, _e, _st, m) in neigh:
+                        h = hits.get(m.get("_id"))
+                        if h:
+                            m["product"] = h.get("function", "")
+                            m["vfam"] = h.get("vfam", "")
+                            m["category"] = SY.categorize(h.get("function", ""), h.get("category", ""))
+                    source = "Prodigal + VOGDB VFAM"
+                except Exception as e:
+                    log(f"  (neighbour annotation skipped: {e})")
+        # anchor (strand-normalise + re-zero on the gene of interest) and order
+        genes = [{"s": a_s, "e": a_e, "st": a_st, "fam": True,
+                  "meta": {"gene": "GENE OF INTEREST", "product": "family homologue"}}]
+        genes += [{"s": s, "e": e, "st": st, "fam": False, "meta": m} for (s, e, st, m) in neigh]
+        if SY.anchor({"genes": genes}) is None:
             continue
-        all_rows += SY.neighbourhood_rows(f"hit{hi}", [loc])
+        ordered = sorted(genes, key=lambda g: g["s"])
+        ai = next((i for i, g in enumerate(ordered) if g["fam"]), None)
+        ag = ordered[ai] if ai is not None else None
+        for i, g in enumerate(ordered):
+            if ag is None or i == ai:
+                dist = 0
+            elif g["e"] < ag["s"]:
+                dist = g["e"] - ag["s"]
+            elif g["s"] > ag["e"]:
+                dist = g["s"] - ag["e"]
+            else:
+                dist = 0
+            m = g["meta"]
+            all_rows.append({
+                "hit": f"hit{hi}", "contig": contig,
+                "pos_index": (i - ai) if ai is not None else "",
+                "is_anchor": int(bool(g["fam"])),
+                "gene": m.get("gene", ""), "product": m.get("product", ""),
+                "locus_tag": m.get("locus_tag", ""), "protein_id": m.get("protein_id", ""),
+                "rel_start": g["s"], "rel_end": g["e"],
+                "strand_vs_gene": "+" if g["st"] >= 0 else "-",
+                "length_bp": g["e"] - g["s"], "distance_to_anchor_bp": dist,
+                "annotation_source": "" if g["fam"] else source,
+                "category": m.get("category", ""), "vfam": m.get("vfam", "")})
     if not all_rows:
         return ""
     out = out_dir / "scan_neighbourhood.csv"
     with open(out, "w", newline="") as f:
-        w = _csv.DictWriter(f, fieldnames=SY.NEIGHBOUR_COLS)
+        w = _csv.DictWriter(f, fieldnames=SCAN_NB_COLS)
         w.writeheader()
         w.writerows(all_rows)
-    log(f"  neighbouring genes (Prodigal): {len(all_rows)} gene(s) across {len(rows)} hit(s) "
-        f"-> {out.name}" + ("" if ann_ready else "  (no VOGDB DB cached — coordinates/order only)"))
+    src = sorted({r["annotation_source"] for r in all_rows if r["annotation_source"]})
+    log(f"  neighbouring genes [{', '.join(src) or 'called'}]: {len(all_rows)} gene(s) "
+        f"across {len(rows)} hit(s) -> {out.name}")
     return str(out)
 
 
@@ -362,7 +486,8 @@ def main() -> None:
     src.add_argument("--hmm", type=Path, help="an existing profile HMM to scan with")
     gsrc = ap.add_mutually_exclusive_group(required=True)
     gsrc.add_argument("--genome", type=Path,
-                      help="a local single nucleotide genome to scan (.fna/.fa, optionally .gz)")
+                      help="a local genome to scan: nucleotide FASTA (.fna/.fa[.gz]) OR an "
+                           "annotated GenBank (.gb/.gbk/.gbff — its gene names are used for neighbours)")
     gsrc.add_argument("--accession",
                       help="NCBI nucleotide accession(s) to fetch & scan, comma-separated "
                            "(e.g. KX098390 or NC_031062). Needs --email.")
@@ -385,13 +510,13 @@ def main() -> None:
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     log = print
-    # Resolve the genome: a local FASTA, or fetch it from NCBI by accession.
+    # Resolve the genome (+ any annotation): fetch by accession, or a local FASTA/GenBank.
     if args.accession:
-        genome = fetch_genome(args.accession, args.email, args.out, log)
+        genome, annotation_gb = fetch_genome(args.accession, args.email, args.out, log)
     else:
         if not args.genome.exists():
             sys.exit(f"genome not found: {args.genome}")
-        genome = args.genome
+        genome, annotation_gb = resolve_local_genome(args.genome, args.out, log)
     if args.hmm:
         if not args.hmm.exists():
             sys.exit(f"HMM not found: {args.hmm}")
@@ -401,7 +526,7 @@ def main() -> None:
             sys.exit(f"seeds not found: {args.seeds}")
         hmm = build_hmm_from_seeds(args.seeds, args.trans_table, args.out, args.cpu, log)
     s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log,
-             neighbours=args.neighbours, db_cache=args.db_cache)
+             neighbours=args.neighbours, db_cache=args.db_cache, annotation_gb=annotation_gb)
     # exit code 0 if the gene was detected (clean or interrupted), 1 if absent — handy in scripts
     sys.exit(0 if (s["n_clean"] or s["n_interrupted"]) else 1)
 

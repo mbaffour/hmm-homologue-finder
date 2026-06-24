@@ -159,14 +159,16 @@ sequences), `scan_neighbourhood.csv` (the **flanking genes**, see below), the fe
 **0 if the gene was detected, 1 if absent** — handy in shell loops over many genomes.
 Flags: `--min-bit` (default 25), `--trans-table` (for a nucleotide seed), `--cpu`.
 
-**Flanking genes (`scan_neighbourhood.csv`).** By default the scan also calls the genes
-bordering each hit with **Prodigal — the same gene-caller the database workflow uses** —
-and writes them as the *same* ordered neighbourhood table as the discovery synteny
-(`pos_index` 0 = your gene, ± up/downstream; `rel_start/rel_end`,
-`distance_to_anchor_bp`, `strand_vs_gene`, `function`). Neighbours are VOGDB-VFAM
-annotated when that DB is cached (`--db-cache`). Disable with `--no-neighbours`. See the
-`neighbour_gene_annotations.csv` schema in [OUTPUTS.md](OUTPUTS.md) — the columns are
-identical.
+**Flanking genes (`scan_neighbourhood.csv`).** By default the scan also describes the
+genes bordering each hit, ordered relative to your gene (`pos_index` 0 = your gene, ±
+up/downstream; `rel_start/rel_end`, `distance_to_anchor_bp`, `strand_vs_gene`,
+`length_bp`). **Their names come from the genome's OWN annotation** — `gene` (often the
+gp number), `product`, `locus_tag`, `protein_id` — whenever an annotated record is
+available: a fetched `--accession` (pulled as GenBank), or a GenBank `--genome`
+(`.gb`/`.gbk`/`.gbff`). When the genome is unannotated (a plain FASTA), the neighbours
+are instead called **de novo with Prodigal** (the database workflow's gene-caller) and
+optionally labelled with VOGDB VFAM (`--db-cache`); the `annotation_source` column says
+which was used. Disable with `--no-neighbours`.
 
 *Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
 --find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`
