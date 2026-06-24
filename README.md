@@ -58,7 +58,7 @@ for an interactive overview.
   python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --out scan_out
   python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@inst.edu --find-interrupted
   ```
-  Reports present / not-detected, the hit's coordinates + sequence, ORF validation, and (with `--find-interrupted`) interrupted/overprinted copies **plus the overprinting verdict**. Exit code 0 = found, 1 = absent (handy in loops over many genomes). Interactive: `bash start.sh` → mode 3. See [USAGE Case 11](docs/USAGE.md).
+  Reports present / not-detected, the hit's coordinates + sequence, ORF validation, the **flanking genes** (called with Prodigal — the same gene-caller as discovery — as an ordered `scan_neighbourhood.csv` relative to your gene), and (with `--find-interrupted`) interrupted/overprinted copies **plus the overprinting verdict**. Exit code 0 = found, 1 = absent (handy in loops over many genomes). Interactive: `bash start.sh` → mode 3. See [USAGE Case 11](docs/USAGE.md).
 
 ---
 

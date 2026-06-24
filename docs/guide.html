@@ -212,9 +212,12 @@ python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --o
 python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@inst.edu --find-interrupted</code></pre>
     The genome is either a local <code>--genome</code> FASTA or an <code>--accession</code> fetched from NCBI
     nucleotide (comma-separate several). Writes <code>scan_report.txt</code> (present / not-detected verdict +
-    best hits), <code>scan_hits.tsv</code>, and <code>scan_hits_{aa.faa,nt.fna}</code>. With
-    <code>--find-interrupted</code> it also reports stop-interrupted / overprinted copies and the overprinting
-    verdict (e.g. <code>--accession KX098390</code> finds gp75 <b>interrupted</b>, <code>overprinting=strong</code>).
+    best hits), <code>scan_hits.tsv</code>, <code>scan_hits_{aa.faa,nt.fna}</code>, and — by default —
+    <code>scan_neighbourhood.csv</code>: the <b>flanking genes</b>, called with Prodigal (the same gene-caller the
+    database workflow uses) and ordered relative to your gene (same columns as the discovery neighbour table;
+    VOGDB-annotated when cached; <code>--no-neighbours</code> to skip). With <code>--find-interrupted</code> it also
+    reports stop-interrupted / overprinted copies and the overprinting verdict (e.g. <code>--accession KX098390</code>
+    finds gp75 <b>interrupted</b>, <code>overprinting=strong</code>).
     <b>Exit code 0 = gene found, 1 = absent</b> — so you can loop it over many genomes. Interactive:
     <code>bash start.sh</code> → <b>mode 3</b>.
   </div>

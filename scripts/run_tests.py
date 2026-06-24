@@ -424,6 +424,10 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
               _sc2["n_clean"] == 0 and _sc2["n_interrupted"] == 0)
         check("scan_genome: writes scan_hits.tsv + a per-genome report",
               (_sg / "oc" / "scan_hits.tsv").exists() and (_sg / "oc" / "scan_report.txt").exists())
+        _sc3 = _SGm.scan(_sg / "clean.fna", _hmm, _sg / "on", 5.0, False, 1,
+                         lambda *a, **k: None, neighbours=True, db_cache=_sg)
+        check("scan_genome: Prodigal neighbour-calling path runs without error",
+              isinstance(_sc3, dict) and _sc3.get("n_clean", 0) >= 1)
     except Exception as _e:
         check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
 else:

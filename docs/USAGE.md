@@ -154,10 +154,19 @@ Or, interactively: `bash start.sh` → **mode 3 (Scan ONE genome)** — it accep
 local path or an accession. Outputs (in `--out`): `scan_report.txt` (present /
 not-detected verdict + best hits), `scan_hits.tsv` (per-hit coordinates, ORF
 validation, score, overprinting), `scan_hits_aa.faa` / `scan_hits_nt.fna` (hit
-sequences), the fetched `<accession>.fna` when fetched, and `profile.hmm` when built
-from seeds. Exit code is **0 if the gene was detected, 1 if absent** — handy in shell
-loops over many genomes. Flags: `--min-bit` (default 25), `--trans-table` (for a
-nucleotide seed), `--cpu`.
+sequences), `scan_neighbourhood.csv` (the **flanking genes**, see below), the fetched
+`<accession>.fna` when fetched, and `profile.hmm` when built from seeds. Exit code is
+**0 if the gene was detected, 1 if absent** — handy in shell loops over many genomes.
+Flags: `--min-bit` (default 25), `--trans-table` (for a nucleotide seed), `--cpu`.
+
+**Flanking genes (`scan_neighbourhood.csv`).** By default the scan also calls the genes
+bordering each hit with **Prodigal — the same gene-caller the database workflow uses** —
+and writes them as the *same* ordered neighbourhood table as the discovery synteny
+(`pos_index` 0 = your gene, ± up/downstream; `rel_start/rel_end`,
+`distance_to_anchor_bp`, `strand_vs_gene`, `function`). Neighbours are VOGDB-VFAM
+annotated when that DB is cached (`--db-cache`). Disable with `--no-neighbours`. See the
+`neighbour_gene_annotations.csv` schema in [OUTPUTS.md](OUTPUTS.md) — the columns are
+identical.
 
 *Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
 --find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`

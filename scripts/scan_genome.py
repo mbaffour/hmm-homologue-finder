@@ -22,6 +22,11 @@ discovery pipeline uses.
 
     # also report stop-interrupted / overprinted copies (with the overprinting test):
     python3 scan_genome.py --seeds gene_seeds.faa --genome genome.fna --find-interrupted
+
+The flanking genes are called with Prodigal (the same gene-caller the database workflow
+uses) and written to scan_neighbourhood.csv — an ordered table relative to your gene
+(pos_index 0 = your gene, ± up/downstream), annotated with VOGDB VFAM when that DB is
+cached. Disable with --no-neighbours.
 """
 from __future__ import annotations
 
@@ -113,9 +118,11 @@ def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) 
 
 
 def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupted: bool,
-         cpu: int, log) -> dict:
+         cpu: int, log, neighbours: bool = False, db_cache=None) -> dict:
     """Read-through six-frame scan of one genome with the HMM. Returns a summary dict
-    and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt."""
+    and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt. When
+    `neighbours` is set, also calls the flanking genes (Prodigal — the discovery
+    workflow's caller) and writes the ordered scan_neighbourhood.csv."""
     out_dir.mkdir(parents=True, exist_ok=True)
     workdir = Path(tempfile.mkdtemp(prefix="scan_", dir=str(out_dir)))
     frames, markers, contig_nt = [], {}, {}
@@ -149,7 +156,17 @@ def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupte
         rows = _parse(dt, markers, contig_nt, min_bit, find_interrupted)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
-    return _finish(out_dir, rows, min_bit, find_interrupted, n_contigs, log)
+    s = _finish(out_dir, rows, min_bit, find_interrupted, n_contigs, log)
+    if rows and neighbours:
+        nb = write_neighbourhoods(
+            rows, contig_nt, out_dir,
+            db_cache or Path("~/.cache/hmm-homologue-finder"), cpu, log)
+        s["neighbourhood"] = nb
+        if nb:
+            with open(out_dir / "scan_report.txt", "a") as f:
+                f.write(f"\nNeighbouring genes (Prodigal): {Path(nb).name} — ordered by "
+                        f"position relative to your gene (pos_index 0 = your gene).\n")
+    return s
 
 
 def _parse(dt: Path, markers: dict, contig_nt: dict, min_bit: float,
@@ -210,6 +227,85 @@ def _parse(dt: Path, markers: dict, contig_nt: dict, min_bit: float,
             best[key] = r
     out = sorted(best.values(), key=lambda r: -r["domain_bit_score"])
     return out
+
+
+FLANKS = 7   # ORFs each side of the gene of interest — matches the discovery neighbourhoods
+
+
+def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: Path,
+                         cpu: int, log) -> str:
+    """Call the genes flanking each hit with **Prodigal — the same gene-caller the
+    database workflow uses** (build_real_genbanks.prodigal_genes) — and write an ordered
+    neighbourhood table relative to the gene of interest (the same columns as the
+    discovery synteny table, via synteny_figure.neighbourhood_rows): pos_index (0 = your
+    gene, ± up/downstream), rel_start/rel_end, distance_to_anchor_bp, strand_vs_gene,
+    function. Neighbours are functionally annotated with VOGDB VFAM when that DB is
+    cached (same as discovery). Writes scan_neighbourhood.csv. Never raises."""
+    import csv as _csv
+    try:
+        import build_real_genbanks as BRG     # the SAME Prodigal caller as discovery
+        import synteny_figure as SY           # anchor() + neighbourhood_rows() + categorize()
+        import annotate_genes as AG
+    except Exception as e:
+        log(f"  (neighbour gene-calling unavailable: {e})")
+        return ""
+    cache = Path(db_cache).expanduser()
+    ann_ready = False
+    try:
+        ann_ready = AG.is_ready(cache)
+    except Exception:
+        ann_ready = False
+    all_rows = []
+    for hi, r in enumerate(rows, 1):
+        contig = r["contig"]
+        seq = contig_nt.get(contig, "")
+        if not seq:
+            continue
+        try:
+            pg = BRG.prodigal_genes(f"{contig}__scan{hi}", seq)
+        except Exception as e:
+            log(f"  (neighbour gene-calling skipped for {contig}: {e})")
+            continue
+        a_s, a_e = int(r["nt_start"]), int(r["nt_end"])
+        a_st = 1 if r["strand"] == "+" else -1
+        centre = (a_s + a_e) // 2
+        # neighbours = Prodigal genes NOT overlapping the gene of interest, nearest first
+        cand = [g for g in pg if not (g[0] <= a_e and g[1] >= a_s)]
+        cand = sorted(cand, key=lambda g: abs((g[0] + g[1]) // 2 - centre))[:2 * FLANKS]
+        genes = [{"s": a_s, "e": a_e, "st": a_st, "fam": True, "og": None,
+                  "func": "", "vfam": "", "category": "gene of interest"}]
+        prot_of = {}
+        for j, (gs, ge, gst, prot) in enumerate(cand):
+            gid = f"n{j}"
+            genes.append({"s": gs, "e": ge, "st": gst, "fam": False, "og": None,
+                          "func": "unannotated ORF", "vfam": "", "category": "", "_id": gid})
+            if prot:
+                prot_of[gid] = prot
+        if ann_ready and prot_of:
+            try:
+                hits = AG.annotate(prot_of, cache, cpu=cpu)
+                for g in genes:
+                    h = hits.get(g.get("_id"))
+                    if h:
+                        g["func"] = h.get("function", g["func"])
+                        g["vfam"] = h.get("vfam", "")
+                        g["category"] = SY.categorize(h.get("function", ""), h.get("category", ""))
+            except Exception as e:
+                log(f"  (neighbour annotation skipped: {e})")
+        loc = {"genome_id": contig, "organism": contig, "genes": genes}
+        if SY.anchor(loc) is None:
+            continue
+        all_rows += SY.neighbourhood_rows(f"hit{hi}", [loc])
+    if not all_rows:
+        return ""
+    out = out_dir / "scan_neighbourhood.csv"
+    with open(out, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=SY.NEIGHBOUR_COLS)
+        w.writeheader()
+        w.writerows(all_rows)
+    log(f"  neighbouring genes (Prodigal): {len(all_rows)} gene(s) across {len(rows)} hit(s) "
+        f"-> {out.name}" + ("" if ann_ready else "  (no VOGDB DB cached — coordinates/order only)"))
+    return str(out)
 
 
 def _finish(out_dir: Path, rows: list, min_bit: float, find_interrupted: bool,
@@ -279,7 +375,13 @@ def main() -> None:
                     help="also report stop-interrupted / overprinted copies (with the overprinting test)")
     ap.add_argument("--trans-table", type=int, default=11,
                     help="genetic code for translating a nucleotide SEED (default 11)")
+    ap.add_argument("--no-neighbours", dest="neighbours", action="store_false",
+                    help="skip Prodigal gene-calling of the flanking genes (on by default; "
+                         "writes scan_neighbourhood.csv = the ordered neighbour table)")
+    ap.add_argument("--db-cache", type=Path, default=Path("~/.cache/hmm-homologue-finder"),
+                    help="cache holding the VOGDB VFAM DB used to annotate neighbour genes (optional)")
     ap.add_argument("--cpu", type=int, default=4)
+    ap.set_defaults(neighbours=True)
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     log = print
@@ -298,7 +400,8 @@ def main() -> None:
         if not args.seeds.exists():
             sys.exit(f"seeds not found: {args.seeds}")
         hmm = build_hmm_from_seeds(args.seeds, args.trans_table, args.out, args.cpu, log)
-    s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log)
+    s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log,
+             neighbours=args.neighbours, db_cache=args.db_cache)
     # exit code 0 if the gene was detected (clean or interrupted), 1 if absent — handy in scripts
     sys.exit(0 if (s["n_clean"] or s["n_interrupted"]) else 1)
 
