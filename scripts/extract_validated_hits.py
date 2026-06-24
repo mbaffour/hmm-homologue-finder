@@ -154,19 +154,31 @@ def clean_accession(target_name: str) -> str:
     return t.split()[0]
 
 
-def met_anchor(orf_aa: str, env_from: int) -> tuple[int, str]:
+MET_MARGIN = 60   # how far (aa) upstream of the domain a start codon may legitimately sit
+
+
+def met_anchor(orf_aa: str, env_from: int, margin: int = MET_MARGIN) -> tuple[int, str]:
     """Return (met_offset, gene_aa): the GENE read from its Met START codon.
 
     A six-frame ORF is bounded by STOPS, so its first residues lie between the upstream
     in-frame stop and the real ATG. Reporting that whole stop-to-stop segment over-states the
-    gene length (e.g. a 145-aa segment for a 138-aa gene; up to thousands of aa when a small
-    overprinted domain rides a long stop-free antisense frame). Anchor to the Met at/just
-    before the domain envelope start (`env_from`, 1-based) — i.e. the start codon the HMM
-    family begins at. Returns offset 0 (no trimming) when no Met precedes/anchors the domain.
+    gene length (a 145-aa segment for a 138-aa gene). Anchor to the Met CLOSEST to and within
+    `margin` residues UPSTREAM of the domain envelope start (`env_from`, 1-based) — the start
+    codon the HMM family begins at.
+
+    CRITICAL for overprinted families: when a small domain rides a long stop-free antisense
+    frame, the nearest Met before the envelope can be hundreds of residues upstream and is NOT
+    the gene start. We therefore REQUIRE the Met within `margin` of the envelope; if none is
+    found we anchor at the domain start itself (no upstream extension) rather than quote an
+    inflated stop-to-stop length or a spurious far-upstream Met as the gene. has_start_M (set
+    by the caller from gene_aa[0]) is then False, and domain_aa_len — the HMM envelope, the
+    reliable conserved length — is the number to cite for such hits.
     """
-    met = orf_aa.rfind("M", 0, max(0, env_from)) if env_from >= 1 else -1
-    met = met if met >= 0 else 0
-    return met, orf_aa[met:]
+    if env_from < 1:
+        return 0, orf_aa
+    met = orf_aa.rfind("M", max(0, env_from - margin), env_from)
+    off = met if met >= 0 else max(0, env_from - 1)   # no near Met -> domain start, no upstream
+    return off, orf_aa[off:]
 
 
 def reconstruct_orf(genome_seq: str, start_1: int, end_1: int, strand: str):

@@ -40,6 +40,7 @@ from Bio.Seq import Seq
 
 STOP_SEARCH = "X"   # HMMER-friendly placeholder for a stop in the SEARCH sequence
 MIN_AA = 30         # ignore frames shorter than this (matches the six-frame floor)
+MET_MARGIN = 60     # a start codon may sit at most this many aa upstream of the domain envelope
 
 
 def open_maybe_gz(p: Path):
@@ -81,16 +82,17 @@ def extend_orf(marker_aa: str, env_from: int, env_to: int) -> tuple[int, int, st
     n = len(marker_aa)
     left = marker_aa.rfind("*", 0, max(0, env_from - 1))     # upstream stop (0-based) or -1
     after_stop = left + 1 if left >= 0 else 0                # 0-based, first residue past it
-    # Start the gene at its ATG/Met START CODON, not at the upstream stop. Otherwise we
-    # prepend the few residues that sit between the upstream in-frame stop and the real
-    # start codon — e.g. reporting a 145-aa stop-to-stop ORF for a gene that is 138 aa from
-    # its Met to its stop. The start is the first Met at/before the domain envelope start
-    # (the HMM anchors the gene; its conserved region begins at or just after the Met). Fall
-    # back to the post-stop position only when no Met precedes/anchors the domain.
-    met = marker_aa.find("M", after_stop)
-    orf_from = (met + 1) if (0 <= met <= env_from - 1) else (after_stop + 1)   # 1-based
-    right = marker_aa.find("*", env_to)                       # first stop at/after the domain
-    orf_to = (right + 1) if right >= 0 else n                 # include the natural terminal stop
+    # Start the gene at its ATG/Met START CODON, not at the upstream stop, otherwise we prepend
+    # the residues between the upstream in-frame stop and the real start (a 145-aa stop-to-stop
+    # ORF for a 138-aa gene). Use the Met CLOSEST to and within MET_MARGIN aa upstream of the
+    # domain envelope start (and after the upstream stop) — NOT the earliest Met, which on a long
+    # stop-free (antisense/overprint) frame would be hundreds of residues upstream and is not the
+    # gene start. Fall back to the domain start (no upstream extension) when no Met is near.
+    lo = max(after_stop, env_from - 1 - MET_MARGIN)
+    met = marker_aa.rfind("M", max(0, lo), max(0, env_from))   # closest Met at/before env_from
+    orf_from = (met + 1) if met >= 0 else env_from              # 1-based
+    right = marker_aa.find("*", env_to)                        # first stop at/after the domain
+    orf_to = (right + 1) if right >= 0 else n                  # include the natural terminal stop
     return orf_from, orf_to, marker_aa[orf_from - 1:orf_to]
 
 
@@ -402,7 +404,9 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
             "stop_silent_antisense": stop_silent,
             "domain_bit_score": round(dom_bits, 1),
             "i_evalue": f"{i_eval:.2g}",
-            "orf_aa_len": orf_to - orf_from + 1,
+            # protein length EXCLUDING the terminal stop codon (a '*' is not a residue), so this
+            # column matches scan_genome.py and extract_validated_hits.py for the same gene.
+            "orf_aa_len": (orf_to - orf_from + 1) - int(terminal_stop),
             "aa_before_first_stop": aa_before,
             "aa_after_last_stop": aa_after,
             "orf_nt_start": orf_nt_start,

@@ -213,8 +213,12 @@ check("extract: met_anchor trims to the Met at the domain start (145->138 style 
       EVH.met_anchor("ABMTDLR", 3) == (2, "MTDLR"))
 check("extract: met_anchor leaves an already-Met-starting ORF unchanged",
       EVH.met_anchor("MTDLR", 1) == (0, "MTDLR"))
-check("extract: met_anchor with no Met before the domain does not trim",
-      EVH.met_anchor("ARNDCQ", 4) == (0, "ARNDCQ"))
+check("extract: met_anchor with no near Met anchors at the domain start (no upstream extension)",
+      EVH.met_anchor("ARNDCQ", 4) == (3, "DCQ"))
+# A Met far upstream across a long stop-free (antisense/overprint) frame is NOT the gene start:
+# it must be ignored, anchoring at the domain start, so orf_aa_len is not inflated ~10x.
+check("extract: met_anchor ignores a far-upstream Met on a long stop-free frame",
+      EVH.met_anchor("M" + "A" * 108 + "K" * 30, 110) == (109, "K" * 30))
 # aa_to_nt / stop_nt: genome coordinates + DNA that translate back (frame/strand-correct)
 from Bio.Seq import Seq as _Seq  # noqa: E402
 _g = "ATGAAATAAGGGCCC"   # + frame 0: M K * G P
