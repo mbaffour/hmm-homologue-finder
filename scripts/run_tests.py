@@ -202,6 +202,10 @@ check("find_interrupted: extend_orf spans flanking stops",
       FI.extend_orf("M*KAR*Q", 3, 4) == (3, 6, "KAR*"))
 check("find_interrupted: extend_orf with no upstream stop starts at residue 1",
       FI.extend_orf("KAR*Q", 1, 2) == (1, 4, "KAR*"))
+# extend_orf starts at the Met START codon, not the upstream stop: the residues between the
+# upstream stop and the ATG ("PQ" here) must NOT be prepended to the gene.
+check("find_interrupted: extend_orf starts the gene at the Met, not the upstream stop",
+      FI.extend_orf("*PQMTDLR*Z", 4, 8) == (4, 9, "MTDLR*"))
 # aa_to_nt / stop_nt: genome coordinates + DNA that translate back (frame/strand-correct)
 from Bio.Seq import Seq as _Seq  # noqa: E402
 _g = "ATGAAATAAGGGCCC"   # + frame 0: M K * G P

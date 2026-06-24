@@ -80,7 +80,15 @@ def extend_orf(marker_aa: str, env_from: int, env_to: int) -> tuple[int, int, st
     the middle; the terminal one is the natural gene end)."""
     n = len(marker_aa)
     left = marker_aa.rfind("*", 0, max(0, env_from - 1))     # upstream stop (0-based) or -1
-    orf_from = left + 2 if left >= 0 else 1                   # first residue after it (1-based)
+    after_stop = left + 1 if left >= 0 else 0                # 0-based, first residue past it
+    # Start the gene at its ATG/Met START CODON, not at the upstream stop. Otherwise we
+    # prepend the few residues that sit between the upstream in-frame stop and the real
+    # start codon — e.g. reporting a 145-aa stop-to-stop ORF for a gene that is 138 aa from
+    # its Met to its stop. The start is the first Met at/before the domain envelope start
+    # (the HMM anchors the gene; its conserved region begins at or just after the Met). Fall
+    # back to the post-stop position only when no Met precedes/anchors the domain.
+    met = marker_aa.find("M", after_stop)
+    orf_from = (met + 1) if (0 <= met <= env_from - 1) else (after_stop + 1)   # 1-based
     right = marker_aa.find("*", env_to)                       # first stop at/after the domain
     orf_to = (right + 1) if right >= 0 else n                 # include the natural terminal stop
     return orf_from, orf_to, marker_aa[orf_from - 1:orf_to]
