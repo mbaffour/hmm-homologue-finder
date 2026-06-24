@@ -428,9 +428,12 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     overlapping ORF — <code>antisense_open_stops=0</code> means fully open) and tests whether each premature stop
     is <b>synonymous</b> in that frame — i.e. whether reverting the nonsense mutation in this gene would leave the
     antisense protein unchanged. The verdict <code>overprinting_support</code> is <b>strong</b> when the antisense
-    frame is open <i>and</i> every stop is silent in it (direct evidence the gene is overprinted antisense to
-    another gene), else <b>partial</b>/<b>none</b>. It confirms the sequence signature of overprinting — not that
-    the antisense gene is expressed (see <a href="#limits">Scope &amp; limitations</a>).</p>
+    frame is open <i>and</i> every stop is silent in it, else <b>partial</b>/<b>none</b>. <b>Which half is the
+    evidence matters:</b> the antisense frame being <i>open across the whole domain</i> is the discriminating,
+    length-dependent signal (~0.7% by chance at the 137-aa gp75 length), whereas a single silent stop is, on its
+    own, <i>expected ~85–100% of the time</i> from genetic-code geometry — so silentness alone is weak. <b>strong</b>
+    is a necessary sequence signature of antisense overprinting (open frame + synonymy), <b>not proof</b> the
+    antisense gene is expressed (see <a href="#limits">Scope &amp; limitations</a>).</p>
   </div></details>
 
   <details><summary>4 · Iteration &amp; convergence — capturing the whole family</summary>

@@ -71,7 +71,7 @@
       <p>Open <b>Ubuntu</b> (Start menu → “Ubuntu”, or run <code>wsl</code> in PowerShell).</p></div></div>
     <div class="step"><div class="num">2</div><div class="body">
       <p>Go to the project folder:</p>
-      <pre><button class="copy">Copy</button><code>cd "/mnt/c/Users/mbaff/Downloads/Homolog Finder/hmm-homologue-finder"</code></pre></div></div>
+      <pre><button class="copy">Copy</button><code>cd "/mnt/c/Users/&lt;your-windows-user&gt;/hmm-homologue-finder"</code></pre></div></div>
     <div class="step"><div class="num">3</div><div class="body">
       <p>Build the environment <span class="once">first time only</span></p>
       <pre><button class="copy">Copy</button><code>bash setup.sh</code></pre></div></div>
@@ -82,7 +82,7 @@
       <pre><button class="copy">Copy</button><code>bash run.sh --fasta examples/example_seeds.fasta --smoke</code></pre></div></div>
     <div class="step"><div class="num">5</div><div class="body">
       <p>Real run on your own seeds (pick databases interactively):</p>
-      <pre><button class="copy">Copy</button><code>bash run.sh --fasta /mnt/c/Users/mbaff/Downloads/my_seeds.faa \
+      <pre><button class="copy">Copy</button><code>bash run.sh --fasta /mnt/c/Users/&lt;your-windows-user&gt;/my_seeds.faa \
             --name MyFamily --email you@inst.edu --pick-databases --cpu 12</code></pre></div></div>
     <div class="note">Your Windows <code>C:\</code> drive is <code>/mnt/c/</code> in WSL. Keep the seed FASTA under <code>C:\</code> so both sides can see it.</div>
   </div>

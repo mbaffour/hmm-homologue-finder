@@ -8,7 +8,7 @@ For a <name>_discovery directory this writes:
   - <root>/hit_summary.csv                per-run counts (hits, passed, six-frame vs
                                           protein-DB, unique sequences/organisms, DBs)
   - <root>/database_summary.csv           per-run database provenance, merged
-Mirrors the merged CSVs into PACKAGE/00_tables/ and per-run hits.csv into PACKAGE
+Mirrors the merged CSVs into PACKAGE/01_summary_tables/ and per-run hits.csv into PACKAGE
 when a PACKAGE/ exists. Never raises on a single bad file.
 """
 from __future__ import annotations
@@ -231,7 +231,7 @@ def _write_multifastas(allh: pd.DataFrame, dedup: pd.DataFrame, discovery: Path,
     other tools (Jalview, MEGA, CD-HIT, BLAST, etc.):
       - all_hits_aa.faa / all_hits_nt.fna : every validated hit (all runs)
       - unique_homologs_aa.faa            : one per unique sequence, rich header
-    Mirrored into PACKAGE/02_sequences_per_run/ when a package exists."""
+    Mirrored into PACKAGE/02_sequences/per_run/ when a package exists."""
     written: list = []
 
     def _w(path: Path, frame: pd.DataFrame, seqcol: str, header) -> int:

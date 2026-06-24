@@ -268,7 +268,7 @@ def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupte
             module_brackets=module_brackets)
         s["neighbourhood"] = nb
         if nb:
-            with open(out_dir / "scan_report.txt", "a") as f:
+            with open(out_dir / "scan_report.txt", "a", encoding="utf-8") as f:
                 f.write(f"\nNeighbouring genes (Prodigal): {Path(nb).name} — ordered by "
                         f"position relative to your gene (pos_index 0 = your gene).\n")
     return s
@@ -546,7 +546,7 @@ def _finish(out_dir: Path, rows: list, min_bit: float, find_interrupted: bool,
     if len(rows) > 10:
         lines.append(f"  … and {len(rows) - 10} more in scan_hits.tsv")
     report = "\n".join(lines) + "\n"
-    (out_dir / "scan_report.txt").write_text(report)
+    (out_dir / "scan_report.txt").write_text(report, encoding="utf-8")
     log("\n" + report)
     log(f"  -> {tsv.name}, scan_hits_aa.faa, scan_hits_nt.fna, scan_report.txt")
     return {"verdict": verdict, "n_clean": len(clean), "n_interrupted": len(interrupted),

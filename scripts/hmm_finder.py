@@ -362,10 +362,12 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                       "(strong/partial/none), `antisense_open_frame`, `antisense_open_stops` "
                       "(0 = a fully open overlapping ORF), `stop_silent_antisense` (per-stop 1/0). "
                       f"Result: {ic.get('overprinting_strong')} strong (stop synonymous in an open "
-                      f"antisense ORF) and {ic.get('overprinting_partial')} partial — strong support "
-                      "is direct evidence the gene is overprinted antisense to another gene. "
-                      "A necessary-but-not-sufficient signature: it confirms synonymy in an open "
-                      "frame, not that the antisense ORF is expressed."]
+                      f"antisense ORF) and {ic.get('overprinting_partial')} partial. The discriminating "
+                      "signal is the antisense frame being OPEN across the whole domain (improbable by "
+                      "chance for a long domain); a single stop being synonymous in that frame is, alone, "
+                      "expected ~85-100% of the time from genetic-code geometry, so it is weak by itself. "
+                      "`strong` is a necessary-but-not-sufficient SEQUENCE signature of antisense "
+                      "overprinting (open frame + synonymy), NOT proof the antisense ORF is expressed."]
         if tool_versions:
             L += ["", "## Tool versions"]
             for t, info in sorted(tool_versions.items()):

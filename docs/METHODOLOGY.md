@@ -73,20 +73,23 @@ floor when controls were run (the read-through scan covers a much larger, noisie
 space than the stop-to-stop search, so the bar only ever tightens); with
 `--no-controls` the bare 30-bit floor is used.
 
-*Overprinting (silent-stop) test — the proof, not just the location.* Locating a
-premature stop is necessary but not sufficient to call a gene overprinted. For
-each candidate the scan therefore picks the antisense frame with the **fewest
-stops across the domain** (the candidate overlapping ORF; `antisense_open_frame`,
-`antisense_open_stops` — 0 = a fully open overlapping reading frame) and tests
-whether each premature stop is **synonymous** in that frame — i.e. whether some
-single-base change that reverts the nonsense mutation in *this* gene would leave
-the antisense protein unchanged (`stop_silent_antisense`, per-stop). The verdict
-`overprinting_support` is **strong** when the antisense frame is fully open *and*
-every premature stop is synonymous in it (direct evidence the gene is overprinted
-antisense to another gene), **partial** when only some stops are silent, **none**
-otherwise. This is a *necessary* signature — it confirms synonymy in an open
-overlapping frame — but does not by itself prove the antisense ORF is expressed
-(see Limitations).
+*Overprinting test — the open antisense frame is the signal, not the silent stop.*
+Locating a premature stop is necessary but not sufficient to call a gene overprinted. For
+each candidate the scan picks the antisense frame with the **fewest stops across the domain**
+(the candidate overlapping ORF; `antisense_open_frame`, `antisense_open_stops` — 0 = a fully
+open overlapping reading frame) and tests whether each premature stop is **synonymous** in that
+frame — i.e. whether some single-base change that reverts the nonsense mutation in *this* gene
+would leave the antisense protein unchanged (`stop_silent_antisense`, per-stop). The verdict
+`overprinting_support` is **strong** when the antisense frame is fully open *and* every premature
+stop is synonymous in it, **partial** when only some stops are silent, **none** otherwise.
+**Which half carries the evidence matters:** the *open antisense frame across the whole domain*
+is the discriminating, length-dependent signal (improbable by chance for a long domain — ~0.7%
+at the 137-aa gp75 length), whereas a single stop being synonymous in the antisense frame is, on
+its own, **expected ~85–100% of the time from genetic-code geometry** (the base that removes a
+stop tends to land on a synonymous antisense-wobble position) — so the silent-stop clause is
+weak alone. `strong` is therefore a *necessary sequence signature of antisense overprinting*
+(open frame + synonymy), **not proof** that the antisense ORF is transcribed, translated, or
+selected (see Limitations).
 
 ## 6. Iterative refinement and convergence
 Unique, ORF-validated domains from one round seed the next; identical databases,
