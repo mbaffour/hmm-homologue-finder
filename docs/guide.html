@@ -202,6 +202,18 @@ python3 scripts/hmm_finder.py --fasta my_seeds.faa --name my_protein --cpu 8</co
   </div>
   <div class="note"><b>Always try a self-test first</b> on a new machine or new protein — minutes, not hours:
     <pre><code>python3 scripts/hmm_finder.py --fasta my_seeds.faa --smoke --name my_protein</code></pre></div>
+  <h3>Single-genome scan — "does <i>this</i> genome carry my gene?"</h3>
+  <div class="card">
+    A focused mode, separate from database-wide discovery: build (or supply) a profile HMM and check <b>one</b>
+    genome for the gene — with its coordinates, sequence, and ORF validation.
+    <pre><code># build the HMM from seeds and scan a genome:
+python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --out scan_out
+# reuse an existing HMM; also catch interrupted/overprinted copies:
+python3 scripts/scan_genome.py --hmm gene.hmm --genome my_genome.fna --find-interrupted</code></pre>
+    Writes <code>scan_report.txt</code> (present / not-detected verdict + best hits), <code>scan_hits.tsv</code>,
+    and <code>scan_hits_{aa.faa,nt.fna}</code>. <b>Exit code 0 = gene found, 1 = absent</b> — so you can loop it
+    over many genomes. Interactive: <code>bash start.sh</code> → <b>mode 3</b>.
+  </div>
 </section>
 
 <section id="builder">

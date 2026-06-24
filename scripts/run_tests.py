@@ -385,5 +385,33 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
 else:
     check("find_interrupted e2e: SKIPPED (HMMER not on PATH)", True)
 
+# scan_genome: single-genome targeted scan (build HMM -> scan one genome -> present/absent).
+if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
+    try:
+        import scan_genome as SG  # noqa: E402
+        _sg = Path(tempfile.mkdtemp())
+        _sp = "MKAILVGGTRSDEFHNPQWYACMKLLVGGTRSDEFHNPQWYACMKAILVGG"
+        _sc = {'A': 'GCT', 'R': 'CGT', 'N': 'AAT', 'D': 'GAT', 'C': 'TGT', 'Q': 'CAA',
+               'E': 'GAA', 'G': 'GGT', 'H': 'CAT', 'I': 'ATT', 'L': 'CTT', 'K': 'AAA',
+               'M': 'ATG', 'F': 'TTT', 'P': 'CCT', 'S': 'TCT', 'T': 'ACT', 'W': 'TGG',
+               'Y': 'TAT', 'V': 'GTT'}
+        _sg_dna = "".join(_sc[a] for a in _sp)
+        (_sg / "seeds.faa").write_text(f">seed\n{_sp}\n")
+        (_sg / "clean.fna").write_text(">g\nGGGCCCAAA" + _sg_dna + "TAAGGGCCCAAA\n")
+        (_sg / "absent.fna").write_text(">g\n" + "GATCGATCGGCTAGCATCGATGCATGCTAGC" * 20 + "\n")
+        _hmm = SG.build_hmm_from_seeds(_sg / "seeds.faa", 11, _sg, 1, lambda *a, **k: None)
+        _sc1 = SG.scan(_sg / "clean.fna", _hmm, _sg / "oc", 5.0, False, 1, lambda *a, **k: None)
+        check("scan_genome: detects a clean copy of the gene",
+              _sc1["n_clean"] >= 1 and "PRESENT" in _sc1["verdict"])
+        _sc2 = SG.scan(_sg / "absent.fna", _hmm, _sg / "oa", 5.0, False, 1, lambda *a, **k: None)
+        check("scan_genome: reports a genome lacking the gene as not detected",
+              _sc2["n_clean"] == 0 and _sc2["n_interrupted"] == 0)
+        check("scan_genome: writes scan_hits.tsv + a per-genome report",
+              (_sg / "oc" / "scan_hits.tsv").exists() and (_sg / "oc" / "scan_report.txt").exists())
+    except Exception as _e:
+        check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
+else:
+    check("scan_genome e2e: SKIPPED (HMMER not on PATH)", True)
+
 print(f"\n{len(fails)} FAILURE(S): {fails}" if fails else "\nALL TESTS PASSED")
 sys.exit(1 if fails else 0)

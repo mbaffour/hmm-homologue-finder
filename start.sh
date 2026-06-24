@@ -55,9 +55,30 @@ TT="$(ask '  genetic code table for a nucleotide seed' '')"
 # 2. mode
 echo
 echo "Step 2 — run mode"
-echo "  1) Smoke test  — fast (1 iteration, 1 small DB); confirms everything works"
-echo "  2) Full run    — your databases, multiple iterations"
-MODE="$(ask '  choose 1 or 2' '1')"
+echo "  1) Smoke test       — fast (1 iteration, 1 small DB); confirms everything works"
+echo "  2) Full run         — discovery across your databases, multiple iterations"
+echo "  3) Scan ONE genome  — build the HMM from your seeds and check a single genome for the gene"
+MODE="$(ask '  choose 1, 2 or 3' '1')"
+
+# Mode 3 — single-genome scan: build the HMM from the Step-1 seeds and scan one genome.
+if [ "$MODE" = "3" ]; then
+  echo
+  echo "Step 3 — the genome to scan"
+  echo "  Drag the genome FASTA (nucleotide .fna/.fa, optionally .gz) into this window."
+  GENOME="$(resolve_path "$(ask '  genome FASTA' '')")"
+  if [ ! -f "$GENOME" ]; then echo "  !! File not found: $GENOME"; exit 1; fi
+  OUT="$(resolve_path "$(ask '  output directory' "$ORIG_PWD/genome_scan")")"
+  FI="$(ask '  also report stop-interrupted / overprinted copies? (y/N)' 'N')"
+  SCAN=(--scan --seeds "$FASTA" --genome "$GENOME" --out "$OUT")
+  [ "${#ARGS_TT[@]}" -gt 0 ] && SCAN+=("${ARGS_TT[@]}")   # nucleotide-seed genetic code, if set
+  case "$FI" in y|Y|yes|YES) SCAN+=(--find-interrupted) ;; esac
+  echo
+  bold "About to run:"; echo "  bash run.sh ${SCAN[*]}"; echo
+  C="$(ask '  press Enter to run (or type n to cancel)' '')"
+  case "$C" in n|N|no|NO) echo "Cancelled."; exit 0 ;; esac
+  echo
+  exec bash run.sh "${SCAN[@]}"
+fi
 
 ARGS=(--fasta "$FASTA")
 [ "${#ARGS_TT[@]}" -gt 0 ] && ARGS+=("${ARGS_TT[@]}")   # nucleotide-seed genetic code, if set

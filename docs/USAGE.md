@@ -127,6 +127,31 @@ nohup bash run.sh > run.log 2>&1 &
 `run.sh` automatically keeps the machine awake (caffeinate on macOS,
 systemd-inhibit on Linux) when available.
 
+## Case 11 — Scan ONE genome for your gene (`scan_genome.py`)
+A focused mode, separate from the database-wide discovery pipeline: build (or
+supply) a profile HMM and check **a single genome** for the gene — useful for
+"does *this* assembly carry my gene of interest, and where?". The scan is
+read-through, so a clean copy is found with 0 internal stops, and (with
+`--find-interrupted`) a stop-interrupted / overprinted copy is reported too, with
+the overprinting verdict.
+```bash
+# build the HMM from seeds and scan a genome:
+python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --out scan_out
+
+# reuse an existing profile HMM:
+python3 scripts/scan_genome.py --hmm gene.hmm --genome my_genome.fna --out scan_out
+
+# also catch interrupted/overprinted copies:
+python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --find-interrupted
+```
+Or, interactively: `bash start.sh` → **mode 3 (Scan ONE genome)**. Outputs (in
+`--out`): `scan_report.txt` (the present / not-detected verdict + best hits),
+`scan_hits.tsv` (per-hit coordinates, ORF validation, score, overprinting),
+`scan_hits_aa.faa` / `scan_hits_nt.fna` (hit sequences), and `profile.hmm` when
+built from seeds. Exit code is **0 if the gene was detected, 1 if absent** — handy
+in shell loops over many genomes. Flags: `--min-bit` (default 25), `--trans-table`
+(for a nucleotide seed), `--cpu`.
+
 ---
 
 ## Tips

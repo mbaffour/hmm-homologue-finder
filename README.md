@@ -51,6 +51,14 @@ Full instructions for every case: **[docs/INSTALL.md](docs/INSTALL.md)** and
 **[docs/USAGE.md](docs/USAGE.md)**. Browse **[docs/guide.html](docs/guide.html)**
 for an interactive overview.
 
+**Two modes:**
+- **Discovery** (the default) — search the whole database catalog for a family, as above.
+- **Single-genome scan** — *"does **this** genome carry my gene, and where?"* Build (or supply) an HMM and scan **one** genome:
+  ```bash
+  python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --out scan_out
+  ```
+  Reports present / not-detected, the hit's coordinates + sequence, ORF validation, and (with `--find-interrupted`) interrupted/overprinted copies. Exit code 0 = found, 1 = absent (handy in loops over many genomes). Interactive: `bash start.sh` → mode 3. See [USAGE Case 11](docs/USAGE.md).
+
 ---
 
 ## Platforms

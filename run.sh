@@ -66,5 +66,11 @@ elif command -v systemd-inhibit >/dev/null 2>&1 && systemd-inhibit --what=idle t
   KEEP_AWAKE="systemd-inhibit --what=idle"                     # Linux (skip if denied, e.g. WSL)
 fi
 
-# exec so the pipeline's exit code becomes this script's exit code (no masking).
+# exec so the tool's exit code becomes this script's exit code (no masking).
+# `run.sh --scan ...` routes to the single-genome scan mode; otherwise the
+# discovery pipeline. Both share the conda activation + tool check above.
+if [ "${1:-}" = "--scan" ]; then
+  shift
+  exec $KEEP_AWAKE python3 scripts/scan_genome.py "$@"
+fi
 exec $KEEP_AWAKE python3 scripts/hmm_finder.py "$@"
