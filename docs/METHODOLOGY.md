@@ -101,8 +101,12 @@ the main paper table, so tables and figures describe the same homolog set.
 - **Synteny** — Prodigal gene calls provide flanking-gene context; neighbourhoods
   are compared per cluster with clinker (interactive `cluster_*.html`; a static
   `cluster_*.png` is also exported per cluster when a headless browser is installed)
-  and rendered as anchored, orthogroup-coloured publication panels (PNG/SVG/PDF);
-  real-sequence GenBank files are written.
+  and rendered as anchored, orthogroup-coloured publication panels (PNG/SVG/PDF).
+  An ordered gene-neighbourhood table (`neighbour_gene_annotations.csv`) lists every
+  neighbour with its order relative to the gene of interest (`pos_index`: 0 = the gene,
+  ± = down/upstream), position (`rel_start/rel_end`, `distance_to_anchor_bp`), strand
+  vs. the gene, and function — so the bordering genes can be described or manually
+  labelled. Real-sequence GenBank files are also written.
 - **Alignment of homologs** — the unique ORF-validated domains are aligned with
   the same accuracy-first MAFFT strategy (L-INS-i where tractable, else `--auto`).
   The alignment is a first-class deliverable: the full MSA (`hits.aln.faa`), a

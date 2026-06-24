@@ -237,6 +237,45 @@ def anchor(loc: dict) -> dict | None:
     return loc
 
 
+NEIGHBOUR_COLS = ["cluster", "genome_id", "organism", "pos_index", "is_anchor",
+                  "rel_start", "rel_end", "strand_vs_gene", "length_bp",
+                  "distance_to_anchor_bp", "orthogroup", "category", "vfam", "function"]
+
+
+def neighbourhood_rows(cid, loci: list) -> list:
+    """Ordered gene-neighbourhood rows for one cluster's loci. Loci must already be
+    anchored (coords strand-normalised + re-zeroed on the family gene by anchor()):
+    `pos_index` is the gene ORDER relative to the gene of interest (0 = it, negative =
+    upstream, positive = downstream); `rel_start/rel_end`/`distance_to_anchor_bp` are
+    bp relative to it; `strand_vs_gene` is + when a neighbour runs the same direction as
+    your gene. Lets you describe / manually label the genes bordering your gene of interest."""
+    rows = []
+    for loc in loci:
+        genes = sorted(loc["genes"], key=lambda g: g["s"])      # genomic order (anchored)
+        anchor_i = next((i for i, g in enumerate(genes) if g["fam"]), None)
+        ag = genes[anchor_i] if anchor_i is not None else None
+        for i, g in enumerate(genes):
+            if ag is None or i == anchor_i:
+                dist = 0
+            elif g["e"] < ag["s"]:
+                dist = g["e"] - ag["s"]            # upstream of the gene of interest (negative)
+            elif g["s"] > ag["e"]:
+                dist = g["s"] - ag["e"]            # downstream (positive)
+            else:
+                dist = 0                            # overlapping
+            rows.append({
+                "cluster": cid, "genome_id": loc["genome_id"], "organism": loc["organism"],
+                "pos_index": (i - anchor_i) if anchor_i is not None else "",
+                "is_anchor": int(bool(g["fam"])),
+                "rel_start": g["s"], "rel_end": g["e"],
+                "strand_vs_gene": "+" if g["st"] >= 0 else "-",
+                "length_bp": g["e"] - g["s"], "distance_to_anchor_bp": dist,
+                "orthogroup": g["og"], "category": g["category"], "vfam": g["vfam"],
+                "function": "GENE OF INTEREST (family homologue)" if g["fam"] else g["func"],
+            })
+    return rows
+
+
 _SIM_CACHE: dict = {}
 
 
@@ -516,22 +555,13 @@ def main() -> None:
         if drew:
             produced.append(cid)
             print(f"  cluster_{cid}: synteny figure ({len(loci)} loci; {'/'.join(modes)})")
-        for loc in loci:
-            for g in loc["genes"]:
-                ann_rows.append({
-                    "cluster": cid, "organism": loc["organism"], "genome_id": loc["genome_id"],
-                    "start": g["s"], "end": g["e"], "strand": "+" if g["st"] >= 0 else "-",
-                    "is_family": g["fam"], "orthogroup": g["og"], "category": g["category"],
-                    "vfam": g["vfam"], "function": "family homologue" if g["fam"] else g["func"],
-                })
+        ann_rows.extend(neighbourhood_rows(cid, loci))
 
     heatmap = build_heatmap(by_cluster, args.out_dir)
 
     if ann_rows:
-        keys = ["cluster", "organism", "genome_id", "start", "end", "strand",
-                "is_family", "orthogroup", "category", "vfam", "function"]
         with (args.out_dir / "neighbour_gene_annotations.csv").open("w", newline="") as fh:
-            w = csv.DictWriter(fh, fieldnames=keys)
+            w = csv.DictWriter(fh, fieldnames=NEIGHBOUR_COLS)
             w.writeheader()
             w.writerows(ann_rows)
 
@@ -543,8 +573,11 @@ def main() -> None:
            "<p>Each locus is anchored on the family gene (red) and strand-normalised. "
            "Genes are coloured by function (VOGDB VFAM); same colour = same function, named in "
            "the legend. Shaded links join homologous genes between adjacent rows. "
-           "Per-gene functions are in <code>neighbour_gene_annotations.csv</code>; "
-           "SVG/PDF versions sit alongside each PNG.</p>"]
+           "The ordered gene table <code>neighbour_gene_annotations.csv</code> lists every "
+           "neighbour with its <b>pos_index</b> (order: 0 = your gene, &minus; = upstream, "
+           "+ = downstream), position relative to your gene (<code>rel_start/rel_end</code>, "
+           "<code>distance_to_anchor_bp</code>), strand vs. your gene, and function — so you can "
+           "describe or manually label the bordering genes. SVG/PDF versions sit alongside each PNG.</p>"]
     if heatmap:
         idx.append("<h2>Neighbourhood conservation</h2>"
                    "<p>Functional composition of each genome's neighbourhood "

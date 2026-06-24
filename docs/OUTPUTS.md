@@ -25,7 +25,8 @@ PACKAGE/
 ├── 03_hmm_profile/profile.hmm        the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
 ├── 04_alignment_phylogeny/           MSA (hits.aln.faa + stats + figure), per-hit HMM alignment
 │                                     (hits_hmmalign.sto/.a2m), and the ML tree (seeds marked)
-├── 05_synteny/                       clinker/ (interactive .html + static cluster_*.png), publication_figures/ (PNG/SVG/PDF), genbank_with_sequence/
+├── 05_synteny/                       clinker/ (interactive .html + static cluster_*.png), publication_figures/ (PNG/SVG/PDF
+│                                     + neighbour_gene_annotations.csv = ordered gene-neighbourhood table), genbank_with_sequence/
 ├── 06_database_summaries/runN_summary.tsv   per-database hit counts + provenance
 ├── 07_seed_qc/                       seed_recovery.csv (per-seed before/after) + seed alignment & QC tree
 └── 08_scripts/                       a copy of the scripts that produced this run
@@ -76,6 +77,20 @@ One row per stop-interrupted / overprinted candidate (the read-through scan).
 | `full_orf_aa`, `full_orf_nt` | full read-through ORF — protein (premature stops `*`, terminal `*` = gene end) and nucleotide (5'→3', ends in the actual stop codon; translates back to `full_orf_aa`) |
 
 The three `interrupted_homologs_*.faa/.fna` files carry these sequences as FASTA.
+
+## `neighbour_gene_annotations.csv` — the ordered gene-neighbourhood table (synteny)
+One row per neighbouring gene per locus, **anchored on your gene of interest** — so you
+can read off and describe/label the genes bordering it. Sort by `genome_id` then
+`pos_index` to walk each neighbourhood in order.
+| column | meaning |
+|--------|---------|
+| `cluster`, `genome_id`, `organism` | which synteny cluster / source locus the gene belongs to |
+| `pos_index` | **gene order relative to your gene**: `0` = your gene, `-1/-2…` upstream, `+1/+2…` downstream |
+| `is_anchor` | `1` for your gene of interest (the family homolog), else `0` |
+| `rel_start`, `rel_end` | gene coordinates **relative to your gene** (bp; your gene sits at 0), strand-normalised |
+| `strand_vs_gene` | `+` = same orientation as your gene, `-` = opposite |
+| `length_bp`, `distance_to_anchor_bp` | gene length; signed gap to your gene (− upstream, + downstream) |
+| `orthogroup`, `category`, `vfam`, `function` | cross-locus orthogroup, functional category, VOGDB VFAM, and product/function |
 
 ## Which tool opens what
 | File | Open in |

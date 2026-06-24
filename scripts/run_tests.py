@@ -429,5 +429,22 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
 else:
     check("scan_genome e2e: SKIPPED (HMMER not on PATH)", True)
 
+# synteny gene-neighbourhood ORDER table (positions relative to the gene of interest)
+_loc = {"genome_id": "g1", "organism": "phage X", "genes": [
+    {"s": -1500, "e": -900, "st": 1, "fam": False, "og": "OG1", "category": "structural",
+     "vfam": "V1", "func": "tail fiber"},
+    {"s": 0, "e": 600, "st": 1, "fam": True, "og": "OG0", "category": "gene of interest",
+     "vfam": "", "func": ""},
+    {"s": 800, "e": 1400, "st": -1, "fam": False, "og": "OG2", "category": "transcription",
+     "vfam": "V2", "func": "RNA polymerase"}]}
+_nb = {r["pos_index"]: r for r in S.neighbourhood_rows("0", [_loc])}
+check("synteny neighbourhood: the gene of interest is pos_index 0", _nb[0]["is_anchor"] == 1)
+check("synteny neighbourhood: upstream gene = pos_index -1 (negative distance)",
+      _nb[-1]["distance_to_anchor_bp"] < 0 and _nb[-1]["function"] == "tail fiber")
+check("synteny neighbourhood: downstream gene = pos_index +1 (positive distance, opposite strand)",
+      _nb[1]["distance_to_anchor_bp"] > 0 and _nb[1]["strand_vs_gene"] == "-")
+check("synteny neighbourhood: columns match NEIGHBOUR_COLS",
+      set(_nb[0].keys()) == set(S.NEIGHBOUR_COLS))
+
 print(f"\n{len(fails)} FAILURE(S): {fails}" if fails else "\nALL TESTS PASSED")
 sys.exit(1 if fails else 0)
