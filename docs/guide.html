@@ -213,10 +213,13 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     The genome is either a local <code>--genome</code> FASTA or an <code>--accession</code> fetched from NCBI
     nucleotide (comma-separate several). Writes <code>scan_report.txt</code> (present / not-detected verdict +
     best hits), <code>scan_hits.tsv</code>, <code>scan_hits_{aa.faa,nt.fna}</code>, and — by default —
-    <code>scan_neighbourhood.csv</code>: the <b>flanking genes</b> ordered relative to your gene (pos_index 0 = your
-    gene, ± up/downstream), named from the <b>genome's own annotation</b> (gene / gp number, product, locus_tag,
-    protein_id) for an annotated record (fetched <code>--accession</code>, or a GenBank <code>--genome</code>) — else
-    called de novo with Prodigal (the database workflow's caller) + optional VOGDB; <code>--no-neighbours</code> to skip. With <code>--find-interrupted</code> it also
+    <code>scan_neighbourhood.csv</code> + a <b>genome-map figure</b> (<code>scan_genome_map_*.png/svg</code>): the genes
+    around your gene, ordered (pos_index 0 = your gene, ± up/downstream; a <code>relationship</code> column flags
+    upstream / downstream / <b>overlapping</b>), named from the <b>genome's own annotation</b> (gene / gp number,
+    product, locus_tag, protein_id) for an annotated record (fetched <code>--accession</code> or a GenBank
+    <code>--genome</code>), else Prodigal + optional VOGDB. <b>Overlapping genes are kept</b>, so an overprint
+    partner is shown — e.g. gp75's antisense RNA polymerase. <code>--flanks N</code> for more each side;
+    <code>--no-neighbours</code> to skip. With <code>--find-interrupted</code> it also
     reports stop-interrupted / overprinted copies and the overprinting verdict (e.g. <code>--accession KX098390</code>
     finds gp75 <b>interrupted</b>, <code>overprinting=strong</code>).
     <b>Exit code 0 = gene found, 1 = absent</b> — so you can loop it over many genomes. Interactive:

@@ -159,16 +159,21 @@ sequences), `scan_neighbourhood.csv` (the **flanking genes**, see below), the fe
 **0 if the gene was detected, 1 if absent** — handy in shell loops over many genomes.
 Flags: `--min-bit` (default 25), `--trans-table` (for a nucleotide seed), `--cpu`.
 
-**Flanking genes (`scan_neighbourhood.csv`).** By default the scan also describes the
-genes bordering each hit, ordered relative to your gene (`pos_index` 0 = your gene, ±
-up/downstream; `rel_start/rel_end`, `distance_to_anchor_bp`, `strand_vs_gene`,
-`length_bp`). **Their names come from the genome's OWN annotation** — `gene` (often the
-gp number), `product`, `locus_tag`, `protein_id` — whenever an annotated record is
-available: a fetched `--accession` (pulled as GenBank), or a GenBank `--genome`
-(`.gb`/`.gbk`/`.gbff`). When the genome is unannotated (a plain FASTA), the neighbours
-are instead called **de novo with Prodigal** (the database workflow's gene-caller) and
-optionally labelled with VOGDB VFAM (`--db-cache`); the `annotation_source` column says
-which was used. Disable with `--no-neighbours`.
+**Flanking genes (`scan_neighbourhood.csv`) + a genome map.** By default the scan also
+describes the genes around each hit, ordered relative to your gene (`pos_index` 0 = your
+gene, ± up/downstream; `relationship` = upstream / downstream / **overlapping**;
+`rel_start/rel_end`, `distance_to_anchor_bp`, `strand_vs_gene`, `length_bp`). It reports
+the `--flanks` genes each side (default 7, contiguous — no gaps) **and every overlapping
+gene**, so an **overprint partner is shown, not hidden** — e.g. for gp75 the antisense
+*virion RNA polymerase* appears as `overlapping (antisense)`. **Names come from the
+genome's OWN annotation** — `gene` (often the gp number), `product`, `locus_tag`,
+`protein_id` — for any annotated record (a fetched `--accession`, pulled as GenBank, or a
+GenBank `--genome` `.gb/.gbk/.gbff`); for a plain unannotated FASTA the neighbours are
+called **de novo with Prodigal** (the database workflow's gene-caller) + optional VOGDB
+VFAM (`--db-cache`); the `annotation_source` column says which. A **genome-map figure**
+(`scan_genome_map_<hit>.png/.svg`) draws your gene (red) with its neighbours and any
+overlapping gene (orange) as strand arrows. Tune with `--flanks N`; disable with
+`--no-neighbours`.
 
 *Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
 --find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`

@@ -428,6 +428,13 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
                          lambda *a, **k: None, neighbours=True, db_cache=_sg)
         check("scan_genome: Prodigal neighbour-calling path runs without error",
               isinstance(_sc3, dict) and _sc3.get("n_clean", 0) >= 1)
+        # _select_neighbours keeps overlapping genes (e.g. an overprint partner)
+        _g = [(100, 400, 1, {}), (1200, 1500, 1, {}), (700, 2000, -1, {})]  # last overlaps [800,1000]
+        _u, _d, _o = _SGm._select_neighbours(_g, 800, 1000)
+        check("scan_genome: overlapping (overprint) gene is kept, not dropped",
+              len(_o) == 1 and _o[0][0] == 700 and len(_u) == 1 and len(_d) == 1)
+        check("scan_genome: 'relationship' + genome-map are wired",
+              "relationship" in _SGm.SCAN_NB_COLS and hasattr(_SGm, "draw_genome_map"))
     except Exception as _e:
         check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
 else:

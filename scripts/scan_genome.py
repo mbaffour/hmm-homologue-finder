@@ -23,12 +23,14 @@ discovery pipeline uses.
     # also report stop-interrupted / overprinted copies (with the overprinting test):
     python3 scan_genome.py --seeds gene_seeds.faa --genome genome.fna --find-interrupted
 
-The flanking genes are written to scan_neighbourhood.csv — an ordered table relative to
-your gene (pos_index 0 = your gene, ± up/downstream). Their names come from the genome's
-OWN annotation (gene / gp number, product, locus_tag, protein_id) when an annotated
-GenBank record is available (a fetched --accession, or a .gb/.gbk/.gbff --genome);
-otherwise they are called with Prodigal (the database workflow's caller) and optionally
-labelled with VOGDB VFAM. Disable with --no-neighbours.
+The genes around each hit are written to scan_neighbourhood.csv (ordered relative to your
+gene: pos_index 0 = your gene, ± up/downstream; a relationship column flags upstream /
+downstream / overlapping) and drawn as a genome-map figure scan_genome_map_<hit>.png/svg.
+The --flanks genes each side are shown contiguously AND every overlapping gene is kept,
+so an overprint partner (e.g. gp75's antisense RNA polymerase) is shown, not hidden.
+Names come from the genome's OWN annotation (gene / gp number, product, locus_tag,
+protein_id) for an annotated record (a fetched --accession, or a .gb/.gbk/.gbff
+--genome); otherwise via Prodigal + optional VOGDB VFAM. Disable with --no-neighbours.
 """
 from __future__ import annotations
 
@@ -200,7 +202,8 @@ def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) 
 
 
 def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupted: bool,
-         cpu: int, log, neighbours: bool = False, db_cache=None, annotation_gb=None) -> dict:
+         cpu: int, log, neighbours: bool = False, db_cache=None, annotation_gb=None,
+         flanks: int = 7) -> dict:
     """Read-through six-frame scan of one genome with the HMM. Returns a summary dict
     and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt. When
     `neighbours` is set, also describes the flanking genes (from the genome's own
@@ -243,7 +246,7 @@ def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupte
         nb = write_neighbourhoods(
             rows, contig_nt, out_dir,
             db_cache or Path("~/.cache/hmm-homologue-finder"), cpu, log,
-            annotation_gb=annotation_gb)
+            annotation_gb=annotation_gb, flanks=flanks)
         s["neighbourhood"] = nb
         if nb:
             with open(out_dir / "scan_report.txt", "a") as f:
@@ -313,29 +316,32 @@ def _parse(dt: Path, markers: dict, contig_nt: dict, min_bit: float,
 
 
 FLANKS = 7   # ORFs each side of the gene of interest — matches the discovery neighbourhoods
-SCAN_NB_COLS = ["hit", "contig", "pos_index", "is_anchor", "gene", "product",
-                "locus_tag", "protein_id", "rel_start", "rel_end", "strand_vs_gene",
-                "length_bp", "distance_to_anchor_bp", "annotation_source", "category", "vfam"]
+SCAN_NB_COLS = ["hit", "contig", "pos_index", "relationship", "is_anchor", "gene",
+                "product", "locus_tag", "protein_id", "rel_start", "rel_end",
+                "strand_vs_gene", "length_bp", "distance_to_anchor_bp",
+                "annotation_source", "category", "vfam"]
 
 
-def _nearest_flanks(genes, a_s, a_e):
-    """The FLANKS nearest genes each side of the gene of interest (excluding any that
-    overlap it). genes: [(s, e, st, meta)]."""
-    centre = (a_s + a_e) // 2
-    cand = [g for g in genes if not (g[0] <= a_e and g[1] >= a_s)]
-    return sorted(cand, key=lambda g: abs((g[0] + g[1]) // 2 - centre))[:2 * FLANKS]
+def _select_neighbours(genes, a_s, a_e, flanks=FLANKS):
+    """Contiguous neighbourhood of the gene of interest [a_s, a_e]: (upstream, downstream,
+    overlapping). upstream/downstream = the `flanks` genes immediately flanking it (no
+    gaps); overlapping = EVERY gene that intersects it — the overprint partner / nested
+    genes (e.g. gp75's antisense RNA polymerase), which must not be dropped. [(s,e,st,meta)]."""
+    up = sorted([g for g in genes if g[1] < a_s], key=lambda g: g[1])[-flanks:]
+    down = sorted([g for g in genes if g[0] > a_e], key=lambda g: g[0])[:flanks]
+    over = sorted([g for g in genes if g[0] <= a_e and g[1] >= a_s], key=lambda g: g[0])
+    return up, down, over
 
 
 def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: Path,
-                         cpu: int, log, annotation_gb=None) -> str:
+                         cpu: int, log, annotation_gb=None, flanks=FLANKS) -> str:
     """Write an ordered neighbourhood table for each hit, anchored on the gene of
-    interest. Genes are taken from **the genome's OWN annotation** (gene names / gp
-    numbers, products, locus tags, protein IDs) when a GenBank record is available
-    (`annotation_gb`); otherwise they are called de novo with **Prodigal — the same
-    caller the database workflow uses** and optionally labelled with VOGDB VFAM when that
-    DB is cached. Columns give the order (pos_index: 0 = your gene, ± up/downstream),
-    position relative to your gene, strand vs. your gene, and the names — so you can
-    describe / manually label the bordering genes. Writes scan_neighbourhood.csv."""
+    interest, and a genome-map figure. Gene names come from **the genome's OWN
+    annotation** (gene / gp number, product, locus_tag, protein_id) when a GenBank record
+    is available; else genes are called de novo with **Prodigal** (the database workflow's
+    caller) + optional VOGDB VFAM. The FLANKS genes each side are shown contiguously AND
+    every overlapping gene (the overprint partner / nested genes — e.g. the antisense RNA
+    polymerase) is included, labelled by `relationship`. Writes scan_neighbourhood.csv."""
     import csv as _csv
     try:
         import synteny_figure as SY           # anchor() + categorize()
@@ -353,12 +359,9 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
         contig = r["contig"]
         a_s, a_e = int(r["nt_start"]), int(r["nt_end"])
         a_st = 1 if r["strand"] == "+" else -1
-        # 1) prefer the genome's own annotation for this contig
         if gb_genes.get(contig):
-            source = "genome annotation"
-            neigh = _nearest_flanks(gb_genes[contig], a_s, a_e)
+            source, genes_list = "genome annotation", gb_genes[contig]
         else:
-            # 2) fall back to Prodigal (the discovery caller), optionally + VOGDB VFAM
             seq = contig_nt.get(contig, "")
             if not seq:
                 continue
@@ -369,48 +372,49 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
                 log(f"  (neighbour gene-calling skipped for {contig}: {e})")
                 continue
             source = "Prodigal"
-            picked = _nearest_flanks([(s, e, st, p) for (s, e, st, p) in pg], a_s, a_e)
-            neigh, prot_of = [], {}
-            for j, (s, e, st, prot) in enumerate(picked):
-                gid = f"n{j}"
-                neigh.append((s, e, st, {"gene": "", "product": "", "locus_tag": "",
-                                         "protein_id": "", "_id": gid}))
-                if prot:
-                    prot_of[gid] = prot
-            if ann_ready and prot_of:
+            genes_list = [(s, e, st, {"gene": "", "product": "", "locus_tag": "",
+                                      "protein_id": "", "_prot": p}) for (s, e, st, p) in pg]
+        up, down, over = _select_neighbours(genes_list, a_s, a_e, flanks)
+        selected = list(up) + list(down) + list(over)
+        if source == "Prodigal" and ann_ready:
+            prot_of = {f"g{i}": m.get("_prot", "") for i, (s, e, st, m) in enumerate(selected) if m.get("_prot")}
+            if prot_of:
                 try:
                     hits = __import__("annotate_genes").annotate(prot_of, cache, cpu=cpu)
-                    for (_s, _e, _st, m) in neigh:
-                        h = hits.get(m.get("_id"))
+                    for i, (s, e, st, m) in enumerate(selected):
+                        h = hits.get(f"g{i}")
                         if h:
-                            m["product"] = h.get("function", "")
-                            m["vfam"] = h.get("vfam", "")
+                            m["product"], m["vfam"] = h.get("function", ""), h.get("vfam", "")
                             m["category"] = SY.categorize(h.get("function", ""), h.get("category", ""))
                     source = "Prodigal + VOGDB VFAM"
                 except Exception as e:
                     log(f"  (neighbour annotation skipped: {e})")
-        # anchor (strand-normalise + re-zero on the gene of interest) and order
-        genes = [{"s": a_s, "e": a_e, "st": a_st, "fam": True,
-                  "meta": {"gene": "GENE OF INTEREST", "product": "family homologue"}}]
-        genes += [{"s": s, "e": e, "st": st, "fam": False, "meta": m} for (s, e, st, m) in neigh]
-        if SY.anchor({"genes": genes}) is None:
+        # tag each gene with role + pos_index, then re-zero coords on the gene of interest
+        anchor_g = {"s": a_s, "e": a_e, "st": a_st, "fam": True,
+                    "meta": {"gene": "GENE OF INTEREST", "product": "family homologue"}}
+        tagged = [(anchor_g, 0, "gene of interest")]
+        for k, (s, e, st, m) in enumerate(reversed(up)):          # nearest upstream = -1
+            tagged.append(({"s": s, "e": e, "st": st, "fam": False, "meta": m}, -(k + 1), "upstream"))
+        for k, (s, e, st, m) in enumerate(down):
+            tagged.append(({"s": s, "e": e, "st": st, "fam": False, "meta": m}, k + 1, "downstream"))
+        for (s, e, st, m) in over:
+            rel = "overlapping (antisense)" if st != a_st else "overlapping (same strand)"
+            tagged.append(({"s": s, "e": e, "st": st, "fam": False, "meta": m}, 0, rel))
+        if SY.anchor({"genes": [g for g, _, _ in tagged]}) is None:
             continue
-        ordered = sorted(genes, key=lambda g: g["s"])
-        ai = next((i for i, g in enumerate(ordered) if g["fam"]), None)
-        ag = ordered[ai] if ai is not None else None
-        for i, g in enumerate(ordered):
-            if ag is None or i == ai:
+        ae = anchor_g["e"]                                        # normalised gene-of-interest end
+        for g, pidx, rel in tagged:
+            if g["fam"] or rel.startswith("overlapping"):
                 dist = 0
-            elif g["e"] < ag["s"]:
-                dist = g["e"] - ag["s"]
-            elif g["s"] > ag["e"]:
-                dist = g["s"] - ag["e"]
+            elif g["e"] < 0:
+                dist = g["e"]
+            elif g["s"] > ae:
+                dist = g["s"] - ae
             else:
                 dist = 0
             m = g["meta"]
             all_rows.append({
-                "hit": f"hit{hi}", "contig": contig,
-                "pos_index": (i - ai) if ai is not None else "",
+                "hit": f"hit{hi}", "contig": contig, "pos_index": pidx, "relationship": rel,
                 "is_anchor": int(bool(g["fam"])),
                 "gene": m.get("gene", ""), "product": m.get("product", ""),
                 "locus_tag": m.get("locus_tag", ""), "protein_id": m.get("protein_id", ""),
@@ -427,9 +431,60 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
         w.writeheader()
         w.writerows(all_rows)
     src = sorted({r["annotation_source"] for r in all_rows if r["annotation_source"]})
+    n_over = sum(1 for r in all_rows if str(r["relationship"]).startswith("overlapping"))
     log(f"  neighbouring genes [{', '.join(src) or 'called'}]: {len(all_rows)} gene(s) "
-        f"across {len(rows)} hit(s) -> {out.name}")
+        f"across {len(rows)} hit(s)" + (f", incl. {n_over} overlapping (overprint partner)" if n_over else "")
+        + f" -> {out.name}")
+    try:
+        for hl in sorted({r["hit"] for r in all_rows}):
+            draw_genome_map([r for r in all_rows if r["hit"] == hl], out_dir, hl, log)
+    except Exception as e:
+        log(f"  (genome-map figure skipped: {e})")
     return str(out)
+
+
+def draw_genome_map(rows: list, out_dir: Path, hit_label: str, log) -> None:
+    """Single-locus genome map: the gene of interest (red) + its flanking genes (grey)
+    and any overlapping gene / overprint partner (orange, drawn on its own lane) as
+    strand arrows along the position axis (bp relative to your gene). PNG + SVG."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyArrow
+    if not rows:
+        return
+    xs = [int(r["rel_start"]) for r in rows] + [int(r["rel_end"]) for r in rows]
+    lo, hi = min(xs), max(xs)
+    span = max(hi - lo, 1)
+    fig, ax = plt.subplots(figsize=(11, 2.8))
+    for r in rows:
+        s, e = int(r["rel_start"]), int(r["rel_end"])
+        anchor = str(r["is_anchor"]) == "1"
+        overlap = str(r["relationship"]).startswith("overlapping")
+        color = "#e5484d" if anchor else ("#f0883e" if overlap else "#c2ccd6")
+        y = 0.55 if overlap else 0.0                     # overlapping genes on a separate lane
+        right = r["strand_vs_gene"] != "-"
+        x0, dx = (s, e - s) if right else (e, s - e)
+        ax.add_patch(FancyArrow(x0, y, dx, 0, width=0.16, length_includes_head=True,
+                                head_width=0.3, head_length=max(span * 0.012, 1),
+                                color=color, ec="#33373d", lw=0.5, zorder=3))
+        label = "GENE OF INTEREST" if anchor else (r["gene"] or r["product"] or r["locus_tag"] or "")
+        ax.text((s + e) / 2, y + 0.27, str(label)[:24], ha="center", va="bottom",
+                fontsize=6.5, rotation=28, color="#1a2230")
+    ax.set_xlim(lo - span * 0.04, hi + span * 0.04)
+    ax.set_ylim(-0.7, 1.5)
+    ax.set_yticks([])
+    ax.set_xlabel("position relative to your gene (bp)", fontsize=9)
+    ax.set_title(f"Genome map around your gene — {hit_label}   "
+                 f"(red = your gene · orange = overlapping/overprint · grey = flanking)", fontsize=9)
+    for sp in ("top", "right", "left"):
+        ax.spines[sp].set_visible(False)
+    fig.tight_layout()
+    base = out_dir / f"scan_genome_map_{hit_label}"
+    fig.savefig(f"{base}.png", dpi=200, bbox_inches="tight")
+    fig.savefig(f"{base}.svg", bbox_inches="tight")
+    plt.close(fig)
+    log(f"  genome map -> {base.name}.png / .svg")
 
 
 def _finish(out_dir: Path, rows: list, min_bit: float, find_interrupted: bool,
@@ -505,6 +560,9 @@ def main() -> None:
                          "writes scan_neighbourhood.csv = the ordered neighbour table)")
     ap.add_argument("--db-cache", type=Path, default=Path("~/.cache/hmm-homologue-finder"),
                     help="cache holding the VOGDB VFAM DB used to annotate neighbour genes (optional)")
+    ap.add_argument("--flanks", type=int, default=7,
+                    help="number of flanking genes to report EACH side of your gene (default 7); "
+                         "overlapping genes are always included")
     ap.add_argument("--cpu", type=int, default=4)
     ap.set_defaults(neighbours=True)
     args = ap.parse_args()
@@ -526,7 +584,8 @@ def main() -> None:
             sys.exit(f"seeds not found: {args.seeds}")
         hmm = build_hmm_from_seeds(args.seeds, args.trans_table, args.out, args.cpu, log)
     s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log,
-             neighbours=args.neighbours, db_cache=args.db_cache, annotation_gb=annotation_gb)
+             neighbours=args.neighbours, db_cache=args.db_cache, annotation_gb=annotation_gb,
+             flanks=args.flanks)
     # exit code 0 if the gene was detected (clean or interrupted), 1 if absent — handy in scripts
     sys.exit(0 if (s["n_clean"] or s["n_interrupted"]) else 1)
 
