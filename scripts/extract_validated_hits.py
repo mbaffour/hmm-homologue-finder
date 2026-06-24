@@ -154,6 +154,21 @@ def clean_accession(target_name: str) -> str:
     return t.split()[0]
 
 
+def met_anchor(orf_aa: str, env_from: int) -> tuple[int, str]:
+    """Return (met_offset, gene_aa): the GENE read from its Met START codon.
+
+    A six-frame ORF is bounded by STOPS, so its first residues lie between the upstream
+    in-frame stop and the real ATG. Reporting that whole stop-to-stop segment over-states the
+    gene length (e.g. a 145-aa segment for a 138-aa gene; up to thousands of aa when a small
+    overprinted domain rides a long stop-free antisense frame). Anchor to the Met at/just
+    before the domain envelope start (`env_from`, 1-based) — i.e. the start codon the HMM
+    family begins at. Returns offset 0 (no trimming) when no Met precedes/anchors the domain.
+    """
+    met = orf_aa.rfind("M", 0, max(0, env_from)) if env_from >= 1 else -1
+    met = met if met >= 0 else 0
+    return met, orf_aa[met:]
+
+
 def reconstruct_orf(genome_seq: str, start_1: int, end_1: int, strand: str):
     """Return (nt, aa) for the ORF at 1-based forward coords [start_1, end_1].
 
@@ -455,7 +470,19 @@ def main():
             # are by design genes that standard annotation (Prodigal) misses
             # (antisense / alternate-frame), so requiring overlap with a predicted
             # gene would discard true positives — the discovery goal of this tool.
-            r["has_start_M"] = orf_aa.startswith("M")
+            #
+            # Report the GENE from its Met START codon, not the stop-to-stop search ORF:
+            # orf_aa_len/orf_nt_* describe the Met->stop gene; nt_start/nt_end keep describing
+            # the stop-bounded search ORF (used for synteny/maps); domain_aa_len (the HMM
+            # envelope) is the reliable conserved length.
+            met, gene_aa = met_anchor(orf_aa, a)
+            r["orf_aa_len"] = len(gene_aa)
+            r["has_start_M"] = gene_aa[:1] == "M"
+            if met:
+                if r["strand"] == "-":
+                    r["orf_nt_end"] = int(r["nt_end"]) - met * 3
+                else:
+                    r["orf_nt_start"] = int(r["nt_start"]) + met * 3
             r["ends_at_stop"] = True  # six-frame ORFs are stop-bounded by construction
             genes = prodigal_genes(fna_path)
             same, any_ = prodigal_overlap(genes, r["nt_start"], r["nt_end"], r["strand"])

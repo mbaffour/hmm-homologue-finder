@@ -206,6 +206,15 @@ check("find_interrupted: extend_orf with no upstream stop starts at residue 1",
 # upstream stop and the ATG ("PQ" here) must NOT be prepended to the gene.
 check("find_interrupted: extend_orf starts the gene at the Met, not the upstream stop",
       FI.extend_orf("*PQMTDLR*Z", 4, 8) == (4, 9, "MTDLR*"))
+# Main-hit path: met_anchor reports the gene from its Met, not the stop-to-stop six-frame ORF.
+import extract_validated_hits as EVH  # noqa: E402
+# "ABMTDLR": domain starts at the M (env_from=3, 1-based) -> gene = "MTDLR" (5 aa), dropping "AB"
+check("extract: met_anchor trims to the Met at the domain start (145->138 style fix)",
+      EVH.met_anchor("ABMTDLR", 3) == (2, "MTDLR"))
+check("extract: met_anchor leaves an already-Met-starting ORF unchanged",
+      EVH.met_anchor("MTDLR", 1) == (0, "MTDLR"))
+check("extract: met_anchor with no Met before the domain does not trim",
+      EVH.met_anchor("ARNDCQ", 4) == (0, "ARNDCQ"))
 # aa_to_nt / stop_nt: genome coordinates + DNA that translate back (frame/strand-correct)
 from Bio.Seq import Seq as _Seq  # noqa: E402
 _g = "ATGAAATAAGGGCCC"   # + frame 0: M K * G P
