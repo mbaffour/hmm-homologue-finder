@@ -17,17 +17,23 @@ discovery pipeline uses.
     # from an existing profile HMM:
     python3 scan_genome.py --hmm gene.hmm --genome genome.fna --out scan_out
 
-    # also report stop-interrupted / overprinted copies:
+    # fetch the genome from NCBI by accession instead of a local file:
+    python3 scan_genome.py --hmm gene.hmm --accession KX098390 --email you@inst.edu
+
+    # also report stop-interrupted / overprinted copies (with the overprinting test):
     python3 scan_genome.py --seeds gene_seeds.faa --genome genome.fna --find-interrupted
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from Bio import SeqIO
@@ -40,6 +46,43 @@ ROW_COLS = ["contig", "strand", "frame", "nt_start", "nt_end", "domain_aa_len",
             "orf_nt_start", "orf_nt_end", "orf_aa_len", "has_start_M", "ends_at_stop",
             "overprinting_support", "antisense_open_stops", "stop_nt_positions",
             "domain_aa", "orf_aa", "orf_nt"]
+
+
+def fetch_genome(accessions: str, email: str | None, out_dir: Path, log) -> Path:
+    """Pull one or more NCBI **nucleotide** accessions (comma-separated) into a single
+    genome FASTA via Entrez efetch, so you can scan a genome by accession instead of a
+    local file. NCBI requires an email. Retries transient failures. Returns the path."""
+    from Bio import Entrez
+    email = email or os.environ.get("NCBI_EMAIL")
+    if not email:
+        sys.exit("--accession needs an email for NCBI Entrez: pass --email you@inst.edu "
+                 "(or set $NCBI_EMAIL).")
+    Entrez.email = email
+    socket.setdefaulttimeout(60)
+    ids = [a.strip() for a in accessions.replace(",", " ").split() if a.strip()]
+    if not ids:
+        sys.exit("no accession given to --accession")
+    out_fa = out_dir / ((ids[0].replace("/", "_") + ".fna") if len(ids) == 1
+                        else "fetched_genome.fna")
+    log(f"Fetching {len(ids)} accession(s) from NCBI nucleotide: {', '.join(ids)} …")
+    data = ""
+    for attempt in (1, 2, 3):
+        try:
+            with Entrez.efetch(db="nucleotide", id=",".join(ids),
+                               rettype="fasta", retmode="text") as h:
+                data = h.read()
+            if data.strip().startswith(">"):
+                break
+        except Exception as e:
+            log(f"  (NCBI fetch attempt {attempt} failed: {e})")
+        time.sleep(3 * attempt)
+    if not data.strip().startswith(">"):
+        sys.exit(f"NCBI returned no FASTA for: {accessions} "
+                 "(check the accession is a nucleotide record; assembly GCF_/GCA_ ids "
+                 "aren't fetched directly — use their nucleotide/contig accessions).")
+    out_fa.write_text(data)
+    log(f"  fetched {data.count('>')} sequence(s) -> {out_fa.name}")
+    return out_fa
 
 
 def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) -> Path:
@@ -221,8 +264,14 @@ def main() -> None:
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--seeds", type=Path, help="seed FASTA (protein or nucleotide CDS) to BUILD the HMM from")
     src.add_argument("--hmm", type=Path, help="an existing profile HMM to scan with")
-    ap.add_argument("--genome", type=Path, required=True,
-                    help="the single nucleotide genome to scan (.fna/.fa, optionally .gz)")
+    gsrc = ap.add_mutually_exclusive_group(required=True)
+    gsrc.add_argument("--genome", type=Path,
+                      help="a local single nucleotide genome to scan (.fna/.fa, optionally .gz)")
+    gsrc.add_argument("--accession",
+                      help="NCBI nucleotide accession(s) to fetch & scan, comma-separated "
+                           "(e.g. KX098390 or NC_031062). Needs --email.")
+    ap.add_argument("--email", default=None,
+                    help="NCBI email (required with --accession; or set $NCBI_EMAIL)")
     ap.add_argument("--out", type=Path, default=Path("genome_scan"), help="output directory")
     ap.add_argument("--min-bit", type=float, default=25.0,
                     help="minimum domain bit score to report (default 25)")
@@ -232,10 +281,15 @@ def main() -> None:
                     help="genetic code for translating a nucleotide SEED (default 11)")
     ap.add_argument("--cpu", type=int, default=4)
     args = ap.parse_args()
-    if not args.genome.exists():
-        sys.exit(f"genome not found: {args.genome}")
     args.out.mkdir(parents=True, exist_ok=True)
     log = print
+    # Resolve the genome: a local FASTA, or fetch it from NCBI by accession.
+    if args.accession:
+        genome = fetch_genome(args.accession, args.email, args.out, log)
+    else:
+        if not args.genome.exists():
+            sys.exit(f"genome not found: {args.genome}")
+        genome = args.genome
     if args.hmm:
         if not args.hmm.exists():
             sys.exit(f"HMM not found: {args.hmm}")
@@ -244,7 +298,7 @@ def main() -> None:
         if not args.seeds.exists():
             sys.exit(f"seeds not found: {args.seeds}")
         hmm = build_hmm_from_seeds(args.seeds, args.trans_table, args.out, args.cpu, log)
-    s = scan(args.genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log)
+    s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log)
     # exit code 0 if the gene was detected (clean or interrupted), 1 if absent — handy in scripts
     sys.exit(0 if (s["n_clean"] or s["n_interrupted"]) else 1)
 

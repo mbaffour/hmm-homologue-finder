@@ -64,14 +64,23 @@ MODE="$(ask '  choose 1, 2 or 3' '1')"
 if [ "$MODE" = "3" ]; then
   echo
   echo "Step 3 — the genome to scan"
-  echo "  Drag the genome FASTA (nucleotide .fna/.fa, optionally .gz) into this window."
-  GENOME="$(resolve_path "$(ask '  genome FASTA' '')")"
-  if [ ! -f "$GENOME" ]; then echo "  !! File not found: $GENOME"; exit 1; fi
+  echo "  Give a LOCAL genome FASTA (drag it in / type its path), OR an NCBI nucleotide"
+  echo "  accession to fetch from NCBI (e.g. KX098390, NC_031062 — comma-separate several)."
+  GIN="$(ask '  genome FASTA path OR NCBI accession' '')"
   OUT="$(resolve_path "$(ask '  output directory' "$ORIG_PWD/genome_scan")")"
   FI="$(ask '  also report stop-interrupted / overprinted copies? (y/N)' 'N')"
-  SCAN=(--scan --seeds "$FASTA" --genome "$GENOME" --out "$OUT")
+  SCAN=(--scan --seeds "$FASTA" --out "$OUT")
   [ "${#ARGS_TT[@]}" -gt 0 ] && SCAN+=("${ARGS_TT[@]}")   # nucleotide-seed genetic code, if set
   case "$FI" in y|Y|yes|YES) SCAN+=(--find-interrupted) ;; esac
+  GPATH="$(resolve_path "$GIN")"
+  if [ -f "$GPATH" ]; then
+    SCAN+=(--genome "$GPATH")
+  else
+    echo "  '$GIN' is not a local file — treating it as an NCBI accession (will fetch it)."
+    EMAIL="$(ask '  NCBI email (required to fetch)' '')"
+    [ -n "$EMAIL" ] && SCAN+=(--email "$EMAIL")
+    SCAN+=(--accession "$GIN")
+  fi
   echo
   bold "About to run:"; echo "  bash run.sh ${SCAN[*]}"; echo
   C="$(ask '  press Enter to run (or type n to cancel)' '')"

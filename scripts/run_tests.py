@@ -385,6 +385,22 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
 else:
     check("find_interrupted e2e: SKIPPED (HMMER not on PATH)", True)
 
+# scan_genome --accession: must require an email before any NCBI call (pure-logic guard).
+import os as _os  # noqa: E402
+import scan_genome as _SGm  # noqa: E402
+_saved_email = _os.environ.pop("NCBI_EMAIL", None)
+_acc_rejected = False
+try:
+    _SGm.fetch_genome("KX098390", None, Path(tempfile.mkdtemp()), lambda *a, **k: None)
+except SystemExit:
+    _acc_rejected = True
+except Exception:
+    _acc_rejected = False
+finally:
+    if _saved_email is not None:
+        _os.environ["NCBI_EMAIL"] = _saved_email
+check("scan_genome: --accession without an email is rejected before any NCBI call", _acc_rejected)
+
 # scan_genome: single-genome targeted scan (build HMM -> scan one genome -> present/absent).
 if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
     try:

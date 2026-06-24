@@ -135,22 +135,33 @@ read-through, so a clean copy is found with 0 internal stops, and (with
 `--find-interrupted`) a stop-interrupted / overprinted copy is reported too, with
 the overprinting verdict.
 ```bash
-# build the HMM from seeds and scan a genome:
+# build the HMM from seeds and scan a local genome:
 python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --out scan_out
 
 # reuse an existing profile HMM:
 python3 scripts/scan_genome.py --hmm gene.hmm --genome my_genome.fna --out scan_out
 
-# also catch interrupted/overprinted copies:
+# fetch the genome from NCBI by accession instead of a local file (needs --email):
+python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@inst.edu
+
+# also catch interrupted/overprinted copies (with the overprinting verdict):
 python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --find-interrupted
 ```
-Or, interactively: `bash start.sh` → **mode 3 (Scan ONE genome)**. Outputs (in
-`--out`): `scan_report.txt` (the present / not-detected verdict + best hits),
-`scan_hits.tsv` (per-hit coordinates, ORF validation, score, overprinting),
-`scan_hits_aa.faa` / `scan_hits_nt.fna` (hit sequences), and `profile.hmm` when
-built from seeds. Exit code is **0 if the gene was detected, 1 if absent** — handy
-in shell loops over many genomes. Flags: `--min-bit` (default 25), `--trans-table`
-(for a nucleotide seed), `--cpu`.
+The genome comes from **either** `--genome FILE` (local) **or** `--accession ACC`
+(fetched from NCBI nucleotide via Entrez — comma-separate several; assembly
+`GCF_`/`GCA_` ids aren't fetched directly, use their nucleotide/contig accessions).
+Or, interactively: `bash start.sh` → **mode 3 (Scan ONE genome)** — it accepts a
+local path or an accession. Outputs (in `--out`): `scan_report.txt` (present /
+not-detected verdict + best hits), `scan_hits.tsv` (per-hit coordinates, ORF
+validation, score, overprinting), `scan_hits_aa.faa` / `scan_hits_nt.fna` (hit
+sequences), the fetched `<accession>.fna` when fetched, and `profile.hmm` when built
+from seeds. Exit code is **0 if the gene was detected, 1 if absent** — handy in shell
+loops over many genomes. Flags: `--min-bit` (default 25), `--trans-table` (for a
+nucleotide seed), `--cpu`.
+
+*Worked example (real overprinting):* `--hmm gp75.hmm --accession KX098390
+--find-interrupted` finds gp75 as **interrupted** with `overprinting_support=strong`
+— its premature stop is synonymous in the open antisense RNA-polymerase frame.
 
 ---
 
