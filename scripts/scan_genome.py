@@ -315,7 +315,9 @@ def _parse(dt: Path, markers: dict, contig_nt: dict, min_bit: float,
             "status": status, "domain_bit_score": round(dom_bits, 1),
             "i_evalue": f"{i_eval:.2g}",
             "orf_nt_start": orf_nt_start, "orf_nt_end": orf_nt_end,
-            "orf_aa_len": orf_to - orf_from + 1,
+            # protein length EXCLUDES the terminal stop codon ('*'); internal read-through
+            # stops (interrupted copies) are still counted as positions.
+            "orf_aa_len": (orf_to - orf_from + 1) - int(terminal_stop),
             "has_start_M": int(has_M), "ends_at_stop": int(terminal_stop),
             "overprinting_support": overpr, "antisense_open_stops": anti_open,
             "stop_nt_positions": stop_pos,
@@ -509,7 +511,8 @@ def _finish(out_dir: Path, rows: list, min_bit: float, find_interrupted: bool,
     for r in (rows[:10] or []):
         line = (f"  • {r['contig']} {r['strand']}{r['frame']} {r['nt_start']}-{r['nt_end']} "
                 f"| {r['status']} | bit {r['domain_bit_score']} E {r['i_evalue']} "
-                f"| ORF {r['orf_aa_len']}aa (M={r['has_start_M']}, stop={r['ends_at_stop']})")
+                f"| domain {r['domain_aa_len']}aa, ORF {r['orf_aa_len']}aa "
+                f"(M={r['has_start_M']}, stop={r['ends_at_stop']})")
         if r["status"] == "interrupted":
             line += f" | overprinting={r['overprinting_support']} (antisense_open_stops={r['antisense_open_stops']})"
         lines.append(line)

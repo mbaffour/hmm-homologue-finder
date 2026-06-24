@@ -142,6 +142,28 @@ def _pack(genes):
     return assign, max(len(lane_end), 1)
 
 
+def _dfv_tolerant_levels(features, tol):
+    """Greedy row-packing for DNA Features Viewer that TOLERATES small overlaps: two genes
+    share a row unless they overlap by more than `tol` bp. Phage genes very often share a
+    base or two (overlapping start/stop codons); DFV's default stacks every such pair onto a
+    new row, which turns a dense genome into a cluttered staircase. Collapsing sub-`tol`
+    overlaps onto the baseline keeps the map clean, while a genuinely nested / overprinted
+    gene (overlap >> tol, e.g. a gene inside an antisense RNA polymerase) still gets its own
+    row so nothing is hidden. Returns {feature: row_level} (0 = baseline)."""
+    feats = sorted(features, key=lambda f: (f.start, f.end))
+    lane_end, levels = [], {}
+    for f in feats:
+        for i in range(len(lane_end)):
+            if f.start >= lane_end[i] - tol:        # only a >tol overlap forces a new row
+                lane_end[i] = max(lane_end[i], f.end)
+                levels[f] = i
+                break
+        else:
+            lane_end.append(f.end)
+            levels[f] = len(lane_end) - 1
+    return levels
+
+
 def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
     """Publication genome map via **DNA Features Viewer** (Edinburgh Genome Foundry) — the
     default, cleanest renderer. Clean strand arrows; OVERLAPPING genes are auto-stacked onto
@@ -184,7 +206,19 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
                       else {"fontsize": 7, "color": "#1a2230"})))
     rec = GraphicRecord(sequence_length=span + 1, features=feats, first_index=wlo)
     fig_w = min(30.0, max(9.0, span / 2200.0))
-    ax = rec.plot(figure_width=fig_w)[0]
+    # Stack genes onto separate rows ONLY for substantial overlaps (nested / overprinted
+    # genes); collapse the ubiquitous few-bp start/stop overlaps between adjacent genes onto
+    # the baseline so a dense genome doesn't render as a cluttered staircase. 60 bp keeps a
+    # real overprint (typically >100 bp of overlap) on its own row while absorbing the rest.
+    import dna_features_viewer as _dfvmod
+    _pg = _dfvmod.GraphicRecord.plot.__globals__
+    _orig_cfl = _pg.get("compute_features_levels")
+    _pg["compute_features_levels"] = lambda fs: _dfv_tolerant_levels(fs, 60)
+    try:
+        ax = rec.plot(figure_width=fig_w)[0]
+    finally:
+        if _orig_cfl is not None:
+            _pg["compute_features_levels"] = _orig_cfl
     nm = str(track_name).split("\n")
     ax.set_title(nm[0] + (f"\n{nm[1]}" if len(nm) > 1 else ""),
                  fontsize=12, fontweight="bold", pad=12)

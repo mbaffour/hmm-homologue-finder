@@ -482,6 +482,18 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
         import inspect as _insp  # noqa: E402
         check("genome_map: DNA Features Viewer ('dfv') is the default renderer",
               _insp.signature(_GMm.draw).parameters["tool"].default == "dfv")
+        # tolerant row-packing: trivial start/stop overlaps collapse to the baseline, a
+        # real overprint (overlap >> tol) gets its own row so the gene of interest shows.
+        class _F:
+            def __init__(s, a, b): s.start, s.end = a, b
+        _adj = [_F(0, 400), _F(398, 800), _F(798, 1200)]        # 2 bp shared start/stop
+        _lv = _GMm._dfv_tolerant_levels(_adj, 60)
+        check("genome_map: tiny start/stop overlaps stay on one row (no staircase)",
+              set(_lv.values()) == {0})
+        _ovp = [_F(0, 1000), _F(700, 1100)]                     # 300 bp overprint-style overlap
+        _lv2 = _GMm._dfv_tolerant_levels(_ovp, 60)
+        check("genome_map: a substantial (overprint) overlap gets its own row",
+              len(set(_lv2.values())) == 2)
     except Exception as _e:
         check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
 else:
