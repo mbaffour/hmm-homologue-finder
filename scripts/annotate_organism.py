@@ -127,6 +127,12 @@ def annotate(tsv: Path, email: str) -> None:
         nm = names.get(gid) or names.get(gid.split(".")[0])
         if nm:
             return nm
+        # No resolved name. Do NOT call a genome "uncultured virus" just because the lookup
+        # failed or was skipped (offline): an NCBI accession (e.g. a cultured RefSeq NC_… record)
+        # is a real cultured genome, so fall back to its accession. Reserve the metagenomic label
+        # for genuinely non-NCBI ids.
+        if is_ncbi(gid):
+            return gid.split(".")[0]
         return f"uncultured virus ({row.get('db_name', 'metagenomic')})"
 
     df["organism"] = df.apply(org, axis=1)

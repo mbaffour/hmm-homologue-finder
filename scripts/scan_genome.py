@@ -413,6 +413,14 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
                     source = "Prodigal + VOGDB VFAM"
                 except Exception as e:
                     log(f"  (neighbour annotation skipped: {e})")
+        # Ensure EVERY selected gene carries a functional category. The VOGDB branch above only
+        # runs for Prodigal input; without this, genome-annotation neighbours (e.g. KX098390 with
+        # its own GenBank) would have an empty 'category' column in scan_neighbourhood.csv while
+        # the genome-map figure colours the same genes — keep the table and the figure consistent.
+        for (s, e, st, m) in selected:
+            if not m.get("category"):
+                m["category"] = SY.categorize(m.get("product", "") or m.get("gene", ""),
+                                              m.get("vfam", ""))
         # tag each gene with role + pos_index, then re-zero coords on the gene of interest
         anchor_g = {"s": a_s, "e": a_e, "st": a_st, "fam": True,
                     "meta": {"gene": "GENE OF INTEREST", "product": "family homologue"}}

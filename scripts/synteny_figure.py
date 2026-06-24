@@ -62,10 +62,11 @@ CATEGORY_RULES = [
       "sigma factor", "anti-sigma", "transcriptional"]),
     # specific structural terms only — NOT bare "virion" (too greedy: it caught
     # "virion DNA-directed RNA polymerase")
-    ("structural", ["capsid", "tail", "baseplate", "neck", "collar", "fiber",
-                    "fibre", "sheath", "tape measure", "decoration", "portal",
-                    "prohead", "scaffold", "spike", "head-tail", "head completion",
-                    "major head", "structural protein", "virion structural"]),
+    ("structural", ["capsid", "coat protein", "major coat", "minor coat", "tail",
+                    "baseplate", "neck", "collar", "fiber", "fibre", "sheath",
+                    "tape measure", "decoration", "portal", "prohead", "scaffold",
+                    "spike", "head-tail", "head completion", "major head", "minor head",
+                    "head protein", "structural protein", "virion structural"]),
     ("replication / nucleotide metabolism",
      ["polymerase", "primase", "helicase", "ligase", "nuclease", "exonuclease",
       "endonuclease", "recombinase", "ribonucleotide", "thymidylate",
@@ -329,7 +330,8 @@ def _arrow(ax, g, y, color, h=0.34, lw=0.4, ec="#33373d"):
                          linewidth=lw, zorder=4 if lw > 1 else 3))
 
 
-def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels=False):
+def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels=False,
+                 n_full=None):
     loci = [a for a in (anchor(l) for l in loci) if a]
     if len(loci) < 2:
         return None
@@ -399,8 +401,9 @@ def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels
     ax.set_yticks([n - i for i in range(n)])
     ax.set_yticklabels([l.get("label", l["organism"])[:50] for l in loci], fontsize=lab_fs)
     ax.set_xlabel("position relative to family gene (bp)", fontsize=9)
+    _ntxt = (f"n={n} of {n_full} loci shown (subsampled)" if (n_full and n_full > n) else f"n={n}")
     ax.set_title(f"Cluster {cid} — gene-neighbourhood synteny "
-                 f"(anchored on family gene, n={n})", fontsize=11)
+                 f"(anchored on family gene, {_ntxt})", fontsize=11)
     for spine in ("top", "right", "left"):
         ax.spines[spine].set_visible(False)
     ax.tick_params(left=False)
@@ -520,13 +523,18 @@ def main() -> None:
     for cid in list(by_cluster):
         by_cluster[cid] = _dedup_loci_by_organism(by_cluster[cid])
 
-    # subsample each cluster to a readable, representative set (0 = keep all)
+    # subsample each cluster to a readable, representative set (0 = keep all). Record the FULL
+    # pre-cap size per cluster so the figure can DISCLOSE "n=shown of total" rather than silently
+    # presenting the truncated count as the cluster size.
     cap = args.max_loci
+    full_counts = {cid: len(loci) for cid, loci in by_cluster.items()}
     for cid in list(by_cluster):
         loci = by_cluster[cid]
         if cap and len(loci) > cap:
             step = len(loci) / cap
             by_cluster[cid] = [loci[int(i * step)] for i in range(cap)]
+            print(f"  cluster {cid}: showing {cap} of {full_counts[cid]} loci "
+                  f"(evenly-strided representative subsample; raise/disable with --max-loci)")
 
     # functional annotation (VOGDB VFAM) of every neighbourhood protein, once
     ann_ready = annotate_genes.is_ready(args.annotation_cache)
@@ -566,11 +574,13 @@ def main() -> None:
         for mode in modes:
             suf = "" if mode == "function" else f"_{mode}"
             if draw_cluster(cid, loci, args.out_dir, color_by=mode, suffix=suf,
-                            gene_labels=args.gene_labels):
+                            gene_labels=args.gene_labels, n_full=full_counts.get(cid)):
                 drew = True
         if drew:
             produced.append(cid)
-            print(f"  cluster_{cid}: synteny figure ({len(loci)} loci; {'/'.join(modes)})")
+            _nf = full_counts.get(cid, len(loci))
+            _shown = f"{len(loci)} of {_nf}" if _nf > len(loci) else f"{len(loci)}"
+            print(f"  cluster_{cid}: synteny figure ({_shown} loci; {'/'.join(modes)})")
         ann_rows.extend(neighbourhood_rows(cid, loci))
 
     heatmap = build_heatmap(by_cluster, args.out_dir)

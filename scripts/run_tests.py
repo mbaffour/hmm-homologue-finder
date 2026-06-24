@@ -23,6 +23,8 @@ def check(name, cond):
 import synteny_figure as S  # noqa: E402
 check("categorize lysis", S.categorize("endolysin") == "lysis")
 check("categorize capsid->structural", S.categorize("major capsid protein") == "structural")
+check("categorize major coat protein->structural", S.categorize("putative major coat protein") == "structural")
+check("categorize head protein->structural", S.categorize("head protein") == "structural")
 check("categorize RNA polymerase->transcription",
       S.categorize("Virion DNA-directed RNA polymerase") == "transcription / regulation")
 check("categorize DNA polymerase->replication",
@@ -69,12 +71,17 @@ check("dedup: keeps paralog + other genome", 2 in _keep and 3 in _keep)
 # placeholder address is ever sent) and fall back to a generic label. This test
 # runs with NO network because the guard short-circuits before any Entrez call.
 _eo = Path(tempfile.mkdtemp()) / "hits.tsv"
-pd.DataFrame({"genome_id": ["NC_000000.1"], "db_name": ["RefSeq viral genomes"]}).to_csv(
-    _eo, sep="\t", index=False)
+pd.DataFrame({"genome_id": ["NC_000000.1", "GPD_0001"],
+              "db_name": ["RefSeq viral genomes", "GPD"]}).to_csv(_eo, sep="\t", index=False)
 O.annotate(_eo, None)
 _eor = pd.read_csv(_eo, sep="\t")
-check("annotate_organism offline (email=None) -> generic label, no NCBI",
-      "organism" in _eor.columns and "uncultured virus" in str(_eor["organism"].iloc[0]))
+# A cultured NCBI accession whose lookup is skipped offline must fall back to the ACCESSION,
+# NOT be mislabelled "uncultured virus"; a genuinely non-NCBI id still gets the metagenomic label.
+check("annotate_organism offline: NCBI accession -> accession label (not 'uncultured'), no NCBI",
+      "organism" in _eor.columns and _eor["organism"].iloc[0] == "NC_000000"
+      and "uncultured" not in str(_eor["organism"].iloc[0]))
+check("annotate_organism offline: non-NCBI id keeps the metagenomic label",
+      "uncultured virus" in str(_eor["organism"].iloc[1]))
 
 # --- offline CSV export: a hits table with NO 'organism' column (the offline /
 # --no-annotate case) must NOT abort the whole export. Regression for the bug
