@@ -106,7 +106,10 @@ the main paper table, so tables and figures describe the same homolog set.
   neighbour with its order relative to the gene of interest (`pos_index`: 0 = the gene,
   ± = down/upstream), position (`rel_start/rel_end`, `distance_to_anchor_bp`), strand
   vs. the gene, and function — so the bordering genes can be described or manually
-  labelled. Real-sequence GenBank files are also written.
+  labelled. Real-sequence GenBank files are also written, each with a **genome-map
+  figure** (`<name>_genome_map.png/.svg`, rendered with **pyGenomeViz**) marking the gene
+  of interest (the HMM hit, red) among its neighbours — the same linear genome map the
+  single-genome scan produces (`scan_genome_map_*`: a controllable window and a whole-contig view).
 - **Alignment of homologs** — the unique ORF-validated domains are aligned with
   the same accuracy-first MAFFT strategy (L-INS-i where tractable, else `--auto`).
   The alignment is a first-class deliverable: the full MSA (`hits.aln.faa`), a

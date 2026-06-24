@@ -433,8 +433,17 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
         _u, _d, _o = _SGm._select_neighbours(_g, 800, 1000)
         check("scan_genome: overlapping (overprint) gene is kept, not dropped",
               len(_o) == 1 and _o[0][0] == 700 and len(_u) == 1 and len(_d) == 1)
-        check("scan_genome: 'relationship' + genome-map are wired",
-              "relationship" in _SGm.SCAN_NB_COLS and hasattr(_SGm, "draw_genome_map"))
+        import genome_map as _GMm  # noqa: E402
+        check("scan_genome: 'relationship' column is wired",
+              "relationship" in _SGm.SCAN_NB_COLS)
+        _gr = _GMm.build_genes((100, 400, 1),
+                               [(500, 700, 1, {"gene": "nbr"}), (200, 600, -1, {"gene": "ov"})],
+                               flank_keys={(500, 700)})
+        check("genome_map: the gene of interest is marked as the anchor",
+              any(it["role"] == "anchor" and it["start"] == 100 for it in _gr))
+        check("genome_map: overlapping gene flagged, flank labelled from annotation",
+              any(it["role"] == "overlap" for it in _gr)
+              and any(it["role"] == "flank" and it["label"] == "nbr" for it in _gr))
     except Exception as _e:
         check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
 else:

@@ -100,7 +100,7 @@ _REGISTRY = {
         "files": {
             "clinker": "clinker gene-neighbourhood comparison — interactive cluster_*.html (open in any browser) plus, when a headless browser is installed, a static cluster_*.png per cluster (the 'Static PNG' column in clinker/index.html).",
             "publication_figures": "Publication synteny panels (PNG/SVG/PDF) + neighbour_gene_annotations.csv — the ordered gene-neighbourhood table: each neighbour's pos_index (order; 0 = your gene, - upstream, + downstream), position relative to your gene (rel_start/rel_end, distance_to_anchor_bp), strand vs. your gene, and function, so you can describe/label the bordering genes.",
-            "genbank_with_sequence": "Real-sequence GenBank neighbourhoods, named by phage (Artemis/Geneious/UGENE).",
+            "genbank_with_sequence": "Real-sequence GenBank neighbourhoods, named by phage (Artemis/Geneious/UGENE), each with a <name>_genome_map.png/.svg marking the gene of interest (the HMM hit, red) among its neighbours.",
         },
     },
     DIRS["dbsum"]: {

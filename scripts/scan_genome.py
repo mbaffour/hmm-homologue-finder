@@ -423,6 +423,19 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
                 "length_bp": g["e"] - g["s"], "distance_to_anchor_bp": dist,
                 "annotation_source": "" if g["fam"] else source,
                 "category": m.get("category", ""), "vfam": m.get("vfam", "")})
+        # genome maps for this hit: a controllable ±flanks window AND the whole contig
+        try:
+            import genome_map as GM
+            hl = f"hit{hi}"
+            fk = {(g[0], g[1]) for g in up} | {(g[0], g[1]) for g in down}
+            GM.draw(GM.build_genes((a_s, a_e, a_st), list(up) + list(down) + list(over), flank_keys=fk),
+                    (a_s, a_e), out_dir / f"scan_genome_map_{hl}",
+                    f"Your gene + {flanks} genes each side — {contig}", log)
+            GM.draw(GM.build_genes((a_s, a_e, a_st), genes_list, flank_keys=fk),
+                    (a_s, a_e), out_dir / f"scan_genome_map_{hl}_whole",
+                    f"Whole-genome map — {contig} ({len(genes_list)} genes; your gene in red)", log)
+        except Exception as e:
+            log(f"  (genome-map figure skipped: {e})")
     if not all_rows:
         return ""
     out = out_dir / "scan_neighbourhood.csv"
@@ -435,56 +448,7 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
     log(f"  neighbouring genes [{', '.join(src) or 'called'}]: {len(all_rows)} gene(s) "
         f"across {len(rows)} hit(s)" + (f", incl. {n_over} overlapping (overprint partner)" if n_over else "")
         + f" -> {out.name}")
-    try:
-        for hl in sorted({r["hit"] for r in all_rows}):
-            draw_genome_map([r for r in all_rows if r["hit"] == hl], out_dir, hl, log)
-    except Exception as e:
-        log(f"  (genome-map figure skipped: {e})")
     return str(out)
-
-
-def draw_genome_map(rows: list, out_dir: Path, hit_label: str, log) -> None:
-    """Single-locus genome map: the gene of interest (red) + its flanking genes (grey)
-    and any overlapping gene / overprint partner (orange, drawn on its own lane) as
-    strand arrows along the position axis (bp relative to your gene). PNG + SVG."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import FancyArrow
-    if not rows:
-        return
-    xs = [int(r["rel_start"]) for r in rows] + [int(r["rel_end"]) for r in rows]
-    lo, hi = min(xs), max(xs)
-    span = max(hi - lo, 1)
-    fig, ax = plt.subplots(figsize=(11, 2.8))
-    for r in rows:
-        s, e = int(r["rel_start"]), int(r["rel_end"])
-        anchor = str(r["is_anchor"]) == "1"
-        overlap = str(r["relationship"]).startswith("overlapping")
-        color = "#e5484d" if anchor else ("#f0883e" if overlap else "#c2ccd6")
-        y = 0.55 if overlap else 0.0                     # overlapping genes on a separate lane
-        right = r["strand_vs_gene"] != "-"
-        x0, dx = (s, e - s) if right else (e, s - e)
-        ax.add_patch(FancyArrow(x0, y, dx, 0, width=0.16, length_includes_head=True,
-                                head_width=0.3, head_length=max(span * 0.012, 1),
-                                color=color, ec="#33373d", lw=0.5, zorder=3))
-        label = "GENE OF INTEREST" if anchor else (r["gene"] or r["product"] or r["locus_tag"] or "")
-        ax.text((s + e) / 2, y + 0.27, str(label)[:24], ha="center", va="bottom",
-                fontsize=6.5, rotation=28, color="#1a2230")
-    ax.set_xlim(lo - span * 0.04, hi + span * 0.04)
-    ax.set_ylim(-0.7, 1.5)
-    ax.set_yticks([])
-    ax.set_xlabel("position relative to your gene (bp)", fontsize=9)
-    ax.set_title(f"Genome map around your gene — {hit_label}   "
-                 f"(red = your gene · orange = overlapping/overprint · grey = flanking)", fontsize=9)
-    for sp in ("top", "right", "left"):
-        ax.spines[sp].set_visible(False)
-    fig.tight_layout()
-    base = out_dir / f"scan_genome_map_{hit_label}"
-    fig.savefig(f"{base}.png", dpi=200, bbox_inches="tight")
-    fig.savefig(f"{base}.svg", bbox_inches="tight")
-    plt.close(fig)
-    log(f"  genome map -> {base.name}.png / .svg")
 
 
 def _finish(out_dir: Path, rows: list, min_bit: float, find_interrupted: bool,

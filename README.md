@@ -58,7 +58,7 @@ for an interactive overview.
   python3 scripts/scan_genome.py --seeds gene_seeds.faa --genome my_genome.fna --out scan_out
   python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@inst.edu --find-interrupted
   ```
-  Reports present / not-detected, the hit's coordinates + sequence, ORF validation, the **flanking genes + a genome-map figure** (`scan_neighbourhood.csv` + `scan_genome_map_*.png/svg`) — ordered relative to your gene, named from the **genome's own annotation** (gene/gp number, product, locus_tag, protein_id) or Prodigal for plain FASTA, **including any overlapping/overprint partner** (e.g. gp75's antisense RNA polymerase) — and (with `--find-interrupted`) interrupted/overprinted copies **plus the overprinting verdict**. Exit code 0 = found, 1 = absent (handy in loops over many genomes). Interactive: `bash start.sh` → mode 3. See [USAGE Case 11](docs/USAGE.md).
+  Reports present / not-detected, the hit's coordinates + sequence, ORF validation, the **flanking genes + genome-map figures** (`scan_neighbourhood.csv` + `scan_genome_map_*` — both a controllable `--flanks N` window *and* a whole-contig map, your gene in red) — ordered relative to your gene, named from the **genome's own annotation** (gene/gp number, product, locus_tag, protein_id) or Prodigal for plain FASTA, **including any overlapping/overprint partner** (e.g. gp75's antisense RNA polymerase) — and (with `--find-interrupted`) interrupted/overprinted copies **plus the overprinting verdict**. Exit code 0 = found, 1 = absent (handy in loops over many genomes). Interactive: `bash start.sh` → mode 3. See [USAGE Case 11](docs/USAGE.md).
 
 ---
 

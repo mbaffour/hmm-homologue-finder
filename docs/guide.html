@@ -218,8 +218,9 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     upstream / downstream / <b>overlapping</b>), named from the <b>genome's own annotation</b> (gene / gp number,
     product, locus_tag, protein_id) for an annotated record (fetched <code>--accession</code> or a GenBank
     <code>--genome</code>), else Prodigal + optional VOGDB. <b>Overlapping genes are kept</b>, so an overprint
-    partner is shown — e.g. gp75's antisense RNA polymerase. <code>--flanks N</code> for more each side;
-    <code>--no-neighbours</code> to skip. With <code>--find-interrupted</code> it also
+    partner is shown — e.g. gp75's antisense RNA polymerase. Two <b>genome-map figures</b> are drawn per hit
+    (<code>scan_genome_map_*</code>): a controllable <code>--flanks N</code> window AND the whole contig, with your
+    gene in red. <code>--no-neighbours</code> to skip. (The database run draws a per-hit genome map too — see below.) With <code>--find-interrupted</code> it also
     reports stop-interrupted / overprinted copies and the overprinting verdict (e.g. <code>--accession KX098390</code>
     finds gp75 <b>interrupted</b>, <code>overprinting=strong</code>).
     <b>Exit code 0 = gene found, 1 = absent</b> — so you can loop it over many genomes. Interactive:

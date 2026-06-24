@@ -214,6 +214,18 @@ def build(genome_id: str, seq: str, hits: pd.DataFrame, out_dir: Path,
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", stem)[:70].strip("_")
     out = out_dir / f"{safe}.gbk"
     SeqIO.write(rec, str(out), "genbank")
+    # genome-map figure marking the gene of interest (the HMM hit) among its neighbours
+    try:
+        import genome_map as GM
+        a_st = 1 if str(hits.iloc[0].strand) == "+" else -1
+        fk = {(g[0], g[1]) for g in nearby}
+        GM.draw(GM.build_genes((h_lo, h_hi, a_st),
+                               [(g[0], g[1], g[2], {"product": "flanking CDS"}) for g in nearby],
+                               flank_keys=fk),
+                (h_lo, h_hi), out_dir / f"{safe}_genome_map",
+                f"{label} — gene of interest (HMM hit) + neighbours", log=print)
+    except Exception as e:
+        print(f"  (genome map skipped for {genome_id}: {e})")
     return out
 
 
