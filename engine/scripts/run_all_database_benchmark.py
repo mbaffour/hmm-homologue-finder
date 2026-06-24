@@ -1560,13 +1560,62 @@ class Benchmark:
                 self.save_manifest()
                 metrics.append(result)
                 write_tsv(metrics, self.metrics_path)
-                if not db.get("optional", False) or self.args.stop_on_optional_failure:
+                # Hardening: one database failing — most often a transient network/DNS blip
+                # while resolving or downloading it — must NOT abort an otherwise-good run.
+                # By DEFAULT we skip that database with a loud warning and continue with the
+                # ones that resolved; the run still finishes and the DEPLOY_READINESS verdict
+                # flags the skipped database, so results are never silently incomplete.
+                # --strict-databases restores all-or-nothing (any required-DB failure fatal);
+                # --stop-on-optional-failure (unchanged) makes optional failures fatal too.
+                if db_failure_fatal(db.get("optional", False),
+                                    self.args.strict_databases,
+                                    self.args.stop_on_optional_failure):
                     raise
+                self.log(
+                    f"WARNING: skipping database '{db['name']}' and continuing with the "
+                    f"remaining databases (reason: {exc}). Re-run later when this resolves, "
+                    f"or use --strict-databases to treat a database failure as fatal."
+                )
+
+        completed = [m for m in metrics if m.get("status") == "complete"]
+        if not completed:
+            raise RuntimeError(
+                "All selected databases failed — nothing to search. This usually means a "
+                "network outage or a bad input/HMM rather than a single-database blip; see the "
+                "errors above and re-run when connectivity is restored."
+            )
+        skipped = [m for m in metrics if m.get("status") != "complete"]
+        if skipped:
+            self.manifest["skipped_databases"] = [m.get("database", "") for m in skipped]
+            self.save_manifest()
+            self.log(
+                f"NOTE: {len(completed)}/{len(metrics)} databases completed; {len(skipped)} "
+                "skipped due to errors ("
+                + ", ".join(m.get("database", "") for m in skipped)
+                + "). Results below are based on the databases that succeeded."
+            )
 
         hits = self.collect_hits()
         self.downstream_analysis(hits, trimmed)
         self.write_reports(hits, metrics)
         self.log(self.manifest["deploy_readiness_verdict"])
+
+
+def db_failure_fatal(optional: bool, strict_databases: bool,
+                     stop_on_optional_failure: bool) -> bool:
+    """Decide whether a SINGLE database's failure should abort the whole run.
+
+    Hardening default: a database failure is NON-fatal (skip it, continue with the databases
+    that resolved) — most such failures are transient network/DNS blips while resolving or
+    downloading the database. It becomes fatal only when the operator explicitly opted into
+    all-or-nothing behaviour:
+    - a REQUIRED database failing AND --strict-databases set, or
+    - an OPTIONAL database failing AND --stop-on-optional-failure set.
+    (The caller separately aborts if EVERY database fails — partial coverage is fine, zero is
+    not.)"""
+    if optional:
+        return bool(stop_on_optional_failure)
+    return bool(strict_databases)
 
 
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:
@@ -1622,6 +1671,14 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         "--stop-on-optional-failure",
         action="store_true",
         help="Treat optional DB failures as fatal",
+    )
+    parser.add_argument(
+        "--strict-databases",
+        action="store_true",
+        help="All-or-nothing databases: treat ANY required-database failure as fatal "
+             "(the pre-hardening behaviour). By default a database that fails — usually a "
+             "transient network/DNS blip — is skipped with a warning and the run continues "
+             "with the databases that resolved (aborting only if every database fails).",
     )
     return parser.parse_args(list(argv))
 

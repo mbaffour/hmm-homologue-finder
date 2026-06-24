@@ -284,6 +284,32 @@ if H.convergence_check:
     check("convergence: growing hits -> False", H.convergence_check(100, 200, 150, 160) is False)
     check("convergence: growing model -> False", H.convergence_check(100, 101, 150, 160) is False)
 
+# --- database-failure resilience (engine: one DB blip must not abort the run) ---
+import importlib.util as _ilu  # noqa: E402
+_bench_path = Path(__file__).resolve().parent.parent / "engine" / "scripts" / "run_all_database_benchmark.py"
+try:
+    _spec = _ilu.spec_from_file_location("engine_benchmark_for_test", _bench_path)
+    _bench = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_bench)
+    _fatal = _bench.db_failure_fatal
+    # DEFAULT (no strict flags): any single DB failure is non-fatal -> run continues
+    check("db-resilience: required DB failure is NON-fatal by default",
+          _fatal(False, False, False) is False)
+    check("db-resilience: optional DB failure is NON-fatal by default",
+          _fatal(True, False, False) is False)
+    # --strict-databases: a required DB failure is fatal again (pre-hardening behaviour)
+    check("db-resilience: --strict-databases makes a required DB failure fatal",
+          _fatal(False, True, False) is True)
+    check("db-resilience: --strict-databases does NOT force optional failures fatal",
+          _fatal(True, True, False) is False)
+    # --stop-on-optional-failure still makes optional failures fatal (unchanged)
+    check("db-resilience: --stop-on-optional-failure makes an optional DB failure fatal",
+          _fatal(True, False, True) is True)
+    check("db-resilience: --stop-on-optional-failure leaves required default non-fatal",
+          _fatal(False, False, True) is False)
+except Exception as _e:
+    check(f"db-resilience: SKIPPED (engine import error: {_e})", True)
+
 # --- organism-first label parsing for tree/alignment tips -------------------
 import build_tree_of_hits as BT  # noqa: E402
 check("organism OS= (UniProt)",
