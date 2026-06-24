@@ -52,38 +52,162 @@ def build_genes(anchor, called, flank_keys=None, label_of=None) -> list:
     return genes
 
 
-MAP_TOOLS = ("pygenomeviz", "matplotlib", "easyfig", "auto")
+MAP_TOOLS = ("pub", "pygenomeviz", "matplotlib", "easyfig", "auto")
 
 
 def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genome",
-         tool="pygenomeviz", genbank=None):
-    """Draw a linear genome map (PNG + SVG) coloured by functional category, your gene gold,
-    the track labelled `track_name` (the phage/organism name; may be two lines name\\naccession).
-    `tool` selects the renderer: 'pygenomeviz' (default), 'matplotlib', 'easyfig' (needs a
-    `genbank` + an installed Easyfig, falls back), or 'auto'. Returns the base path or None."""
+         tool="pub", genbank=None):
+    """Draw a linear genome map (PNG + SVG + PDF) coloured by functional category, your gene
+    gold, the track labelled `track_name` (phage name; may be two lines name\\naccession).
+    `tool`: 'pub' (default — publication genome diagram: sense above / antisense below the
+    line, collision-avoiding labels, scale bar), 'pygenomeviz', 'matplotlib', or 'easyfig'
+    (needs a `genbank` + an installed Easyfig; falls back). Returns the base path or None."""
     genes = [g for g in genes if g.get("start") is not None and g.get("end") is not None]
     if not genes:
         return None
-    tool = (tool or "pygenomeviz").lower()
+    tool = (tool or "pub").lower()
     if tool == "easyfig":
         try:
             return _draw_easyfig(genbank, out_base, title, log)
         except Exception as e:
-            log(f"  (Easyfig unavailable: {e}; using pyGenomeViz)")
-    if tool == "matplotlib":
+            log(f"  (Easyfig unavailable: {e}; using the publication renderer)")
+            tool = "pub"
+    if tool == "pygenomeviz":
         try:
-            return _draw_mpl(genes, anchor, out_base, title, track_name, log)
+            return _draw_pgv(genes, out_base, title, track_name, log)
         except Exception as e:
-            log(f"  (matplotlib renderer failed: {e}; trying pyGenomeViz)")
+            log(f"  (pyGenomeViz unavailable: {e}; using the publication renderer)")
+            tool = "pub"
+    if tool == "matplotlib":
+        tool = "pub"
     try:
-        return _draw_pgv(genes, out_base, title, track_name, log)
+        return _draw_pub(genes, anchor, out_base, title, track_name, log)
     except Exception as e:
-        log(f"  (pyGenomeViz unavailable: {e}; basic renderer)")
-        try:
-            return _draw_mpl(genes, anchor, out_base, title, track_name, log)
-        except Exception as e2:
-            log(f"  (genome map skipped: {e2})")
-            return None
+        log(f"  (genome map skipped: {e})")
+        return None
+
+
+def _nice_bar(span):
+    import math
+    raw = max(span / 5.0, 1)
+    mag = 10 ** int(math.log10(raw))
+    for m in (1, 2, 5, 10):
+        if mag * m >= raw:
+            return int(mag * m)
+    return int(mag * 10)
+
+
+def _gene_arrow(ax, s, e, st, ymid, h, head, color, ec, lw):
+    from matplotlib.patches import Polygon
+    L = e - s
+    hd = min(head, L) if L > 0 else head
+    if st >= 0:
+        xh = e - hd
+        pts = [(s, ymid - h), (xh, ymid - h), (xh, ymid - h * 1.7),
+               (e, ymid), (xh, ymid + h * 1.7), (xh, ymid + h), (s, ymid + h)]
+    else:
+        xh = s + hd
+        pts = [(e, ymid - h), (xh, ymid - h), (xh, ymid - h * 1.7),
+               (s, ymid), (xh, ymid + h * 1.7), (xh, ymid + h), (e, ymid + h)]
+    ax.add_patch(Polygon(pts, closed=True, facecolor=color, edgecolor=ec, lw=lw, zorder=3))
+
+
+def _draw_pub(genes, anchor, out_base, title, track_name, log):
+    """Publication genome diagram: + (sense) genes ABOVE the baseline, - (antisense) BELOW,
+    each a strand arrow coloured by functional category; the gene of interest is bold gold.
+    Labels are stacked into collision-free rows with leader lines; the figure height and the
+    top/bottom margins are sized to the label rows so the title, legend and labels never
+    overlap. A scale bar is drawn; PNG (300 dpi) + SVG + PDF."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    CC, FAM, HYPO, _ = _scheme()
+    lo = min(g["start"] for g in genes)
+    hi = max(g["end"] for g in genes)
+    span = max(hi - lo, 1)
+    H, head = 0.42, max(span * 0.006, 1)
+    lane = {1: 1.0, -1: -1.0}
+    rowstep = 0.62
+    width = min(30.0, max(9.0, span / 2200.0))
+    xlo, xhi = lo - span * 0.10, hi + span * 0.03
+    xspan, axes_w_in = xhi - xlo, width * 0.94
+
+    def _hw(text, fs):                       # estimated label half-width in data units
+        return 0.5 * len(text) * (fs * 0.62 / 72.0) * (xspan / axes_w_in) + xspan * 0.004
+    # --- pre-pass: stack labels into collision-free rows per strand lane (real widths) ---
+    labelled = sorted([g for g in genes if g.get("label")
+                       and g["role"] in ("anchor", "overlap", "flank")],
+                      key=lambda x: (x["start"] + x["end"]) / 2)
+    occ = {1: [], -1: []}                    # each row -> right edge (data x) of the last label
+    place = {}
+    for g in labelled:
+        st = 1 if int(g.get("strand", 1)) >= 0 else -1
+        cx = (g["start"] + g["end"]) / 2
+        hw = _hw(str(g["label"])[:30], 8.5 if g["role"] == "anchor" else 6.6)
+        lst = occ[st]
+        r = 0
+        while r < len(lst) and (cx - hw) < lst[r]:
+            r += 1
+        if r == len(lst):
+            lst.append(-1e18)
+        lst[r] = cx + hw
+        place[id(g)] = (st, r)
+    mt, mb = len(occ[1]), len(occ[-1])
+    height = 3.6 + 0.42 * (mt + mb)
+    fig, ax = plt.subplots(figsize=(width, height))
+    # --- arrows ---
+    for g in sorted(genes, key=lambda x: x["start"]):
+        st = 1 if int(g.get("strand", 1)) >= 0 else -1
+        is_a = g["role"] == "anchor"
+        _gene_arrow(ax, g["start"], g["end"], st, lane[st], H * (1.3 if is_a else 1.0), head,
+                    FAM if is_a else CC.get(g.get("category", ""), HYPO),
+                    "#1a1a1a" if is_a else "#333333", 1.8 if is_a else 0.5)
+    ax.plot([lo, hi], [0, 0], color="#888", lw=1.0, zorder=1)
+    # --- labels (stacked rows + leader lines) ---
+    for g in labelled:
+        st, r = place[id(g)]
+        cx = (g["start"] + g["end"]) / 2
+        is_a = g["role"] == "anchor"
+        d = 1 if st >= 0 else -1
+        ytip = lane[st] + d * (H + 0.05)
+        ytxt = lane[st] + d * (H + 0.25 + rowstep * (r + 1))
+        ax.plot([cx, cx], [ytip, ytxt], color="#bbb", lw=0.4, zorder=1)
+        ax.text(cx, ytxt, str(g["label"])[:30], ha="center", va=("bottom" if d > 0 else "top"),
+                fontsize=(8.5 if is_a else 6.6), fontweight=("bold" if is_a else "normal"),
+                color=("#806000" if is_a else "#1a2230"), zorder=4)
+    # --- strand guides + scale bar ---
+    ax.text(lo - span * 0.015, lane[1], "+ sense →", ha="right", va="center", fontsize=7.5, color="#777")
+    ax.text(lo - span * 0.015, lane[-1], "← antisense −", ha="right", va="center", fontsize=7.5, color="#777")
+    bar = _nice_bar(span)
+    ybar = lane[-1] - (H + 0.4 + rowstep * (mb + 0.7))
+    ax.plot([lo, lo + bar], [ybar, ybar], color="#333", lw=2.0)
+    ax.text(lo + bar / 2.0, ybar - 0.12, (f"{bar // 1000} kb" if bar >= 1000 else f"{bar} bp"),
+            ha="center", va="top", fontsize=7.5)
+    ytop = lane[1] + (H + 0.3 + rowstep * (mt + 1))
+    ax.set_xlim(xlo, xhi)
+    ax.set_ylim(ybar - 0.5, ytop + 0.3)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    # --- title (name over accession), caption + legend in reserved margins (no tight) ---
+    nm = str(track_name).split("\n")
+    fig.subplots_adjust(top=0.84, bottom=0.17, left=0.05, right=0.99)
+    fig.suptitle(nm[0], fontsize=12, fontweight="bold", y=0.965)
+    if len(nm) > 1:
+        fig.text(0.5, 0.905, nm[1], ha="center", fontsize=9, color="#555")
+    fig.text(0.5, 0.105, title, ha="center", fontsize=8.5, color="#444")
+    fig.legend(handles=_legend_handles(genes, CC, FAM, HYPO), loc="lower center",
+               bbox_to_anchor=(0.5, 0.005), ncol=5, fontsize=7.5, frameon=False)
+    out_base = Path(out_base)
+    try:
+        fig.savefig(f"{out_base}.png", dpi=300)
+        fig.savefig(f"{out_base}.svg")
+        fig.savefig(f"{out_base}.pdf")
+    finally:
+        plt.close(fig)
+    log(f"  genome map -> {out_base.name}.png / .svg / .pdf")
+    return out_base
 
 
 def write_locus_genbank(genes, contig_seq, organism, accession, out_path):

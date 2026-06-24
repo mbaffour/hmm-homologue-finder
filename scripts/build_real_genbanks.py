@@ -223,9 +223,9 @@ def build(genome_id: str, seq: str, hits: pd.DataFrame, out_dir: Path,
                                [(g[0], g[1], g[2], {"product": "flanking CDS"}) for g in nearby],
                                flank_keys=fk),
                 (h_lo, h_hi), out_dir / f"{safe}_genome_map",
-                f"{label} ({genome_id}) — gene of interest (HMM hit) + neighbours",
+                "gene of interest (HMM hit) + neighbours",
                 log=print, track_name=f"{label}\n{genome_id}",
-                tool=os.environ.get("GENOME_MAP_TOOL", "pygenomeviz"), genbank=out)
+                tool=os.environ.get("GENOME_MAP_TOOL", "pub"), genbank=out)
     except Exception as e:
         print(f"  (genome map skipped for {genome_id}: {e})")
     return out
