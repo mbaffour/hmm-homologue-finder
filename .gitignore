@@ -12,6 +12,10 @@ Thumbs.db
 # paths, machine-specific commands, or contact details). Keep out of the repo.
 HANDOFF.md
 
+# Scratch/run/verification helpers (underscore-prefixed) — local only, may embed
+# machine-specific paths or an email; NEVER commit (use `git add <file>`, not `-A`).
+scripts/_*
+
 # Pipeline outputs & working data (generated; don't commit)
 *_discovery/
 *_discovery/
