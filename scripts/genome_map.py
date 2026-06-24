@@ -20,12 +20,13 @@ from pathlib import Path
 _LANE = {"overlap": 0.55}
 
 
-def _scheme():
+def _scheme(palette="default"):
     """(CATEGORY_COLORS, FAMILY_COLOR, HYPO_COLOR, categorize) — reuse the synteny scheme
-    so genome maps and synteny figures colour genes identically. Safe fallback."""
+    so genome maps and synteny figures colour genes identically. `palette` selects the colour
+    set: 'default' or 'colorblind' (Paul Tol muted, colour-blind-safe). Safe fallback."""
     try:
-        from synteny_figure import CATEGORY_COLORS, FAMILY_COLOR, HYPO_COLOR, categorize
-        return CATEGORY_COLORS, FAMILY_COLOR, HYPO_COLOR, categorize
+        from synteny_figure import PALETTES, FAMILY_COLOR, HYPO_COLOR, categorize
+        return PALETTES.get(palette, PALETTES["default"]), FAMILY_COLOR, HYPO_COLOR, categorize
     except Exception:
         return {}, "#ffd400", "#dde2e8", (lambda f, v="": "hypothetical")
 
@@ -59,15 +60,19 @@ MAP_TOOLS = ("dfv", "pub", "pygenomeviz", "matplotlib", "easyfig", "auto")
 
 
 def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genome",
-         tool="dfv", genbank=None, labels=True):
+         tool="dfv", genbank=None, labels=True, palette="default",
+         functional_labels=False, module_brackets=False):
     """Draw a linear genome map (PNG + SVG + PDF) coloured by functional category, your gene
     gold, the track labelled `track_name` (phage name; may be two lines name\\naccession).
     Genes are strand arrows (direction = strand); overlapping genes are stacked onto separate
     levels so nothing is hidden. `labels` toggles the gene-name labels. `tool`: 'dfv' (default
     — DNA Features Viewer, the cleanest publication renderer), 'pub' (the built-in matplotlib
     diagram, always available), 'pygenomeviz', or 'easyfig' (needs a `genbank` + an installed
-    Easyfig; falls back). Any renderer that is unavailable falls back to 'pub'. Returns the
-    base path or None."""
+    Easyfig; falls back). Any renderer that is unavailable falls back to 'pub'.
+    `palette`: 'default' or 'colorblind' (Paul Tol muted). `functional_labels`: also tag the
+    gene of interest + its overlap partner with their functional category. `module_brackets`:
+    bracket contiguous same-category runs with the module name (dfv only). Returns the base
+    path or None."""
     genes = [g for g in genes if g.get("start") is not None and g.get("end") is not None]
     if not genes:
         return None
@@ -88,7 +93,9 @@ def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genom
             tool = "dfv"
     if tool == "dfv":
         try:
-            return _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=labels)
+            return _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=labels,
+                             palette=palette, functional_labels=functional_labels,
+                             module_brackets=module_brackets)
         except Exception as e:
             log(f"  (DNA Features Viewer unavailable: {e}; using the built-in renderer)")
             tool = "pub"
@@ -164,32 +171,90 @@ def _dfv_tolerant_levels(features, tol):
     return levels
 
 
-def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
+def _module_runs(genes, CC):
+    """Contiguous runs (>=2 genes) sharing a functional category — the phage's 'modules'
+    (structural, replication, …). Returns [{cat, start, end, n}] in genome coords, skipping
+    the anchor and hypothetical/unknown genes."""
+    ordered = sorted([g for g in genes if g["role"] != "anchor" and g.get("category") in CC
+                      and "hypothetical" not in (g.get("category") or "").lower()],
+                     key=lambda g: g["start"])
+    runs, cur = [], None
+    for g in ordered:
+        c = g["category"]
+        if cur and cur["cat"] == c and g["start"] <= cur["end"] + (g["end"] - g["start"]) * 3:
+            cur["end"] = max(cur["end"], g["end"])
+            cur["n"] += 1
+        else:
+            cur = {"cat": c, "start": g["start"], "end": g["end"], "n": 1}
+            runs.append(cur)
+    return [r for r in runs if r["n"] >= 2]
+
+
+def _draw_module_brackets(axes_list, runs):
+    """Draw a labelled bracket above each functional-module run, on whichever wrapped line it
+    falls (genoPlotR/Phamerator modular-organisation convention)."""
+    for ax in axes_list:
+        x0, x1 = sorted(ax.get_xlim())
+        ymin, ymax = ax.get_ylim()
+        h = (ymax - ymin) * 0.04
+        drew = False
+        for r in runs:
+            rs, re = max(r["start"], x0), min(r["end"], x1)
+            if re <= rs:
+                continue
+            yb = ymax + h
+            ax.plot([rs, rs, re, re], [yb, yb + h, yb + h, yb],
+                    color="#666", lw=0.8, clip_on=False, zorder=5)
+            ax.text((rs + re) / 2, yb + h * 1.3, f"{r['cat'].split(' / ')[0]} module",
+                    ha="center", va="bottom", fontsize=6.5, color="#555",
+                    style="italic", clip_on=False, zorder=5)
+            drew = True
+        if drew:
+            ax.set_ylim(ymin, ymax + h * 4)            # headroom for the brackets
+
+
+def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
+              palette="default", functional_labels=False, module_brackets=False):
     """Publication genome map via **DNA Features Viewer** (Edinburgh Genome Foundry) — the
-    default, cleanest renderer. Clean strand arrows; OVERLAPPING genes are auto-stacked onto
-    their own level (the overprint partner sits on a separate level, so the gene of interest is
-    never hidden); label boxes are de-overlapped automatically with leader lines; a real
-    genome-coordinate axis runs the whole locus. Genes are coloured by functional category
-    (the synteny scheme); the gene of interest is bold gold. Label policy keeps any genome
-    legible: the gene of interest + any gene overlapping it are ALWAYS labelled; other genes
-    are labelled only when `labels` is on AND the locus is small enough to stay clean (so a
-    278-gene phage doesn't become a wall of text). PNG (300 dpi) + SVG + PDF."""
+    default, cleanest renderer. Clean strand arrows; OVERLAPPING genes auto-stacked onto their
+    own level (an overprint partner never hides the gene of interest); labels de-overlapped with
+    leader lines; a real genome-coordinate axis. Genes coloured by functional category (gene of
+    interest bold gold). `palette` 'default'/'colorblind'. Label policy is density-aware: the
+    gene of interest + overlapping genes are ALWAYS labelled; other genes are labelled closest-
+    to-the-anchor-first up to a width budget. `functional_labels` adds a category tag to the
+    gene of interest + its overlap partner. Big genomes (>40 genes) WRAP onto multiple lines so
+    every gene has room. `module_brackets` brackets contiguous same-category runs. PNG/SVG/PDF."""
+    import math
     from dna_features_viewer import GraphicFeature, GraphicRecord
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    CC, FAM, HYPO, _ = _scheme()
+    CC, FAM, HYPO, _ = _scheme(palette)
     wlo = min(g["start"] for g in genes)
     whi = max(g["end"] for g in genes)
     span = max(whi - wlo, 1)
-    label_all = bool(labels) and len(genes) <= 24    # crowded genomes: only key genes labelled
+    ngenes = len(genes)
+    multiline = ngenes > 40
+    fig_w = min(30.0, max(11.0, span / 1800.0))
+
+    # density-aware label budget: anchor+overlap always; other genes closest-to-anchor first,
+    # up to ~5 labels/inch (no cap when wrapped onto multiple lines, which gives the room).
+    a_centre = (anchor[0] + anchor[1]) / 2 if anchor else (wlo + whi) / 2
+    budget = (10 ** 9 if multiline else int(fig_w * 5)) if labels else 0
+    flanks = sorted([g for g in genes if g["role"] not in ("anchor", "overlap") and g.get("label")],
+                    key=lambda g: abs((g["start"] + g["end"]) / 2 - a_centre))
+    keep = {id(g) for g in flanks[:max(0, budget)]}
+
+    def _tag(g):
+        c = g.get("category") or ""
+        return f"\n[{c.split(' / ')[0]}]" if (functional_labels and c in CC) else ""
 
     def _lab(g):
         if g["role"] == "anchor":
-            return "gene of interest"
-        if g["role"] == "overlap":                   # the overprint partner — always name it
-            return g.get("label") or "overlapping gene"
-        if label_all and g.get("label"):
+            return "gene of interest" + _tag(g)
+        if g["role"] == "overlap":
+            return (g.get("label") or "overlapping gene") + _tag(g)
+        if labels and id(g) in keep and g.get("label"):
             return g["label"]
         return None
 
@@ -203,18 +268,14 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
             linewidth=(2.2 if is_a else 0.6),
             label=_lab(g),
             fontdict=({"fontsize": 9, "fontweight": "bold", "color": "#6b5300"} if is_a
-                      else {"fontsize": 7, "color": "#1a2230"})))
+                      else {"fontsize": (6 if multiline else 7), "color": "#1a2230"})))
     rec = GraphicRecord(sequence_length=span + 1, features=feats, first_index=wlo,
-                        labels_spacing=14)            # wider cushion between label boxes
-    fig_w = min(30.0, max(11.0, span / 1800.0))
-    # Row-packing: collapse the ubiquitous few-bp start/stop overlaps between adjacent genes
-    # onto the baseline (so a dense genome isn't a cluttered staircase) while stacking a
-    # genuinely nested / overprinted gene (overlap >> 60 bp) onto its own row. CRUCIAL: DFV
-    # calls compute_features_levels THREE times — once for the gene ARROWS and twice for the
-    # overflowing LABEL boxes — so the 60 bp tolerance must apply to GENES ONLY. Applying it to
-    # the label boxes (the earlier bug) forced labels within 60 bp onto one row and DEFEATED
-    # DFV's built-in label de-overlap — the label overlap the user saw. We route the label /
-    # elevate-base pseudo-features (they carry 'text'/'is_base' in .data) to DFV's exact packer.
+                        labels_spacing=14)
+    # Row-packing for GENE ARROWS only: collapse few-bp start/stop overlaps onto the baseline
+    # while stacking a real overprint onto its own row. DFV calls compute_features_levels 3×
+    # (arrows + 2× label boxes); the 60 bp tolerance must NOT touch the label boxes (doing so
+    # forced nearby labels onto one row — the overlap bug), so we route label / elevate-base
+    # pseudo-features (they carry 'text'/'is_base' in .data) to DFV's exact packer.
     import dna_features_viewer as _dfvmod
     from dna_features_viewer.compute_features_levels import compute_features_levels as _cfl_orig
     _pg = _dfvmod.GraphicRecord.plot.__globals__
@@ -223,32 +284,48 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
     def _patched_cfl(fs):
         if fs and any(("text" in getattr(f, "data", {})) or ("is_base" in getattr(f, "data", {}))
                       for f in fs):
-            return _cfl_orig(fs)               # label / elevate-base pseudo-features -> exact packer
-        return _dfv_tolerant_levels(fs, 60)    # real gene arrows only
+            return _cfl_orig(fs)
+        return _dfv_tolerant_levels(fs, 60)
 
     _pg["compute_features_levels"] = _patched_cfl
     try:
-        # elevate_outline_annotations=True lifts ALL labels above ALL arrows and packs them on
-        # unlimited collision-free rows (auto height grows to fit); truncate/wrap long product
-        # names so boxes stay narrow.
-        ax = rec.plot(figure_width=fig_w, elevate_outline_annotations=True,
-                      annotate_inline=True, max_label_length=24, max_line_length=20)[0]
+        if multiline:
+            n_lines = max(2, math.ceil(ngenes / 35))   # ~35 genes/line
+            nucl = math.ceil((span + 1) / n_lines)
+            fig, axes = rec.plot_on_multiple_lines(
+                nucl_per_line=nucl, figure_width=min(22.0, max(12.0, nucl / 1800.0)),
+                elevate_outline_annotations=True, annotate_inline=True,
+                max_label_length=16, max_line_length=14)
+            axes_list = list(axes) if hasattr(axes, "__iter__") else [axes]
+        else:
+            ax = rec.plot(figure_width=fig_w, elevate_outline_annotations=True,
+                          annotate_inline=True, max_label_length=24, max_line_length=20)[0]
+            axes_list = [ax]
+            fig = ax.figure
     finally:
         if _orig_cfl is not None:
             _pg["compute_features_levels"] = _orig_cfl
+
+    if module_brackets:
+        _draw_module_brackets(axes_list, _module_runs(genes, CC))
+
     nm = str(track_name).split("\n")
-    ax.set_title(nm[0] + (f"\n{nm[1]}" if len(nm) > 1 else ""),
-                 fontsize=12, fontweight="bold", pad=12)
-    fig = ax.figure
-    # Place the caption + legend a FIXED INCH GAP below the axes bottom, so they always clear
-    # the coordinate-ruler tick labels regardless of how tall the figure grew to fit the label
-    # rows. Inch-based offsets are height-robust where figure-fraction offsets are not;
-    # bbox_inches="tight" then expands the canvas to include them.
-    fw, fh = fig.get_size_inches()
-    y0 = ax.get_position().y0                      # axes bottom (figure fraction)
-    fig.text(0.5, y0 - 0.55 / fh, title, ha="center", va="top", fontsize=8.5, color="#444")
-    fig.legend(handles=_legend_handles(genes, CC, FAM, HYPO), loc="upper center",
-               ncol=5, fontsize=7.5, frameon=False, bbox_to_anchor=(0.5, y0 - 0.85 / fh))
+    header = nm[0] + (f"\n{nm[1]}" if len(nm) > 1 else "")
+    handles = _legend_handles(genes, CC, FAM, HYPO)
+    if multiline:
+        fig.suptitle(header, fontsize=12, fontweight="bold")
+        fig.text(0.5, 0.012, title, ha="center", va="bottom", fontsize=8.5, color="#444")
+        fig.legend(handles=handles, loc="lower center", ncol=5, fontsize=7.5, frameon=False,
+                   bbox_to_anchor=(0.5, -0.015))
+    else:
+        ax = axes_list[0]
+        ax.set_title(header, fontsize=12, fontweight="bold", pad=12)
+        fw, fh = fig.get_size_inches()
+        y0 = ax.get_position().y0                  # axes bottom (figure fraction)
+        # caption + legend a fixed INCH gap below the axes so they always clear the ruler ticks
+        fig.text(0.5, y0 - 0.55 / fh, title, ha="center", va="top", fontsize=8.5, color="#444")
+        fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=7.5, frameon=False,
+                   bbox_to_anchor=(0.5, y0 - 0.85 / fh))
     out_base = Path(out_base)
     try:
         fig.savefig(f"{out_base}.png", dpi=300, bbox_inches="tight")
@@ -425,15 +502,17 @@ def _draw_easyfig(genbank, out_base, title, log):
 
 
 def _legend_handles(genes, CC, FAM, HYPO):
+    """Legend patches for the categories actually present, each annotated with a COUNT
+    (e.g. 'structural (3)') so the functional composition is readable without counting arrows."""
+    from collections import Counter
     from matplotlib.patches import Patch
-    present = []
-    for g in genes:
-        c = g.get("category")
-        if g["role"] != "anchor" and c in CC and c not in present:
-            present.append(c)
+    counts = Counter(g.get("category") for g in genes if g["role"] != "anchor")
+    present = [c for c in CC if counts.get(c)]
+    n_hypo = sum(v for c, v in counts.items() if c not in CC)
     handles = [Patch(facecolor=FAM, edgecolor="#1a1a1a", linewidth=1.2, label="gene of interest")]
-    handles += [Patch(facecolor=CC[c], edgecolor="#33373d", label=c) for c in present]
-    handles += [Patch(facecolor=HYPO, edgecolor="#33373d", label="hypothetical / other")]
+    handles += [Patch(facecolor=CC[c], edgecolor="#33373d", label=f"{c} ({counts[c]})") for c in present]
+    if n_hypo:
+        handles += [Patch(facecolor=HYPO, edgecolor="#33373d", label=f"hypothetical / other ({n_hypo})")]
     return handles
 
 

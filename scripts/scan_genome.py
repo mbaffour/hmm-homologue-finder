@@ -218,7 +218,9 @@ def build_hmm_from_seeds(seeds: Path, table: int, out_dir: Path, cpu: int, log) 
 
 def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupted: bool,
          cpu: int, log, neighbours: bool = False, db_cache=None, annotation_gb=None,
-         flanks: int = 7, map_tool: str = "dfv", gene_labels: bool = True) -> dict:
+         flanks: int = 7, map_tool: str = "dfv", gene_labels: bool = True,
+         palette: str = "default", functional_labels: bool = False,
+         module_brackets: bool = False) -> dict:
     """Read-through six-frame scan of one genome with the HMM. Returns a summary dict
     and writes scan_hits.tsv + scan_hits_{aa.faa,nt.fna} + scan_report.txt. When
     `neighbours` is set, also describes the flanking genes (from the genome's own
@@ -262,7 +264,8 @@ def scan(genome: Path, hmm: Path, out_dir: Path, min_bit: float, find_interrupte
             rows, contig_nt, out_dir,
             db_cache or Path("~/.cache/hmm-homologue-finder"), cpu, log,
             annotation_gb=annotation_gb, flanks=flanks, map_tool=map_tool,
-            gene_labels=gene_labels)
+            gene_labels=gene_labels, palette=palette, functional_labels=functional_labels,
+            module_brackets=module_brackets)
         s["neighbourhood"] = nb
         if nb:
             with open(out_dir / "scan_report.txt", "a") as f:
@@ -353,7 +356,8 @@ def _select_neighbours(genes, a_s, a_e, flanks=FLANKS):
 
 def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: Path,
                          cpu: int, log, annotation_gb=None, flanks=FLANKS,
-                         map_tool="dfv", gene_labels=True) -> str:
+                         map_tool="dfv", gene_labels=True, palette="default",
+                         functional_labels=False, module_brackets=False) -> str:
     """Write an ordered neighbourhood table for each hit, anchored on the gene of
     interest, and a genome-map figure. Gene names come from **the genome's OWN
     annotation** (gene / gp number, product, locus_tag, protein_id) when a GenBank record
@@ -458,10 +462,14 @@ def write_neighbourhoods(rows: list, contig_nt: dict, out_dir: Path, db_cache: P
             gba = GM.write_locus_genbank(whole, seq, org, contig, out_dir / f"scan_genome_map_{hl}_whole.gb")
             GM.draw(win, (a_s, a_e), out_dir / f"scan_genome_map_{hl}",
                     f"your gene + {flanks} genes each side", log,
-                    track_name=tname, tool=map_tool, genbank=gbw, labels=gene_labels)
+                    track_name=tname, tool=map_tool, genbank=gbw, labels=gene_labels,
+                    palette=palette, functional_labels=functional_labels,
+                    module_brackets=module_brackets)
             GM.draw(whole, (a_s, a_e), out_dir / f"scan_genome_map_{hl}_whole",
                     f"whole genome — {len(genes_list)} genes; your gene in gold",
-                    log, track_name=tname, tool=map_tool, genbank=gba, labels=gene_labels)
+                    log, track_name=tname, tool=map_tool, genbank=gba, labels=gene_labels,
+                    palette=palette, functional_labels=functional_labels,
+                    module_brackets=module_brackets)
         except Exception as e:
             log(f"  (genome-map figure skipped: {e})")
     if not all_rows:
@@ -558,6 +566,16 @@ def main() -> None:
                          "overlapping genes are always included")
     ap.add_argument("--no-gene-labels", dest="gene_labels", action="store_false",
                     help="draw the genome map WITHOUT gene-name labels (just coloured arrows)")
+    ap.add_argument("--palette", choices=["default", "colorblind"], default="default",
+                    help="gene-colour palette: 'default' or 'colorblind' (Paul Tol muted, "
+                         "colour-blind-safe). Applies to the genome maps.")
+    ap.add_argument("--functional-labels", action="store_true",
+                    help="also tag the gene of interest + its overprint partner with their "
+                         "functional category (e.g. '[transcription]'); colour+legend still "
+                         "carry function for the rest.")
+    ap.add_argument("--module-brackets", action="store_true",
+                    help="bracket contiguous runs of same-category genes with the module name "
+                         "(e.g. 'structural module') above the map.")
     ap.add_argument("--map-tool", choices=["dfv", "pub", "pygenomeviz", "easyfig"],
                     default="dfv",
                     help="genome-map renderer (default 'dfv' = DNA Features Viewer: clean strand "
@@ -588,7 +606,9 @@ def main() -> None:
         hmm = build_hmm_from_seeds(args.seeds, args.trans_table, args.out, args.cpu, log)
     s = scan(genome, hmm, args.out, args.min_bit, args.find_interrupted, args.cpu, log,
              neighbours=args.neighbours, db_cache=args.db_cache, annotation_gb=annotation_gb,
-             flanks=args.flanks, map_tool=args.map_tool, gene_labels=args.gene_labels)
+             flanks=args.flanks, map_tool=args.map_tool, gene_labels=args.gene_labels,
+             palette=args.palette, functional_labels=args.functional_labels,
+             module_brackets=args.module_brackets)
     # exit code 0 if the gene was detected (clean or interrupted), 1 if absent — handy in scripts
     sys.exit(0 if (s["n_clean"] or s["n_interrupted"]) else 1)
 

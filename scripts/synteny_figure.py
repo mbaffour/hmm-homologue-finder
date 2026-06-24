@@ -89,6 +89,22 @@ CATEGORY_COLORS = {
     "RNA gene": "#c46aa8",
     "hypothetical / unknown": HYPO_COLOR,
 }
+# Colour-blind-safe alternative (Paul Tol 'muted' qualitative set — distinguishable under
+# deuteranopia/protanopia/tritanopia). Same keys, so it is a drop-in via PALETTES below; the
+# gene of interest stays gold and hypothetical stays light grey. Select per-run with
+# --palette colorblind (genome maps + synteny figures share the scheme for consistency).
+CATEGORY_COLORS_CB = {
+    "structural": "#332288",                         # indigo
+    "packaging": "#AA4499",                          # purple
+    "replication / nucleotide metabolism": "#44AA99",  # teal
+    "transcription / regulation": "#999933",         # olive
+    "lysis": "#CC6677",                              # rose
+    "integration / mobile": "#88CCEE",               # cyan
+    "host / metabolism / defense": "#117733",        # green
+    "RNA gene": "#882255",                           # wine
+    "hypothetical / unknown": HYPO_COLOR,
+}
+PALETTES = {"default": CATEGORY_COLORS, "colorblind": CATEGORY_COLORS_CB}
 HYPO_CAT = "hypothetical / unknown"
 
 

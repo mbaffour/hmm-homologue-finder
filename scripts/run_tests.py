@@ -507,6 +507,30 @@ if _sh.which("hmmbuild") and _sh.which("hmmsearch"):
         _lv2 = _GMm._dfv_tolerant_levels(_ovp, 60)
         check("genome_map: a substantial (overprint) overlap gets its own row",
               len(set(_lv2.values())) == 2)
+        # selectable palette: 'colorblind' yields different (Tol-muted) structural colour
+        _cc_def = _GMm._scheme("default")[0]
+        _cc_cb = _GMm._scheme("colorblind")[0]
+        check("genome_map: colorblind palette differs from default",
+              _cc_def.get("structural") and _cc_cb.get("structural")
+              and _cc_def["structural"] != _cc_cb["structural"])
+        check("genome_map: draw() exposes palette/functional/module-bracket options",
+              {"palette", "functional_labels", "module_brackets"} <= set(
+                  _insp.signature(_GMm.draw).parameters))
+        # module runs: a contiguous same-category run is a module; hypothetical is NOT
+        _mg = [{"role": "flank", "category": "structural", "start": 0, "end": 500},
+               {"role": "flank", "category": "structural", "start": 510, "end": 900},
+               {"role": "flank", "category": "hypothetical / unknown", "start": 1000, "end": 1400},
+               {"role": "flank", "category": "hypothetical / unknown", "start": 1410, "end": 1800}]
+        _runs = _GMm._module_runs(_mg, _cc_def)
+        check("genome_map: contiguous same-category run -> one module; hypothetical excluded",
+              len(_runs) == 1 and _runs[0]["cat"] == "structural" and _runs[0]["n"] == 2)
+        # legend handles annotate categories with counts
+        _lh = _GMm._legend_handles(
+            [{"role": "anchor", "category": "gene of interest"},
+             {"role": "flank", "category": "structural"},
+             {"role": "flank", "category": "structural"}], _cc_def, "#ffd400", "#dde2e8")
+        check("genome_map: legend shows category counts",
+              any("structural (2)" in h.get_label() for h in _lh))
     except Exception as _e:
         check(f"scan_genome e2e: SKIPPED (tooling error: {_e})", True)
 else:
