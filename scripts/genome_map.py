@@ -204,18 +204,35 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
             label=_lab(g),
             fontdict=({"fontsize": 9, "fontweight": "bold", "color": "#6b5300"} if is_a
                       else {"fontsize": 7, "color": "#1a2230"})))
-    rec = GraphicRecord(sequence_length=span + 1, features=feats, first_index=wlo)
-    fig_w = min(30.0, max(9.0, span / 2200.0))
-    # Stack genes onto separate rows ONLY for substantial overlaps (nested / overprinted
-    # genes); collapse the ubiquitous few-bp start/stop overlaps between adjacent genes onto
-    # the baseline so a dense genome doesn't render as a cluttered staircase. 60 bp keeps a
-    # real overprint (typically >100 bp of overlap) on its own row while absorbing the rest.
+    rec = GraphicRecord(sequence_length=span + 1, features=feats, first_index=wlo,
+                        labels_spacing=14)            # wider cushion between label boxes
+    fig_w = min(30.0, max(11.0, span / 1800.0))
+    # Row-packing: collapse the ubiquitous few-bp start/stop overlaps between adjacent genes
+    # onto the baseline (so a dense genome isn't a cluttered staircase) while stacking a
+    # genuinely nested / overprinted gene (overlap >> 60 bp) onto its own row. CRUCIAL: DFV
+    # calls compute_features_levels THREE times — once for the gene ARROWS and twice for the
+    # overflowing LABEL boxes — so the 60 bp tolerance must apply to GENES ONLY. Applying it to
+    # the label boxes (the earlier bug) forced labels within 60 bp onto one row and DEFEATED
+    # DFV's built-in label de-overlap — the label overlap the user saw. We route the label /
+    # elevate-base pseudo-features (they carry 'text'/'is_base' in .data) to DFV's exact packer.
     import dna_features_viewer as _dfvmod
+    from dna_features_viewer.compute_features_levels import compute_features_levels as _cfl_orig
     _pg = _dfvmod.GraphicRecord.plot.__globals__
     _orig_cfl = _pg.get("compute_features_levels")
-    _pg["compute_features_levels"] = lambda fs: _dfv_tolerant_levels(fs, 60)
+
+    def _patched_cfl(fs):
+        if fs and any(("text" in getattr(f, "data", {})) or ("is_base" in getattr(f, "data", {}))
+                      for f in fs):
+            return _cfl_orig(fs)               # label / elevate-base pseudo-features -> exact packer
+        return _dfv_tolerant_levels(fs, 60)    # real gene arrows only
+
+    _pg["compute_features_levels"] = _patched_cfl
     try:
-        ax = rec.plot(figure_width=fig_w)[0]
+        # elevate_outline_annotations=True lifts ALL labels above ALL arrows and packs them on
+        # unlimited collision-free rows (auto height grows to fit); truncate/wrap long product
+        # names so boxes stay narrow.
+        ax = rec.plot(figure_width=fig_w, elevate_outline_annotations=True,
+                      annotate_inline=True, max_label_length=24, max_line_length=20)[0]
     finally:
         if _orig_cfl is not None:
             _pg["compute_features_levels"] = _orig_cfl
@@ -223,10 +240,15 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True):
     ax.set_title(nm[0] + (f"\n{nm[1]}" if len(nm) > 1 else ""),
                  fontsize=12, fontweight="bold", pad=12)
     fig = ax.figure
-    fig.legend(handles=_legend_handles(genes, CC, FAM, HYPO), loc="lower center",
-               ncol=5, fontsize=7.5, frameon=False, bbox_to_anchor=(0.5, -0.06))
-    fig.text(0.5, -0.13, title, ha="center", fontsize=8.5, color="#444",
-             transform=ax.transAxes)
+    # Place the caption + legend a FIXED INCH GAP below the axes bottom, so they always clear
+    # the coordinate-ruler tick labels regardless of how tall the figure grew to fit the label
+    # rows. Inch-based offsets are height-robust where figure-fraction offsets are not;
+    # bbox_inches="tight" then expands the canvas to include them.
+    fw, fh = fig.get_size_inches()
+    y0 = ax.get_position().y0                      # axes bottom (figure fraction)
+    fig.text(0.5, y0 - 0.55 / fh, title, ha="center", va="top", fontsize=8.5, color="#444")
+    fig.legend(handles=_legend_handles(genes, CC, FAM, HYPO), loc="upper center",
+               ncol=5, fontsize=7.5, frameon=False, bbox_to_anchor=(0.5, y0 - 0.85 / fh))
     out_base = Path(out_base)
     try:
         fig.savefig(f"{out_base}.png", dpi=300, bbox_inches="tight")
