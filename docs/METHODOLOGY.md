@@ -40,10 +40,16 @@ For each hit the ORF is reconstructed directly from the genomic coordinates
 delimited by the HMM envelope (`hmmsearch --domtblout`). Recorded per hit:
 full-ORF length, domain length and coverage, internal-stop count (required to be
 0), and overlap with **Prodigal** gene predictions (same-strand and any-strand).
-A hit passes the ORF filter if it has no internal stop codons and sits within a
-genuine coding locus. Hits in annotated protein databases are captured by
-accession and marked accordingly. Both nucleotide and amino-acid sequences are
-exported with a per-hit evidence table.
+A six-frame hit passes the ORF filter if it has **no internal stop codons** (a clean,
+stop-bounded ORF that matched the profile). Overlap with a Prodigal-predicted gene is
+**recorded** (`in_coding_locus`, `prodigal_*_pct`) but is **NOT exclusionary by default** —
+the discovery targets are precisely the antisense / alternate-frame genes that standard
+annotation misses, so requiring a Prodigal call would discard true positives. The optional
+`--prodigal-gate` flag additionally requires that overlap for stricter specificity. Hits in
+annotated protein databases are captured by accession and marked accordingly. Both nucleotide
+and amino-acid sequences are exported with a per-hit evidence table. (The reported gene length
+`orf_aa_len` is the Met-start→stop ORF; for a domain riding a long stop-free antisense frame
+with no clear start, `domain_aa_len` — the conserved HMM envelope — is the length to cite.)
 
 **Interrupted / overprinted homologs (optional, `--find-interrupted`).** Because
 six-frame ORFs are stop-to-stop, a homolog whose gene carries a *premature stop*
@@ -150,18 +156,28 @@ the main paper table, so tables and figures describe the same homolog set.
 ## 7b. Threshold calibration (controls)
 The bit-score thresholds used to tier hits (strict 45, moderate 30) are calibrated
 per run against built-in controls on the profile HMM:
-- **Positive** — the seed set itself (sensitivity = fraction of seeds recovered at
-  the strict threshold; expected ≈1.0).
+- **Positive** — the seed set itself. Sensitivity = fraction of seeds recovered at the
+  strict threshold (expected ≈1.0). **This is a self-recovery check** (the seeds built the
+  model), NOT independent validation of distant-homolog detection.
 - **Negative** — composition-matched shuffled seeds (same amino-acid composition,
   randomised order) plus, when present, curated unrelated-proteome sets
   (reviewed Swiss-Prot fungi/mammalian/archaea, fetched once with
   `--download-controls`). The false-positive rate is the fraction of negative
   sequences scoring ≥ strict.
-Sensitivity, specificity, and false-positive rate are written to
-`controls/control_report.json` + `controls_summary.csv` and summarised in
-`run_manifest.json` (`threshold_calibration`) and `METHODS.md`. This quantifies
-that hits above threshold are not an artefact of amino-acid composition or generic
-similarity to unrelated proteins. (Disable with `--no-controls`.)
+
+**Scope of these controls (important, and what to state in a paper).** The negatives are
+unrelated **protein** proteomes searched directly with `hmmsearch`; they measure **specificity
+against unrelated proteins**, i.e. that hits are not an artefact of amino-acid composition or
+generic similarity. They do **NOT** estimate a **false-discovery rate over the six-frame /
+read-through search space**, where this pipeline's actual false positives (spurious read-through
+ORFs in genomic sequence) would arise — no negative is a six-frame translation of phage genomes,
+and the pipeline computes no decoy/q-value/empirical FDR. A high AUC / specificity here therefore
+means "the profile cleanly separates family members from unrelated proteins", not "the genomic
+six-frame discovery has FDR≈0". A genome-space FDR would require a decoy (e.g. reversed or
+codon-shuffled phage genomes run through the same six-frame/read-through path) — a recommended
+addition for a methods paper. Sensitivity, specificity, and FPR are written to
+`controls/control_report.json` + `controls_summary.csv`, `run_manifest.json`
+(`threshold_calibration`) and `METHODS.md`. (Disable with `--no-controls`.)
 
 The positive and negative score distributions are also summarised as an **ROC
 curve** (`controls/roc_curve.{png,svg,pdf}`): the area under the curve (AUC, exact
@@ -170,7 +186,12 @@ from negatives, and the **Youden's-J optimal** bit-score cutoff (the maximum-mar
 threshold) is reported alongside the fixed strict threshold. The ROC is **advisory**
 — it shows whether the fixed strict threshold sits within the separating gap; the
 pipeline keeps the fixed strict/moderate tiers so results stay comparable across
-runs. AUC and the optimal cutoff are recorded in `run_manifest.json`
+runs. **Caveat:** when no negative scores above the noise floor (the usual case for a
+specific family), the FPR is 0 at every finite cutoff and the "optimal" threshold is merely
+the midpoint of the 0-bit floor and the weakest seed — it carries no negative-distribution
+information. This is flagged in `control_report.json` (`optimal_threshold_defined: false`) and
+the value should be read as advisory/upper-bounded, never as a data-driven calibrated optimum.
+AUC and the optimal cutoff are recorded in `run_manifest.json`
 (`threshold_calibration.roc`) and `METHODS.md`.
 
 ## 8. Reproducibility
@@ -187,8 +208,9 @@ via NCBI Entrez and direct catalogue streaming.
 - **Novel & specific** — zero hits in reviewed-protein and domain databases
   (SwissProt, Pfam, VOGDB) across rounds, with hits found only via six-frame
   translation of genome databases.
-- **Validated** — every reported hit is a real ORF (no internal stops; in a
-  coding locus), with both DNA and protein sequence recorded.
+- **Validated** — every reported hit is a real, stop-bounded ORF (no internal stops; Prodigal
+  coding-locus overlap recorded but not required by default — see §5/`--prodigal-gate`), with
+  both DNA and protein sequence recorded.
 
 ## 10. Limitations / scope (what it does *not* do)
 The tool is a sequence-homology discovery pipeline; reading these bounds prevents
@@ -202,11 +224,17 @@ over-interpreting its output.
   assembled genome/protein databases. **Read-level data is not an input.**
   *RNA-seq / read-based evidence (e.g. expression or transcript support) is planned
   future work and is **not wired in now**.*
-- **Overprinting test is necessary, not sufficient.** `overprinting_support=strong`
-  confirms the premature stop is synonymous in an *open* overlapping antisense
-  frame — strong sequence evidence of overprinting — but it does **not** prove that
-  antisense frame is a transcribed, translated, selected gene. Confirming
-  expression needs orthogonal data (e.g. RNA-seq/ribo-seq, conservation of the
+- **Overprinting test is necessary, not sufficient — and the signal is the OPEN frame,
+  not the silent stop.** `overprinting_support=strong` requires that the overlapping antisense
+  frame is **fully open across the whole domain** (`antisense_open_stops=0`) **and** that the
+  premature stop is synonymous in it. The discriminating, length-dependent component is the
+  open-frame condition (improbable by chance for a long domain, ~0.7 % at the 137-aa gp75
+  length). A single stop being synonymous in the antisense frame is, on its own, expected
+  **~85–100 % of the time from the genetic-code geometry** (the base that removes a stop tends
+  to land on a synonymous antisense-wobble position), so the silent-stop clause alone carries
+  little information — do not present silentness as standalone "direct evidence". Even with both
+  conditions, this does **not** prove the antisense frame is a transcribed, translated, selected
+  gene; confirming expression needs orthogonal data (RNA-seq/ribo-seq, conservation of the
   antisense ORF, dN/dS), which the tool does not generate.
 - **Interrupted-scan threshold is heuristic for arbitrary families.** The
   read-through reporting bar is `max(30 bits, ROC-Youden)`. The 30-bit floor is a
@@ -216,9 +244,15 @@ over-interpreting its output.
   on gp75 (where the floor dominates); for a family where the ROC term would
   dominate, treat low-scoring interrupted candidates with extra caution.
 - **Genetic code & target domain.** Translation defaults to code **11**
-  (bacterial/phage); set `--trans-table` for others. The database catalog and
-  controls are tuned for **phage/viral** discovery — usable on other families, but
-  the curated databases are viral.
+  (bacterial/phage); set `--trans-table` for others. Note `--trans-table` reassigns the
+  **seed** translation and the standard codon table; the read-through / six-frame stop set is
+  the standard `TAA/TAG/TGA` (identical for code 11), so a stop-reassigning code (e.g. 4/25)
+  would need the read-through path adjusted. The database catalog and controls are tuned for
+  **phage/viral** discovery — usable on other families, but the curated databases are viral.
+- **Single-genome scan threshold.** `scan_genome.py` reports six-frame/read-through matches above
+  a **fixed 25-bit floor** (independent of the database run's ROC-Youden calibration); it is a
+  per-genome presence/absence tool, so treat low-scoring single-genome calls with the same
+  caution as low-scoring interrupted candidates.
 - **Candidate homologs, not function.** A validated ORF with HMM homology is a
   *candidate*; biological function still requires experimental validation. The tool
   does no wet-lab/primer/expression design.

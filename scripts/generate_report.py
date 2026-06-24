@@ -321,14 +321,17 @@ def generate(discovery: Path) -> Path:
             if partial is None and irows:
                 partial = sum(1 for r in irows if r.get("overprinting_support") == "partial")
             p.append(
-                f"<p class='muted'><b>Overprinting (silent-stop) test:</b> "
-                f"<b>{e(str(strong))}</b> candidate(s) show <b>strong</b> support — the premature "
-                f"stop is synonymous in an <em>open</em> overlapping antisense reading frame, direct "
-                f"evidence the gene is overprinted antisense to another gene; {e(str(partial))} partial. "
+                f"<p class='muted'><b>Overprinting (antisense-open-frame) test:</b> "
+                f"<b>{e(str(strong))}</b> candidate(s) show <b>strong</b> support — the overlapping "
+                f"<em>antisense</em> reading frame is fully OPEN across the whole domain "
+                f"(<code>antisense_open_stops</code>=0) <em>and</em> the premature stop is synonymous "
+                f"in it; {e(str(partial))} partial. The discriminating, length-dependent signal is the "
+                f"<b>open frame over the whole domain</b> (improbable by chance for a long domain); a "
+                f"single stop being synonymous in the antisense frame is, on its own, expected ~85–100% "
+                f"of the time from the genetic code, so it is necessary but weak alone. "
                 f"Per-row columns <code>overprinting_support</code>, <code>antisense_open_frame</code>, "
-                f"<code>antisense_open_stops</code> (0 = fully open overlapping ORF) and "
-                f"<code>stop_silent_antisense</code> are in the TSV. (Necessary signature, not proof "
-                f"the antisense ORF is expressed.)</p>")
+                f"<code>antisense_open_stops</code>, <code>stop_silent_antisense</code> are in the TSV. "
+                f"(Necessary signature of overprinting, NOT proof the antisense ORF is expressed.)</p>")
         if irows:
             show = [c for c in ("contig", "strand", "frame", "domain_nt_start",
                                 "domain_nt_end", "domain_aa_len", "internal_stops",

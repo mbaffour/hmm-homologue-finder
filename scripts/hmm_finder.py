@@ -251,12 +251,20 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
             for entry in data.get("database_provenance", []):
                 db_provenance.append({"run": i, **entry})
 
+        import shlex
+        try:
+            _nseed = sum(1 for ln in Path(args.fasta).read_text().splitlines()
+                         if ln.startswith(">")) if getattr(args, "fasta", None) else None
+        except Exception:
+            _nseed = None
         manifest = {
             "tool": "hmm-homologue-finder",
             "code_git_commit": _git_commit(HERE),
             "started_at": started_at,
             "finished_at": finished_at,
-            "command_line": " ".join(sys.argv),
+            # shlex-quoted so paths containing spaces can be pasted and re-run verbatim
+            "command_line": " ".join(shlex.quote(a) for a in sys.argv),
+            "n_input_seeds": _nseed,
             "conda_env": os.environ.get("CONDA_DEFAULT_ENV", ""),
             "conda_prefix": os.environ.get("CONDA_PREFIX", ""),
             "python": sys.version.split()[0],

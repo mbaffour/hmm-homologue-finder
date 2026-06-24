@@ -537,13 +537,23 @@ class ControlReport:
         else:
             best_t = self.strict_threshold
         tpr_opt, fpr_opt = _tpr_fpr(best_t)
+        # When NO negative control scores above the noise floor (all undetected), FPR=0 at every
+        # finite cutoff, so a whole range of thresholds ties at J=1 and the reported "optimum" is
+        # just the midpoint of the (arbitrary 0-bit) floor and the weakest positive — it encodes
+        # NO information from the negative distribution. Flag it so it is not mistaken for a
+        # data-driven calibrated optimum; the operative reporting filter (max(30, opt)) is unaffected.
+        neg_detected = sum(1 for s in neg if s != self._UNDETECTED)
         return {
             "auc": round(auc, 4),
             "optimal_threshold": round(best_t, 2),
+            "optimal_threshold_defined": bool(neg_detected > 0),
+            "n_negative_detected": int(neg_detected),
             "youden_j": round(best_j, 4),
             "sensitivity_at_optimum": round(tpr_opt, 4),
             "specificity_at_optimum": round(1.0 - fpr_opt, 4),
-            "threshold_method": "Youden's J",
+            "threshold_method": ("Youden's J" if neg_detected > 0
+                                 else "Youden's J (optimum undefined — no negative detected; "
+                                      "value is an upper-bounded midpoint, advisory only)"),
             "n_positive": npos,
             "n_negative": nneg,
             "separable": bool(best_j >= 0.999),
