@@ -313,10 +313,18 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
     header = nm[0] + (f"\n{nm[1]}" if len(nm) > 1 else "")
     handles = _legend_handles(genes, CC, FAM, HYPO)
     if multiline:
-        fig.suptitle(header, fontsize=12, fontweight="bold")
-        fig.text(0.5, 0.012, title, ha="center", va="bottom", fontsize=8.5, color="#444")
+        # reserve a top strip (title, clear of line-1's module brackets) and a bottom strip
+        # (caption + legend, clear of the last line's ruler); add inter-line spacing so a line's
+        # brackets/labels don't touch the ruler of the line above. Grow the figure so these
+        # reserved strips don't squeeze the gene rows.
+        fw, fh = fig.get_size_inches()
+        fh2 = fh + 1.9
+        fig.set_size_inches(fw, fh2)
+        fig.subplots_adjust(top=1 - 0.95 / fh2, bottom=1.30 / fh2, hspace=1.1)
+        fig.suptitle(header, fontsize=12, fontweight="bold", y=1 - 0.32 / fh2)
+        fig.text(0.5, 0.82 / fh2, title, ha="center", va="center", fontsize=8.5, color="#444")
         fig.legend(handles=handles, loc="lower center", ncol=5, fontsize=7.5, frameon=False,
-                   bbox_to_anchor=(0.5, -0.015))
+                   bbox_to_anchor=(0.5, 0.20 / fh2))
     else:
         ax = axes_list[0]
         ax.set_title(header, fontsize=12, fontweight="bold", pad=12)
