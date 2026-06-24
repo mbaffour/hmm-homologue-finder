@@ -337,7 +337,7 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
   <div class="card flow">
     <div class="step"><div class="num">1</div><div><b>Build the HMM.</b> Align seeds with <b>MAFFT</b> (accuracy-first <b>L-INS-i</b>, <code>--localpair --maxiterate 1000</code>, for ≤500 seqs; else <code>--auto</code>), trim with <b>trimAl</b> (<code>automated1</code>), build the profile with <b>hmmbuild</b>, and require the model to recover ≥70% of its own seeds before proceeding.</div></div>
     <div class="step"><div class="num">2</div><div><b>Search.</b> <b>hmmsearch</b> at E ≤ 1×10⁻⁵ over the selected databases. Each download is SHA-256-checked with its URL + access date recorded. <b>Nucleotide databases are translated in all six frames</b> into stop-to-stop ORFs (min 30 aa); large DBs are chunked with <b>seqkit</b> and run in parallel.</div></div>
-    <div class="step"><div class="num">3</div><div><b>Extract &amp; validate each hit.</b> The ORF is reconstructed from genomic coordinates (1-based, strand/frame-correct); the domain is delimited by the HMM envelope (<code>--domtblout</code>). Recorded: ORF/domain length, coverage, internal-stop count (<b>must be 0</b>), and <b>Prodigal</b> overlap. A hit passes if it has no internal stops and sits in a coding locus. Protein-DB hits are captured by accession. <b>Both NT and AA</b> are exported with a per-hit evidence table.</div></div>
+    <div class="step"><div class="num">3</div><div><b>Extract &amp; validate each hit.</b> The ORF is reconstructed from genomic coordinates (1-based, strand/frame-correct); the domain is delimited by the HMM envelope (<code>--domtblout</code>). Recorded: ORF/domain length, coverage, internal-stop count (<b>must be 0</b>), and <b>Prodigal</b> overlap. A hit passes on six-frame ORF quality — <b>no internal stops</b>; Prodigal coding-locus overlap is recorded for information but is required only with <code>--prodigal-gate</code> (<b>off by default</b>, so genuine antisense/alternate-frame homologues aren't discarded). Protein-DB hits are captured by accession. <b>Both NT and AA</b> are exported with a per-hit evidence table.</div></div>
     <div class="step"><div class="num">4</div><div><b>Iterate to convergence.</b> Unique validated domains re-seed the next round. Iteration stops early when the unique-hit count changes &lt;5% <b>and</b> the HMM length changes &lt;3 between rounds (or a round finds nothing). The stopping reason is recorded.</div></div>
     <div class="step"><div class="num">5</div><div><b>Calibrate thresholds.</b> Positive (seed self-test) + negative (composition-matched shuffled seeds, plus optional unrelated proteomes) controls give per-run sensitivity, specificity, and false-positive rate at the strict bit threshold. <a href="#controls">Details ↓</a></div></div>
     <div class="step"><div class="num">6</div><div><b>Characterise.</b> <b>CD-HIT</b> clustering (40% id, 80% cov); accuracy-first <b>MAFFT</b> alignment of the unique homologues (a first-class deliverable: full + trimmed MSA, stats, ClustalX figure); <b>trimAl</b> → <b>IQ-TREE</b> ML tree (ModelFinder, 1000 ultrafast bootstrap <b>+ 1000 SH-aLRT</b>, fixed seed) with the seeds placed and marked <code>SEED_*</code>; <b>clinker</b> synteny + real-sequence GenBank neighbourhoods; <b>MEME/FIMO</b> motifs; GFF3 tracks.</div></div>
@@ -404,8 +404,8 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
       <li><b>Sits in a coding locus</b> — overlap with Prodigal gene calls (same-strand and any-strand
       percentages are recorded), confirming it lives in a real coding region rather than intergenic junk.</li>
     </ul>
-    <p>Every hit carries this evidence in the 37-column <code>hits.tsv</code>, and both the <b>nucleotide and
-    amino-acid</b> sequences are exported. <b>Significance:</b> reviewers can audit each call's "is-it-a-gene"
+    <p>Every hit carries this evidence in <code>hits.tsv</code> (36 base columns, plus an <code>organism</code>
+    column — 37 total — in an annotated run), and both the <b>nucleotide and amino-acid</b> sequences are exported. <b>Significance:</b> reviewers can audit each call's "is-it-a-gene"
     evidence directly — nothing is asserted on HMM score alone. (Optional <code>--prodigal-gate</code> makes
     coding-locus overlap a hard requirement; it's off by default precisely so genuine antisense/alternate-frame
     homologues — the ones annotation missed — aren't thrown away.)</p>
@@ -434,6 +434,27 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     own, <i>expected ~85–100% of the time</i> from genetic-code geometry — so silentness alone is weak. <b>strong</b>
     is a necessary sequence signature of antisense overprinting (open frame + synonymy), <b>not proof</b> the
     antisense gene is expressed (see <a href="#limits">Scope &amp; limitations</a>).</p>
+    <p><b>Domain length vs ORF length — read the right number.</b> Every hit has <i>two</i> lengths.
+    <code>domain_aa_len</code> (~137&nbsp;aa for gp75) is the conserved region that actually matched the HMM —
+    this is "the homolog," and the number to cite. <code>orf_aa_len</code> is the surrounding six-frame open
+    reading frame the domain sits in. For an overprinted gene riding a long, stop-poor antisense frame (the
+    gp75-inside-RNA-polymerase case) that ORF can be many hundreds of aa even though the homolog is ~137 — so a
+    ~900-aa "hit" is a 137-aa domain embedded in a long ORF, <i>not</i> a 900-aa protein. The gene is anchored at
+    the Met within <code>MET_MARGIN</code>&nbsp;(60&nbsp;aa) of the domain; when no start codon sits that close (a
+    long stop-free frame), <code>has_start_M=False</code> is the honest answer and you rely on
+    <code>domain_aa_len</code>.</p>
+    <p><b>When does read-through actually earn its keep?</b> A premature stop splits the gene, and the standard
+    stop-to-stop search keeps only the larger fragment. Sliding a single stop along the real N4 gp75 gene,
+    read-through (green) holds full score everywhere, while the standard search (red) loses ~half its signal when
+    the stop lands mid-gene:</p>
+    <p style="text-align:center"><img src="figures/readthrough_sweep.png" alt="Read-through holds full bit score at every stop position; the standard stop-to-stop search dips to ~half at a mid-gene stop." style="max-width:640px;width:100%"></p>
+    <p>For a <i>strong</i> gene that mid-gene dip still clears the detection bar, so it isn't missed. But for a
+    <b>distant</b> homolog (lower clean score) the same dip falls <i>below</i> the threshold — invisible to the
+    standard search, recovered by read-through. So read-through is decisive precisely for the hardest, most
+    valuable class: <b>a divergent homolog interrupted near the middle of the gene</b> (early/late stops, and
+    strong genes, are detected either way — though read-through still reconstructs the complete gene through the
+    stop, where the standard search hands back only a fragment).</p>
+    <p style="text-align:center"><img src="figures/readthrough_distant.png" alt="A distant homolog's standard-search score drops below the detection threshold for a mid-gene stop, while read-through stays above it." style="max-width:640px;width:100%"></p>
   </div></details>
 
   <details><summary>4 · Iteration &amp; convergence — capturing the whole family</summary>
@@ -487,6 +508,18 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
   <div class="inner">
     <p><b>CD-HIT</b> groups the validated homologues at 40% identity / 80% coverage, collapsing near-identical
     variants so downstream figures show representative diversity rather than 50 copies of the same protein.</p>
+    <p><b>Three levels of deduplication — for three different questions.</b> The pipeline never collapses
+    everything into one number; it dedups at three levels, each answering a different question.
+    <b>(1) Evidence tables</b> (<code>all_runs_hits.csv</code>) keep <i>every</i> row — the same gene found by
+    six-frame translation <i>and</i> as a RefSeq protein is two rows, so no evidence is hidden.
+    <b>(2) Unique sequences</b> (<code>unique_homologs_aa.faa</code>, and what CD-HIT and the tree use) collapse by
+    <i>exact amino-acid sequence</i> — the count of distinct proteins.
+    <b>(3) Genomic loci</b> (synteny) collapse hits mapping to the same parent accession with overlapping
+    coordinates (one physical gene catalogued under several database accessions), while keeping genuine paralogs
+    (non-overlapping, same genome) separate. The single-genome scan adds a <b>containment</b> pass so a gene
+    straddling a read-through window boundary isn't counted twice. The paper tables report the converged run's
+    unique homologs with explicit <code>database_records</code> / <code>n_genomes</code> / <code>n_organisms</code>
+    columns, so "how many?" is never ambiguous (records ≠ genomes ≠ organisms).</p>
     <p>The unique homologues are then aligned with <b>MAFFT L-INS-i</b> (<code>--localpair --maxiterate 1000</code>)
     — the most accurate MAFFT strategy, which considers all pairwise local alignments. Accuracy matters here
     because a sloppy alignment of divergent sequences propagates into a wrong tree. The alignment is a
