@@ -159,9 +159,16 @@ def _build_tree_input(hits_faa: Path, seeds_faa, hits_tsv, out_path: Path) -> in
         recs.append(rec)
     if seeds_faa and Path(seeds_faa).exists():
         for rec in SeqIO.parse(str(seeds_faa), "fasta"):
-            acc = _short_acc(rec.id)
-            org = _organism_from_desc(rec.description)
-            label = f"{_safe(org)}_{_safe(acc)}_seed" if org else f"{_safe(acc)}_seed"
+            acc = _safe(_short_acc(rec.id))
+            org = _safe(_organism_from_desc(rec.description))
+            # avoid the doubled 'Org_Acc_Org_Acc' label: these seed headers repeat the
+            # organism+accession in both id and description, so only append the accession
+            # when it isn't already part of the organism string.
+            if org and acc and acc not in org:
+                base = f"{org}_{acc}"
+            else:
+                base = org or acc or _safe(rec.id)
+            label = f"{base}_seed"
             rec.id = _uniquify(label, used); rec.name = rec.id; rec.description = ""
             recs.append(rec)
     SeqIO.write(recs, str(out_path), "fasta")
@@ -187,7 +194,8 @@ def _organism_labels(hits_tsv) -> dict:
     return mp
 
 
-def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r") -> list:
+def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r",
+                   mark_seeds: bool = False) -> list:
     """Render a publication tree to {stem}.svg/.png/.pdf — editable vector (Inkscape
     / Illustrator) + 300-dpi raster, on an OPAQUE WHITE background (toytree's default
     canvas is transparent → black on dark viewers). Tips are coloured by host genus
@@ -213,6 +221,11 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
         cmap = matplotlib.colormaps["tab20"].resampled(max(len(uniq), 1))
         gcol = {g: mcolors.to_hex(cmap(i)) for i, g in enumerate(uniq)}
         tip_colors = [gcol[g] for g in genera]
+        # distinguish input seeds (tips ending '_seed') from discovered homologs: seeds
+        # are drawn in grey so they read as context, hits keep their host-genus colour.
+        is_seed = [t.endswith("_seed") for t in tips]
+        if mark_seeds and any(is_seed):
+            tip_colors = ["#9aa3ad" if s else c for s, c in zip(is_seed, tip_colors)]
         # Robust-support dots. IQ-TREE (-alrt -B) labels each internal node
         # "SH-aLRT/UFBoot"; a split is robustly supported when SH-aLRT >= 80 AND
         # UFBoot >= 95 (Minh et al. 2020). toytree keeps that "a/b" string in `name`
@@ -249,6 +262,9 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
         try:
             entries = [(g, toyplot.marker.create(shape="o", size=11, mstyle={"fill": gcol[g]}))
                        for g in uniq]
+            if mark_seeds and any(is_seed):
+                entries.append(("input seed (grey)", toyplot.marker.create(shape="o", size=11,
+                                                                  mstyle={"fill": "#9aa3ad"})))
             entries.append(("SH-aLRT>=80 and UFBoot>=95", toyplot.marker.create(shape="o", size=9,
                                                                   mstyle={"fill": "#222222"})))
             canvas.legend(entries, corner=("right", 6, 150, 16 * len(entries)))
@@ -386,7 +402,7 @@ def main() -> None:
     # 4. Render the full tree (homologs + any seeds, organism-labelled), then ALSO
     # a legible homologs-only tree (seed tips pruned) — large trees are dense once
     # the seeds are added, so the result figure is easier to read on its own.
-    _render_newick(render_tree, out, "hits_tree")
+    _render_newick(render_tree, out, "hits_tree", mark_seeds=True)
     ho = _homologs_only_newick(treefile, out / "hits_tree_homologs_only.treefile")
     if ho:
         _render_newick(ho, out, "hits_tree_homologs_only")
