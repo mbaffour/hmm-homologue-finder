@@ -6,98 +6,70 @@
   },
   "hit_summary": [
     {
-      "passed_filter": "172",
+      "passed_filter": "152",
       "protein_db_hits": "0",
       "run": "1",
-      "six_frame_hits": "172",
-      "total_hits": "172",
-      "unique_sequences": "67"
+      "six_frame_hits": "152",
+      "total_hits": "152",
+      "unique_sequences": "54"
     },
     {
-      "passed_filter": "174",
+      "passed_filter": "155",
       "protein_db_hits": "0",
       "run": "2",
-      "six_frame_hits": "174",
-      "total_hits": "174",
-      "unique_sequences": "67"
+      "six_frame_hits": "155",
+      "total_hits": "155",
+      "unique_sequences": "54"
     },
     {
-      "passed_filter": "181",
+      "passed_filter": "155",
       "protein_db_hits": "0",
       "run": "3",
-      "six_frame_hits": "181",
-      "total_hits": "181",
-      "unique_sequences": "70"
+      "six_frame_hits": "155",
+      "total_hits": "155",
+      "unique_sequences": "55"
     }
   ],
   "orf_invariants": {
     "all_pass_filter": true,
-    "n_kept": 527,
+    "n_kept": 462,
     "six_frame_internal_stops_max": 0
   },
   "paper_table": {
-    "GutCatV1_CHVDgut_14092": {
-      "bit": 159.3,
-      "tier": "high_confidence"
-    },
-    "GutCatV1_CHVDgut_15017": {
-      "bit": 46.0,
-      "tier": "high_confidence"
-    },
-    "GutCatV1_GVDv1_27286": {
-      "bit": 164.2,
-      "tier": "high_confidence"
-    },
-    "GutCatV1_GVDv1_31674": {
-      "bit": 158.4,
-      "tier": "high_confidence"
-    },
-    "GutCatV1_MVG_20698": {
-      "bit": 157.1,
-      "tier": "high_confidence"
-    },
-    "GutCatV1_MVG_4778": {
-      "bit": 162.2,
-      "tier": "high_confidence"
-    },
-    "GutCatV1_MVG_6481": {
-      "bit": 159.1,
-      "tier": "high_confidence"
-    },
     "MG770228": {
-      "bit": 153.7,
+      "bit": 160.0,
       "tier": "high_confidence"
     },
     "MH992123": {
-      "bit": 153.9,
+      "bit": 160.4,
       "tier": "high_confidence"
     },
     "MK931297": {
-      "bit": 153.5,
+      "bit": 160.1,
       "tier": "high_confidence"
     },
     "MW175414": {
-      "bit": 154.6,
+      "bit": 161.0,
       "tier": "high_confidence"
     },
     "NC_008720.1": {
-      "bit": 154.4,
+      "bit": 160.6,
       "tier": "high_confidence"
     },
     "NC_015933.1": {
-      "bit": 162.1,
+      "bit": 169.3,
       "tier": "high_confidence"
     },
     "NC_018854.1": {
-      "bit": 165.7,
+      "bit": 172.8,
       "tier": "high_confidence"
     },
     "NC_019423.1": {
-      "bit": 162.6,
+      "bit": 168.7,
       "tier": "high_confidence"
     },
     "NC_023556.1": {
-      "bit": 135.4,
+      "bit": 145.6,
       "tier": "high_confidence"
     },
     "NC_023579.1": {
@@ -105,67 +77,67 @@
       "tier": "high_confidence"
     },
     "NC_023589.1": {
-      "bit": 170.2,
+      "bit": 175.4,
       "tier": "high_confidence"
     },
     "NC_024142.2": {
-      "bit": 165.1,
+      "bit": 172.2,
       "tier": "high_confidence"
     },
     "NC_024786.1": {
-      "bit": 166.5,
+      "bit": 173.2,
       "tier": "high_confidence"
     },
     "NC_024790.1": {
-      "bit": 166.7,
+      "bit": 174.5,
       "tier": "high_confidence"
     },
     "NC_027348.2": {
-      "bit": 100.4,
+      "bit": 109.2,
       "tier": "high_confidence"
     },
     "NC_028908.2": {
-      "bit": 142.2,
+      "bit": 151.1,
       "tier": "high_confidence"
     },
     "NC_041906.1": {
-      "bit": 169.3,
+      "bit": 175.1,
       "tier": "high_confidence"
     },
     "NC_048700.1": {
-      "bit": 156.1,
+      "bit": 156.2,
       "tier": "high_confidence"
     },
     "NC_048703.1": {
-      "bit": 93.3,
+      "bit": 90.6,
       "tier": "high_confidence"
     },
     "NC_049456.2": {
-      "bit": 104.2,
+      "bit": 107.1,
       "tier": "high_confidence"
     },
     "NC_049463.1": {
-      "bit": 89.6,
+      "bit": 93.5,
       "tier": "high_confidence"
     },
     "NC_049469.1": {
-      "bit": 93.0,
+      "bit": 84.9,
       "tier": "high_confidence"
     },
     "NC_049510.1": {
-      "bit": 116.1,
+      "bit": 120.2,
       "tier": "high_confidence"
     },
-    "NC_054969.1": {
-      "bit": 143.4,
+    "NC_054967.1": {
+      "bit": 152.7,
       "tier": "high_confidence"
     },
     "NC_054970.1": {
-      "bit": 125.3,
+      "bit": 130.2,
       "tier": "high_confidence"
     },
     "NC_054971.1": {
-      "bit": 134.6,
+      "bit": 133.7,
       "tier": "high_confidence"
     },
     "NC_054972.1": {
@@ -173,147 +145,119 @@
       "tier": "high_confidence"
     },
     "NC_055840.1": {
-      "bit": 90.2,
+      "bit": 91.6,
       "tier": "high_confidence"
     },
     "NC_070847.1": {
-      "bit": 76.4,
+      "bit": 81.8,
       "tier": "high_confidence"
     },
     "NC_070850.1": {
-      "bit": 164.5,
+      "bit": 171.6,
       "tier": "high_confidence"
     },
-    "NC_070851.1": {
-      "bit": 37.5,
-      "tier": "divergent"
-    },
-    "NC_070854.1": {
-      "bit": 36.4,
-      "tier": "divergent"
-    },
     "NC_070857.1": {
-      "bit": 101.8,
+      "bit": 84.6,
       "tier": "high_confidence"
     },
     "NC_070858.1": {
-      "bit": 71.2,
+      "bit": 68.3,
       "tier": "high_confidence"
     },
     "NC_070867.1": {
-      "bit": 76.9,
+      "bit": 80.6,
       "tier": "high_confidence"
     },
     "NC_070868.1": {
-      "bit": 81.0,
+      "bit": 84.1,
       "tier": "high_confidence"
     },
     "NC_070869.1": {
-      "bit": 161.1,
+      "bit": 168.6,
       "tier": "high_confidence"
     },
     "NC_070870.1": {
-      "bit": 165.7,
+      "bit": 172.4,
       "tier": "high_confidence"
     },
     "NC_070871.1": {
-      "bit": 164.9,
+      "bit": 171.1,
       "tier": "high_confidence"
     },
     "NC_070872.1": {
-      "bit": 165.4,
+      "bit": 171.7,
       "tier": "high_confidence"
     },
     "NC_070873.1": {
-      "bit": 169.4,
+      "bit": 175.0,
       "tier": "high_confidence"
     },
     "NC_070874.1": {
-      "bit": 167.9,
+      "bit": 173.3,
       "tier": "high_confidence"
     },
     "OM687511": {
-      "bit": 76.3,
+      "bit": 74.1,
       "tier": "high_confidence"
     },
     "OM982646": {
-      "bit": 165.7,
+      "bit": 173.5,
       "tier": "high_confidence"
     },
     "ON602749": {
-      "bit": 158.3,
+      "bit": 158.4,
       "tier": "high_confidence"
     },
     "ON602751": {
-      "bit": 158.2,
-      "tier": "high_confidence"
-    },
-    "ON922919": {
-      "bit": 166.5,
-      "tier": "high_confidence"
-    },
-    "OP312987": {
-      "bit": 166.0,
-      "tier": "high_confidence"
-    },
-    "OP562166": {
-      "bit": 100.5,
-      "tier": "high_confidence"
-    },
-    "OP745616": {
-      "bit": 167.3,
-      "tier": "high_confidence"
-    },
-    "OP829055": {
-      "bit": 80.3,
-      "tier": "high_confidence"
-    },
-    "OP870143": {
-      "bit": 162.8,
-      "tier": "high_confidence"
-    },
-    "OQ181210": {
-      "bit": 83.0,
-      "tier": "high_confidence"
-    },
-    "OQ938542": {
-      "bit": 168.3,
-      "tier": "high_confidence"
-    },
-    "OR067834": {
-      "bit": 164.6,
-      "tier": "high_confidence"
-    },
-    "OY978778": {
-      "bit": 159.3,
-      "tier": "high_confidence"
-    },
-    "OY979416": {
-      "bit": 160.7,
-      "tier": "high_confidence"
-    },
-    "uvig_139985": {
-      "bit": 159.9,
-      "tier": "high_confidence"
-    },
-    "uvig_174850": {
-      "bit": 165.4,
-      "tier": "high_confidence"
-    },
-    "uvig_482154": {
-      "bit": 158.6,
-      "tier": "high_confidence"
-    },
-    "uvig_574873": {
       "bit": 158.7,
       "tier": "high_confidence"
     },
-    "uvig_589115": {
-      "bit": 168.5,
+    "ON922919": {
+      "bit": 171.4,
+      "tier": "high_confidence"
+    },
+    "OP312987": {
+      "bit": 173.4,
+      "tier": "high_confidence"
+    },
+    "OP562166": {
+      "bit": 104.2,
+      "tier": "high_confidence"
+    },
+    "OP745616": {
+      "bit": 173.5,
+      "tier": "high_confidence"
+    },
+    "OP829055": {
+      "bit": 62.5,
+      "tier": "high_confidence"
+    },
+    "OP870143": {
+      "bit": 169.2,
+      "tier": "high_confidence"
+    },
+    "OQ181210": {
+      "bit": 62.9,
+      "tier": "high_confidence"
+    },
+    "OQ938542": {
+      "bit": 174.1,
+      "tier": "high_confidence"
+    },
+    "OR067834": {
+      "bit": 172.3,
+      "tier": "high_confidence"
+    },
+    "OY978778": {
+      "bit": 159.0,
+      "tier": "high_confidence"
+    },
+    "OY979416": {
+      "bit": 168.1,
       "tier": "high_confidence"
     }
   },
-  "stop_reason": "ran the requested 3 iteration(s)",
+  "stop_reason": "converged at run3 (hits 54\u219255, HMM length 119\u2192121)",
   "tree_tips": [
     "Achromobacter_phage_JWAlpha_NC_023556.1_Achromobacter_phage_JWAlpha_NC_023556.1_seed",
     "Achromobacter_phage_JWAlpha_NC_023556.1_x2",
@@ -322,6 +266,7 @@
     "Achromobacter_phage_phiAxp-3_NC_028908.2",
     "Achromobacter_phage_phiAxp-3_NC_028908.2_Achromobacter_phage_phiAxp-3_NC_028908.2_seed",
     "Achromobacter_phage_vB_AxyP_19-32_Axy04_NC_054967.1_Achromobacter_phage_vB_AxyP_19-32_Axy04_NC_054967.1_seed",
+    "Achromobacter_phage_vB_AxyP_19-32_Axy04_NC_054967.1_x3",
     "Achromobacter_phage_vB_AxyP_19-32_Axy10_NC_054971.1",
     "Achromobacter_phage_vB_AxyP_19-32_Axy10_NC_054971.1_Achromobacter_phage_vB_AxyP_19-32_Axy10_NC_054971.1_seed",
     "Achromobacter_phage_vB_AxyP_19-32_Axy11_NC_054972.1_Achromobacter_phage_vB_AxyP_19-32_Axy11_NC_054972.1_seed",
@@ -330,7 +275,6 @@
     "Achromobacter_phage_vB_AxyP_19-32_Axy13_MK962632.1_Achromobacter_phage_vB_AxyP_19-32_Axy13_MK962632.1_seed",
     "Achromobacter_phage_vB_AxyP_19-32_Axy22_MK962639.1_Achromobacter_phage_vB_AxyP_19-32_Axy22_MK962639.1_seed",
     "Achromobacter_phage_vB_AxyP_19-32_Axy24_NC_054969.1_Achromobacter_phage_vB_AxyP_19-32_Axy24_NC_054969.1_seed",
-    "Achromobacter_phage_vB_AxyP_19-32_Axy24_NC_054969.1_x3",
     "Agrobacterium_phage_OLIVR1_NC_055840.1_x3",
     "Burkholderia_phage_vB_BpP_HN01_OM687511",
     "Caballeronia_sp._TF1N1_plasmid_p3_CP084632.1_Caballeronia_sp._TF1N1_plasmid_p3_CP084632.1_seed",
@@ -348,8 +292,7 @@
     "Erwinia_phage_Ea9-2_NC_023579.1_Erwinia_phage_Ea9-2_NC_023579.1_seed",
     "Erwinia_phage_Ea9-2_NC_023579.1_x4",
     "Erwinia_phage_Fifi051_PQ072212.1_Erwinia_phage_Fifi051_PQ072212.1_seed",
-    "Erwinia_phage_Fifi067_OP829055",
-    "Erwinia_phage_Kuerle_OQ181210",
+    "Erwinia_phage_Kuerle_OQ181210_x2",
     "Erwinia_phage_phiEaP-8_NC_049510.1_Erwinia_phage_phiEaP-8_NC_049510.1_seed",
     "Erwinia_phage_phiEaP-8_NC_049510.1_x2",
     "Erwinia_phage_vB_EamP_Frozen_NC_031062.2_Erwinia_phage_vB_EamP_Frozen_NC_031062.2_seed",
@@ -449,9 +392,7 @@
     "Pseudomonas_phage_Zuri_NC_049456.2_Pseudomonas_phage_Zuri_NC_049456.2_seed",
     "Pseudomonas_phage_inbricus_NC_054970.1_Pseudomonas_phage_inbricus_NC_054970.1_seed",
     "Pseudomonas_phage_inbricus_NC_054970.1_x2",
-    "Rhizobium_phage_RHph_N38_NC_070851.1",
     "Rhizobium_phage_RHph_X2_28B_NC_070857.1_x2",
-    "Rhizobium_phage_RHph_Y2_6_NC_070854.1",
     "Shigella_phage_Moonfish_PQ613263.1_Shigella_phage_Moonfish_PQ613263.1_seed",
     "Shigella_phage_pSb-1_NC_023589.1",
     "Shigella_phage_pSb-1_NC_023589.1_Shigella_phage_pSb-1_NC_023589.1_seed",
@@ -472,19 +413,6 @@
     "Xanthomonas_phage_RiverRider_NC_048703.1_Xanthomonas_phage_RiverRider_NC_048703.1_seed",
     "Xanthomonas_virus_PB119_OP562166",
     "Xanthomonas_virus_PB119_OP562166.1_Xanthomonas_virus_PB119_OP562166.1_seed",
-    "gp75_gp75_seed",
-    "uncultured_virus__GVD-AVrC__GutCatV1_CHVDgut_14092",
-    "uncultured_virus__GVD-AVrC__GutCatV1_CHVDgut_15017",
-    "uncultured_virus__GVD-AVrC__GutCatV1_CHVDgut_15017_2",
-    "uncultured_virus__GVD-AVrC__GutCatV1_GVDv1_27286",
-    "uncultured_virus__GVD-AVrC__GutCatV1_GVDv1_31674",
-    "uncultured_virus__GVD-AVrC__GutCatV1_MVG_20698",
-    "uncultured_virus__GVD-AVrC__GutCatV1_MVG_4778",
-    "uncultured_virus__GVD-AVrC__GutCatV1_MVG_6481",
-    "uncultured_virus__Gut_Phage_Database__GPD___uvig_139985_x3",
-    "uncultured_virus__Gut_Phage_Database__GPD___uvig_174850_x2",
-    "uncultured_virus__Gut_Phage_Database__GPD___uvig_482154_x2",
-    "uncultured_virus__Gut_Phage_Database__GPD___uvig_574873_x2",
-    "uncultured_virus__Gut_Phage_Database__GPD___uvig_589115_x3"
+    "gp75_gp75_seed"
   ]
 }
