@@ -572,10 +572,13 @@ def main() -> None:
         print("  (VOGDB not present — genes shown as 'hypothetical'; run with the "
               "annotation DB to get function names)")
 
-    produced, ann_rows = [], []
+    produced, ann_rows, single_phage = [], [], []
     for cid in sorted(by_cluster):
         loci = by_cluster[cid]
         if len(loci) < 2:
+            # one distinct phage (a phage + its own database duplicate, or a singleton):
+            # nothing to compare, so no per-cluster figure — it still appears in the combined panel.
+            single_phage.append(cid)
             continue
         assign_orthogroups(loci)
         consensus_functions(loci)
@@ -642,6 +645,14 @@ def main() -> None:
                    "(red) and strand-normalised. Per-cluster figures (below) add gene-name "
                    "labels and homology links within each similarity group.</p>")
         idx.append("<img src='cluster_all_homologs_synteny.png' alt='all homologs combined synteny'>")
+    if single_phage:
+        idx.append(
+            f"<p style='color:#6b7888;font-size:14px'><b>Why some cluster numbers are absent:</b> "
+            f"clusters {', '.join(str(c) for c in sorted(single_phage, key=lambda x:int(x)))} each "
+            f"resolved to a <b>single distinct phage</b> — a phage that appears under both an INPHARED "
+            f"and a RefSeq accession (the same genome, drawn once), or a lone singleton. There is no "
+            f"second phage to compare against, so they get no per-cluster figure; every one of them is "
+            f"still included in the combined panel above and in the tables. No homolog is omitted.</p>")
     if heatmap:
         idx.append("<h2>Neighbourhood conservation</h2>"
                    "<p>Functional composition of each genome's neighbourhood "
