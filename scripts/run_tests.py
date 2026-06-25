@@ -234,6 +234,16 @@ check("run_pipeline: _has detects a flag and its '=' form",
       and not RP._has(["--x"], "--email"))
 check("run_pipeline: _out_dir reads --out-dir and --out (space + '=')",
       RP._out_dir(["--out-dir", "/a"]) == "/a" and RP._out_dir(["--out=/b"]) == "/b")
+# preload_databases: warms the same six-frame translation cache (<db>.sixframe.min<N>.faa) the
+# engine writes/consumes; translation_cache() must read exactly that key format.
+import preload_databases as PD  # noqa: E402
+check("preload: default database set is non-empty", bool(PD.DEFAULT_DATABASES) and "," in PD.DEFAULT_DATABASES)
+import tempfile as _tf  # noqa: E402
+_pc = Path(_tf.mkdtemp()); (_pc / "cache" / "DBX").mkdir(parents=True)
+(_pc / "cache" / "DBX" / "0000_x.fa.gz.sixframe.min30.faa").write_text(">a\nMK\n")
+(_pc / "cache" / "DBX" / "0000_x.fa.gz.sixframe.min50.faa").write_text(">a\nMK\n")
+check("preload: translation_cache finds the min-N six-frame cache files (and only that N)",
+      list(PD.translation_cache(_pc, 30)) == ["DBX/0000_x.fa.gz.sixframe.min30.faa"])
 # aa_to_nt / stop_nt: genome coordinates + DNA that translate back (frame/strand-correct)
 from Bio.Seq import Seq as _Seq  # noqa: E402
 _g = "ATGAAATAAGGGCCC"   # + frame 0: M K * G P

@@ -20,6 +20,8 @@ USAGE - invoke with the conda env's python (so the env's tools are on PATH):
 
 LAUNCHER FLAGS (consumed here, not forwarded):
   --scan              route to scan_genome.py (single-genome mode) instead of hmm_finder.py
+  --preload           warm the database download + six-frame translation caches ahead of time
+                      (route to preload_databases.py), so later runs spend their time searching
   --preset NAME       apply a named bundle of defaults (see --list-presets)
   --list-presets      print the presets and exit
   --dry-run           print the exact resolved command (with injected defaults) and exit, run nothing
@@ -93,6 +95,15 @@ def main() -> int:
     dry_run = "--dry-run" in args
     if dry_run:
         args.remove("--dry-run")
+    # --preload: warm the database download + six-frame translation caches (no seed needed).
+    if "--preload" in args:
+        args.remove("--preload")
+        cmd = ([sys.executable, str(HERE / "preload_databases.py")]
+               + (["--dry-run"] if dry_run else []) + args)
+        env = dict(os.environ)
+        env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
+        print("[run_pipeline] " + shlex.join(cmd), flush=True)
+        return subprocess.call(cmd, env=env, stdin=subprocess.DEVNULL)
     if "--preset" in args:
         i = args.index("--preset")
         if i + 1 >= len(args) or args[i + 1] not in PRESETS:
