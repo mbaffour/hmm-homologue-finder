@@ -17,10 +17,20 @@ ask() {
   if [ -n "$d" ]; then read -r -p "$p [$d]: " a; printf '%s' "${a:-$d}"
   else read -r -p "$p: " a; printf '%s' "$a"; fi
 }
-# resolve a user-typed path (absolute / ~ / relative-to-original-cwd) to absolute
+# resolve a user-typed path (absolute / ~ / relative-to-original-cwd / Windows) to absolute
 resolve_path() {
   local p="$1"
   p="${p%\"}"; p="${p#\"}"; p="${p%\'}"; p="${p#\'}"   # strip drag-and-drop quotes
+  # A Windows path pasted under WSL (C:\..., C:/..., or \\UNC) — convert it to the
+  # matching /mnt/... path. wslpath copes with spaces and either slash and only
+  # exists on WSL, so guard on it and fall through unchanged elsewhere.
+  case "$p" in
+    [A-Za-z]:[\\/]*|\\\\*)
+      if command -v wslpath >/dev/null 2>&1; then
+        local w; w="$(wslpath -u "$p" 2>/dev/null)"
+        [ -n "$w" ] && { printf '%s' "$w"; return; }
+      fi ;;
+  esac
   case "$p" in
     /*) printf '%s' "$p" ;;
     "~"/*|"~") printf '%s' "${p/#\~/$HOME}" ;;
@@ -44,7 +54,8 @@ else DEF_CPU=8; fi
 # 1. seed FASTA
 echo
 echo "Step 1 — seed FASTA (protein, OR nucleotide CDS — auto-detected & translated)"
-echo "  Drag the file into this window, or type its path. Enter = bundled example."
+echo "  Type or paste its path — Windows (C:\\Users\\...) or WSL (/mnt/c/...) both work."
+echo "  Enter = bundled example."
 FASTA="$(resolve_path "$(ask '  seed FASTA' "$HERE/examples/example_seeds.fasta")")"
 if [ ! -f "$FASTA" ]; then echo "  !! File not found: $FASTA"; exit 1; fi
 echo "  A nucleotide CDS seed is auto-detected and translated (default genetic code 11,"
@@ -64,7 +75,7 @@ MODE="$(ask '  choose 1, 2 or 3' '1')"
 if [ "$MODE" = "3" ]; then
   echo
   echo "Step 3 — the genome to scan"
-  echo "  Give a LOCAL genome FASTA (drag it in / type its path), OR an NCBI nucleotide"
+  echo "  Give a LOCAL genome FASTA (Windows C:\\... or WSL /mnt/c/... path), OR an NCBI nucleotide"
   echo "  accession to fetch from NCBI (e.g. KX098390, NC_031062 — comma-separate several)."
   GIN="$(ask '  genome FASTA path OR NCBI accession' '')"
   OUT="$(resolve_path "$(ask '  output directory' "$ORIG_PWD/genome_scan")")"
