@@ -1136,6 +1136,15 @@ def main() -> None:
                       started_at, log, stop_reason, control_summary,
                       seed_recovery_summary, interrupted_summary)
     write_csv_exports(out, log)
+    # Now that genome_metadata.csv exists, add the organism name to the interrupted
+    # table (contig -> organism), offline. No-op if the table is absent or already has it.
+    if getattr(args, "find_interrupted", False) and not args.smoke:
+        try:
+            from find_interrupted import add_organism_column
+            if add_organism_column(out / "interrupted_homologs.tsv", out / "genome_metadata.csv"):
+                log("  added organism column to interrupted_homologs.tsv")
+        except Exception as _e:
+            log(f"  (organism join for interrupted table skipped: {_e})")
 
     if args.smoke:
         # Smoke test = prove search + extraction work on new input; skip the

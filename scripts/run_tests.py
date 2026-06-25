@@ -426,6 +426,30 @@ check("hmm_finder: _unique_out_dir bumps to _2 when the folder holds results",
 check("hmm_finder: _unique_out_dir skips an occupied _2 and returns _3",
       H._unique_out_dir(_base) == _od / "gp75_discovery_3")
 
+# --- interrupted table: organism join (offline, idempotent, inserted after 'contig') ----
+_iod = Path(tempfile.mkdtemp())
+(_iod / "interrupted_homologs.tsv").write_text(
+    "contig\tstrand\tdomain_aa_len\nKX098390\t+\t137\nZZ999\t-\t90\n")
+(_iod / "genome_metadata.csv").write_text("genome_id,organism\nKX098390,Erwinia phage Rexella\n")
+_rew = FI.add_organism_column(_iod / "interrupted_homologs.tsv", _iod / "genome_metadata.csv")
+_itl = (_iod / "interrupted_homologs.tsv").read_text().splitlines()
+check("find_interrupted: add_organism_column inserts 'organism' right after 'contig'",
+      _rew and _itl[0].split("\t")[:2] == ["contig", "organism"])
+check("find_interrupted: organism joined from metadata; unknown contig falls back to its id",
+      _itl[1].split("\t")[1] == "Erwinia phage Rexella" and _itl[2].split("\t")[1] == "ZZ999")
+check("find_interrupted: add_organism_column is idempotent (no 2nd rewrite)",
+      FI.add_organism_column(_iod / "interrupted_homologs.tsv", _iod / "genome_metadata.csv") is False)
+
+# --- hit tables: full_length_aa (the Met-anchored ORF length) surfaced from orf_aa_len ----
+_fdf = pd.DataFrame({
+    "aa_sequence": ["MKAA", "MKBB"], "evalue": ["1e-9", "1e-8"], "bit_score": ["100", "90"],
+    "domain_aa_len": ["137", "137"], "orf_aa_len": ["138", "160"], "organism": ["A", "B"],
+    "genome_id": ["G1", "G2"], "db_name": ["d", "d"], "domain_coverage": ["1", "1"],
+    "confidence_tier": ["high", "high"], "hit_id": ["h1", "h2"]})
+_pt = EX._paper_table(_fdf)
+check("export: paper_main_table gains full_length_aa sourced from orf_aa_len",
+      "full_length_aa" in _pt.columns and set(int(x) for x in _pt["full_length_aa"]) == {138, 160})
+
 import cluster_and_clinker_corrected as _CC  # noqa: E402
 check("clinker static PNG: bad input -> False (graceful, no raise)",
       _CC._html_to_png(Path("/nonexistent.html"), Path(tempfile.mkdtemp()) / "x.png") is False)

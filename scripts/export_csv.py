@@ -61,6 +61,9 @@ def _paper_table(df: pd.DataFrame) -> pd.DataFrame:
     d["_ev"] = pd.to_numeric(d["evalue"], errors="coerce")
     d["_bs"] = pd.to_numeric(d["bit_score"], errors="coerce")
     d["_dl"] = pd.to_numeric(d["domain_aa_len"], errors="coerce")
+    # full length of the hit = the Met-anchored ORF/gene length (orf_aa_len),
+    # distinct from the matched-domain length above.
+    d["_ol"] = pd.to_numeric(d["orf_aa_len"], errors="coerce") if "orf_aa_len" in d.columns else pd.NA
     rows = []
     for _, g in d.groupby("aa_sequence", sort=False):
         rep = g.sort_values("_bs", ascending=False).iloc[0]
@@ -75,6 +78,7 @@ def _paper_table(df: pd.DataFrame) -> pd.DataFrame:
             "n_genomes": g["genome_id"].map(_base_acc).nunique(),
             "n_organisms": len(_canon_org_set(g)),
             "domain_aa_len": "" if pd.isna(rep["_dl"]) else int(rep["_dl"]),
+            "full_length_aa": "" if pd.isna(rep["_ol"]) else int(rep["_ol"]),
             "domain_coverage": rep.get("domain_coverage", ""),
             "best_evalue": "" if pd.isna(g["_ev"].min()) else f"{g['_ev'].min():.2g}",
             "best_bit_score": "" if pd.isna(g["_bs"].max()) else round(float(g["_bs"].max()), 1),
@@ -131,6 +135,7 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
             "n_genomes": len(genomes), "n_runs": len(runs), "runs": ";".join(runs),
             "n_copies": len(g),
             "domain_aa_len": rep.get("domain_aa_len", ""),
+            "full_length_aa": rep.get("orf_aa_len", ""),
             "best_evalue": "" if pd.isna(g["_ev"].min()) else f"{g['_ev'].min():.2g}",
             "best_bit_score": "" if pd.isna(g["_bs"].max()) else round(float(g["_bs"].max()), 1),
             "confidence_tier": rep.get("confidence_tier", ""),
@@ -366,7 +371,7 @@ def export(discovery: Path) -> list[str]:
 
         # Supplementary Table S3 — per-hit homology statistics
         s3_cols = ["hit_id", "organism", "genome_id", "db_name", "source_type",
-                   "run_label", "evalue", "bit_score", "domain_aa_len",
+                   "run_label", "evalue", "bit_score", "orf_aa_len", "domain_aa_len",
                    "domain_coverage", "confidence_tier"]
         allh[[c for c in s3_cols if c in allh.columns]].to_csv(
             discovery / "homolog_stats.csv", index=False)

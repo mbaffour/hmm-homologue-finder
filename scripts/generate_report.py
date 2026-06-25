@@ -60,7 +60,7 @@ _CSS = (
     ".muted{color:#6b7888;font-size:13px}"
     ".msa{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.3;"
     "white-space:pre;overflow-x:auto;border:1px solid #e3e7ec;border-radius:8px;background:#fff;padding:8px}"
-    ".msa .lbl{color:#6b7888;display:inline-block;width:16ch;overflow:hidden;vertical-align:bottom}"
+    ".msa .lbl{color:#6b7888;display:inline-block;overflow:hidden;vertical-align:bottom}"
     ".msa .r{padding:0 .5px}"
     ".hydro{background:#bcd6ff}.pos{background:#ffc9c9}.neg{background:#efbdff}"
     ".polar{background:#c5efc5}.gly{background:#ffe0ad}.pro{background:#fff0a6}"
@@ -112,6 +112,11 @@ def generate(discovery: Path) -> Path:
     if not tree_png.exists():
         tree_png = discovery / "PACKAGE" / DIRS["phylo"] / "hits_tree.png"
     tree_b64 = _b64(tree_png) if tree_png.exists() else ""
+    # the seed-pruned (homologs-only) tree — the real "unique homologs" figure
+    ho_png = discovery / "downstream" / "tree" / "hits_tree_homologs_only.png"
+    if not ho_png.exists():
+        ho_png = discovery / "PACKAGE" / DIRS["phylo"] / "hits_tree_homologs_only.png"
+    ho_b64 = _b64(ho_png) if ho_png.exists() else ""
 
     aln_png = discovery / "downstream" / "tree" / "alignment_figure.png"
     if not aln_png.exists():
@@ -238,14 +243,18 @@ def generate(discovery: Path) -> Path:
         ncol = max((len(s) for _, s in shown), default=0)
         col0 = min(ncol, MAXCOL)
         rows_html = []
+        # full organism labels (names are already capped ~60 chars upstream); the label
+        # gutter auto-sizes to the longest name so residue columns stay aligned across rows.
+        maxlbl = min(62, max((len(n) for n, _ in shown), default=16))
         for name, seq in shown:
-            lbl = e(name.split()[0][:16])
+            lbl = e(name[:62])
             cells = []
             for ch in seq[:col0]:
                 cls = _AA_CLASS.get(ch.upper())
                 cells.append(f"<span class='r {cls}'>{e(ch)}</span>" if cls
                              else f"<span class='r'>{e(ch)}</span>")
-            rows_html.append(f"<div><span class='lbl' title='{e(name)}'>{lbl}</span> "
+            rows_html.append(f"<div><span class='lbl' style='width:{maxlbl + 1}ch' "
+                             f"title='{e(name)}'>{lbl}</span> "
                              + "".join(cells) + "</div>")
         p.append("<h2>Coloured alignment (final hits)</h2>")
         note = (f"Showing {len(shown)} of {len(msa)} hit sequences"
@@ -255,9 +264,24 @@ def generate(discovery: Path) -> Path:
         p.append(f"<p class='muted'>{note}</p>")
         p.append("<div class='msa'>" + "".join(rows_html) + "</div>")
 
-    if tree_b64:
+    if ho_b64:
         p.append("<h2>Phylogeny (unique homologs)</h2>")
-        p.append(f"<img alt='ML tree of homologs' src='data:image/png;base64,{tree_b64}'>")
+        p.append("<p class='muted'>Maximum-likelihood tree of the <b>discovered homologs only</b> "
+                 "(your input seeds pruned) — one tip per unique homolog. Tips coloured by host "
+                 "genus; node dots mark strong support (SH-aLRT &ge;80 &amp; UFBoot &ge;95). "
+                 "Newick: <code>hits_tree_homologs_only.treefile</code>.</p>")
+        p.append(f"<img alt='ML tree of discovered homologs (seeds pruned)' "
+                 f"src='data:image/png;base64,{ho_b64}'>")
+    if tree_b64:
+        heading = "Phylogeny — homologs in seed context" if ho_b64 else "Phylogeny (unique homologs)"
+        p.append(f"<h2>{heading}</h2>")
+        p.append("<p class='muted'>The same homologs with your <b>input seeds added</b> (tips ending "
+                 "<code>_seed</code>) so you can see where the starting sequences fall among the "
+                 "discovered hits. A seed sitting next to a hit of the same organism is expected "
+                 "(that organism was both an input and a recovered homolog) — not a duplicate. "
+                 "Newick: <code>hits_tree.treefile</code>.</p>")
+        p.append(f"<img alt='ML tree of homologs with seeds in context' "
+                 f"src='data:image/png;base64,{tree_b64}'>")
 
     # Gene-neighbourhood synteny — embed a representative static publication panel
     # (the interactive clinker, incl. its static PNGs, is linked above under Files).
@@ -279,8 +303,8 @@ def generate(discovery: Path) -> Path:
 
     if paper:
         show = [c for c in ("rank", "representative_organism", "accession", "n_genomes",
-                            "n_organisms", "database_records", "domain_aa_len", "best_evalue",
-                            "best_bit_score", "confidence_tier") if c in paper[0]]
+                            "n_organisms", "database_records", "domain_aa_len", "full_length_aa",
+                            "best_evalue", "best_bit_score", "confidence_tier") if c in paper[0]]
         p.append("<h2>Top homologs</h2><table><tr>")
         p += [f"<th>{e(c)}</th>" for c in show]
         p.append("</tr>")
@@ -293,6 +317,13 @@ def generate(discovery: Path) -> Path:
     # Stop-interrupted / overprinted homologs (only present with --find-interrupted).
     interrupted = manifest.get("interrupted_homologs", {}) or {}
     irows = _read_tsv(discovery / "interrupted_homologs.tsv")
+    # join the organism name onto each interrupted row from genome_metadata.csv
+    # (contig == genome_id), offline. Falls back to the contig id if unknown.
+    if irows and not irows[0].get("organism"):
+        _gm = {row.get("genome_id", ""): row.get("organism", "")
+               for row in _read_csv(discovery / "genome_metadata.csv")}
+        for r in irows:
+            r["organism"] = _gm.get(r.get("contig", ""), "") or r.get("contig", "")
     if interrupted.get("interrupted_candidates") or irows:
         n = interrupted.get("interrupted_candidates", len(irows))
         p.append("<h2>Stop-interrupted / overprinted homologs</h2>")
@@ -333,13 +364,17 @@ def generate(discovery: Path) -> Path:
                 f"<code>antisense_open_stops</code>, <code>stop_silent_antisense</code> are in the TSV. "
                 f"(Necessary signature of overprinting, NOT proof the antisense ORF is expressed.)</p>")
         if irows:
-            show = [c for c in ("contig", "strand", "frame", "domain_nt_start",
-                                "domain_nt_end", "domain_aa_len", "internal_stops",
+            show = [c for c in ("contig", "organism", "strand", "frame", "domain_nt_start",
+                                "domain_nt_end", "domain_aa_len", "orf_aa_len", "internal_stops",
                                 "stop_nt_positions", "overprinting_support",
                                 "domain_bit_score", "i_evalue")
                     if c in irows[0]]
+            rename = {"organism": "organism", "orf_aa_len": "full length (aa)",
+                      "domain_aa_len": "domain (aa)", "stop_nt_positions": "stop codon (genome nt)",
+                      "domain_nt_start": "domain start (nt)", "domain_nt_end": "domain end (nt)",
+                      "domain_bit_score": "bit score", "i_evalue": "i-Evalue"}
             p.append("<table><tr>")
-            p += [f"<th>{e(c)}</th>" for c in show]
+            p += [f"<th>{e(rename.get(c, c))}</th>" for c in show]
             p.append("</tr>")
             for r in irows[:25]:
                 p.append("<tr>" + "".join(f"<td>{e(str(r.get(c, '')))}</td>" for c in show) + "</tr>")

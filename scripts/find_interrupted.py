@@ -314,6 +314,43 @@ def write_orf_nt_fasta(rows: list, out_tsv: Path) -> Path:
     return nt
 
 
+def add_organism_column(tsv_path: Path, meta_csv: Path) -> bool:
+    """Insert an 'organism' column (right after 'contig') into an interrupted-homologs
+    TSV, resolved offline from genome_metadata.csv (genome_id -> organism). Falls back to
+    the contig id when an organism is unknown. Idempotent (no-op if 'organism' already
+    present). Returns True if the file was rewritten."""
+    import csv
+    tsv_path, meta_csv = Path(tsv_path), Path(meta_csv)
+    if not tsv_path.exists():
+        return False
+    with open(tsv_path, newline="") as fh:
+        rows = list(csv.DictReader(fh, delimiter="\t"))
+    if not rows or "organism" in rows[0]:
+        return False
+    org = {}
+    if meta_csv.exists():
+        with open(meta_csv, newline="") as fh:
+            for m in csv.DictReader(fh):
+                if m.get("genome_id"):
+                    org[m["genome_id"]] = m.get("organism", "")
+    for r in rows:
+        r["organism"] = org.get(r.get("contig", ""), "") or r.get("contig", "")
+    cols = []
+    for c in list(rows[0].keys()):
+        if c == "organism":
+            continue
+        cols.append(c)
+        if c == "contig":
+            cols.append("organism")
+    if "organism" not in cols:
+        cols.insert(0, "organism")
+    with open(tsv_path, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols, delimiter="\t")
+        w.writeheader()
+        w.writerows(rows)
+    return True
+
+
 def _windows(n: int):
     """Yield (offset, length) windows covering a length-n frame with WIN overlap."""
     if n <= WIN_AA:
