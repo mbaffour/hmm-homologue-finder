@@ -115,6 +115,10 @@ if [ -n "$OUTLOC" ]; then
   ARGS+=(--out-dir "$OUTLOC/${NAME}_discovery")
   echo "  -> results will go to: $OUTLOC/${NAME}_discovery"
 fi
+# Never clobber a previous run: if <name>_discovery already has results, the tool
+# writes to a fresh <name>_discovery_2 / _3 / … instead.
+ARGS+=(--no-overwrite)
+echo "  (a results folder of the same name is preserved — a new numbered one is created)"
 
 if [ "$MODE" = "2" ]; then
   ARGS+=(--iterations "$(ask '  iterations' '3')")

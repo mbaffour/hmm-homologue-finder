@@ -412,6 +412,19 @@ check("hmm_finder: _ignore_scratch keeps real scripts + dunder files (__init__.p
       "hmm_finder.py" not in _ig and "__init__.py" not in _ig)
 check("hmm_finder: _ignore_scratch drops bytecode (__pycache__, *.pyc)",
       {"__pycache__", "foo.pyc"} <= _ig)
+# --- --no-overwrite: a re-run must never clobber a previous run's folder --------
+_od = Path(tempfile.mkdtemp()); _base = _od / "gp75_discovery"
+check("hmm_finder: _unique_out_dir returns the path unchanged when it doesn't exist",
+      H._unique_out_dir(_base) == _base)
+_base.mkdir()
+check("hmm_finder: _unique_out_dir reuses an EMPTY existing folder (nothing to clobber)",
+      H._unique_out_dir(_base) == _base)
+(_base / "report.html").write_text("x")            # now it holds a run
+check("hmm_finder: _unique_out_dir bumps to _2 when the folder holds results",
+      H._unique_out_dir(_base) == _od / "gp75_discovery_2")
+(_od / "gp75_discovery_2").mkdir(); (_od / "gp75_discovery_2" / "r").write_text("y")
+check("hmm_finder: _unique_out_dir skips an occupied _2 and returns _3",
+      H._unique_out_dir(_base) == _od / "gp75_discovery_3")
 
 import cluster_and_clinker_corrected as _CC  # noqa: E402
 check("clinker static PNG: bad input -> False (graceful, no raise)",

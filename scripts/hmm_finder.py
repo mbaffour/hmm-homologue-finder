@@ -78,6 +78,21 @@ def _ignore_scratch(_dir, names):
     drop |= {n for n in names if n.startswith("_") and not n.startswith("__")}
     return drop
 
+
+def _unique_out_dir(path: Path) -> Path:
+    """Return `path` unless it already holds results, in which case return the next
+    free `<path>_2`, `<path>_3`, … so a re-run never overwrites a previous run.
+    An existing but EMPTY folder is reused as-is (nothing to clobber)."""
+    def occupied(p: Path) -> bool:
+        return p.exists() and any(p.iterdir())
+    if not occupied(path):
+        return path
+    parent, name = path.parent, path.name
+    n = 2
+    while occupied(parent / f"{name}_{n}"):
+        n += 1
+    return parent / f"{name}_{n}"
+
 # --- locate the deployable repo and the conda env, put tools on PATH ---------
 HOME = Path.home()
 HERE = Path(__file__).resolve().parent          # this scripts/ folder
@@ -690,6 +705,9 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--fasta", type=Path, default=None, help="seed protein FASTA (if omitted, you'll be prompted)")
     ap.add_argument("--out-dir", type=Path, default=None, help="output root (default: <fasta>_discovery)")
+    ap.add_argument("--no-overwrite", action="store_true",
+                    help="if the output folder already holds a run, write to a fresh numbered one "
+                         "(<dir>_2, <dir>_3, …) instead of overwriting it")
     ap.add_argument("--iterations", type=int, default=3, help="number of search iterations (default 3)")
     ap.add_argument("--cpu", default="8")
     ap.add_argument("--email", default=None,
@@ -877,6 +895,11 @@ def main() -> None:
     if DEPLOY == out or DEPLOY in out.parents:
         out = (Path.home() / "Documents" / f"{label}_discovery").resolve()
         print(f"(output redirected outside the deployable repo: {out})")
+    if args.no_overwrite:
+        fresh = _unique_out_dir(out)
+        if fresh != out:
+            print(f"(output folder already has a run; using a fresh one: {fresh})")
+        out = fresh
     out.mkdir(parents=True, exist_ok=True)
     log_path = out / "pipeline.log"
 
