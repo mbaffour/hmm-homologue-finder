@@ -358,6 +358,9 @@ def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels
     xmax = max(g["e"] for l in loci for g in l["genes"])
     fig, ax = plt.subplots(figsize=(12, max(2.4, row_h * n + 1.8)))
 
+    # minimum x-spacing between two gene-name labels on a row, so vertical labels at
+    # adjacent gene centres don't pile up into an unreadable smear.
+    min_lab_gap = (xmax - xmin) * 0.022 if xmax > xmin else 1.0
     for i, l in enumerate(loci):
         y = n - i
         ax.hlines(y, xmin, xmax, color="#c9ced6", lw=0.6, zorder=0)
@@ -365,11 +368,22 @@ def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels
             fam = g["fam"]
             _arrow(ax, g, y, color_of(g), h=arrow_h * (1.25 if fam else 1.0),
                    lw=1.8 if fam else 0.4, ec="#1a1a1a" if fam else "#33373d")
-            if gene_labels and not fam:
+        if gene_labels:
+            # label named (non-hypothetical) genes left→right, skipping any that would
+            # collide with the previously-placed label on this row (de-overlap).
+            last_x = None
+            for g in sorted(l["genes"], key=lambda gg: (gg["s"] + gg["e"]) / 2):
+                if g["fam"]:
+                    continue
                 name = (g.get("func") or "").strip()
-                if name and name.lower() not in ("hypothetical protein", "unknown", "uncharacterized protein"):
-                    ax.text((g["s"] + g["e"]) / 2, y - arrow_h * 1.1, name[:26],
-                            ha="right", va="center", rotation=90, fontsize=3.4, color="#555")
+                if not name or name.lower() in ("hypothetical protein", "unknown", "uncharacterized protein"):
+                    continue
+                cx = (g["s"] + g["e"]) / 2
+                if last_x is not None and abs(cx - last_x) < min_lab_gap:
+                    continue
+                ax.text(cx, y - arrow_h * 1.1, name[:26], ha="right", va="center",
+                        rotation=90, fontsize=3.4, color="#555")
+                last_x = cx
         if not big:  # inline "family" tag clutters very tall figures; legend covers it
             fam = next(g for g in l["genes"] if g["fam"])
             ax.text((fam["s"] + fam["e"]) / 2, y + 0.34, "family", ha="center",
@@ -583,6 +597,24 @@ def main() -> None:
             print(f"  cluster_{cid}: synteny figure ({_shown} loci; {'/'.join(modes)})")
         ann_rows.extend(neighbourhood_rows(cid, loci))
 
+    # combined "all homologs" panel — EVERY locus, anchored on the family gene, in ONE
+    # figure. Gene-name labels are off (too dense across all loci); colours + legend carry
+    # function. This is the "see them all together" view alongside the per-cluster figures.
+    combined_made = False
+    all_loci = [loc for cid in sorted(by_cluster) for loc in by_cluster[cid]]
+    if len(all_loci) >= 2:
+        assign_orthogroups(all_loci)
+        consensus_functions(all_loci)
+        for loc in all_loci:
+            for g in loc["genes"]:
+                g["category"] = ("gene of interest" if g["fam"]
+                                 else categorize(g["func"], g.get("vog_cat", "")))
+        combined_made = bool(draw_cluster("all_homologs", all_loci, args.out_dir,
+                                          color_by="function", suffix="",
+                                          gene_labels=False, n_full=None))
+        if combined_made:
+            print(f"  all_homologs: combined synteny figure ({len(all_loci)} loci)")
+
     heatmap = build_heatmap(by_cluster, args.out_dir)
 
     if ann_rows:
@@ -604,6 +636,12 @@ def main() -> None:
            "+ = downstream), position relative to your gene (<code>rel_start/rel_end</code>, "
            "<code>distance_to_anchor_bp</code>), strand vs. your gene, and function — so you can "
            "describe or manually label the bordering genes. SVG/PDF versions sit alongside each PNG.</p>"]
+    if combined_made:
+        idx.append("<h2>All homologs (combined)</h2>")
+        idx.append("<p>Every homolog locus in a single figure, anchored on the family gene "
+                   "(red) and strand-normalised. Per-cluster figures (below) add gene-name "
+                   "labels and homology links within each similarity group.</p>")
+        idx.append("<img src='cluster_all_homologs_synteny.png' alt='all homologs combined synteny'>")
     if heatmap:
         idx.append("<h2>Neighbourhood conservation</h2>"
                    "<p>Functional composition of each genome's neighbourhood "

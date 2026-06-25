@@ -289,13 +289,23 @@ def generate(discovery: Path) -> Path:
     if not syn_dir.exists():
         syn_dir = discovery / "PACKAGE" / DIRS["synteny"] / "publication_figures"
     syn_png = ""
+    combined_syn = False
     if syn_dir.exists():
-        cands = sorted(syn_dir.glob("cluster_*_synteny*.png")) or sorted(syn_dir.glob("*.png"))
+        comb = syn_dir / "cluster_all_homologs_synteny.png"      # the all-homologs panel
+        cands = ([comb] if comb.exists() else []) + (
+            sorted(syn_dir.glob("cluster_*_synteny*.png")) or sorted(syn_dir.glob("*.png")))
         if cands:
             syn_png = _b64(cands[0])
+            combined_syn = cands[0].name == "cluster_all_homologs_synteny.png"
     if syn_png:
         p.append("<h2>Gene-neighbourhood synteny</h2>")
-        p.append("<p class='muted'>Representative static synteny panel (orthogroup-coloured). "
+        if combined_syn:
+            p.append("<p class='muted'>All homolog loci in one panel, anchored on the family gene "
+                     "(orthogroup-coloured). Per-cluster panels (with gene-name labels + homology "
+                     "links) are in <code>downstream/synteny/</code>; interactive clinker in "
+                     "<code>downstream/clinker/</code>.</p>")
+        else:
+            p.append("<p class='muted'>Representative static synteny panel (orthogroup-coloured). "
                  "Full set in <code>downstream/synteny/</code>; interactive clinker (with static "
                  "<code>cluster_*.png</code> exports) in <code>downstream/clinker/</code>.</p>")
         p.append(f"<img alt='gene-neighbourhood synteny panel' "

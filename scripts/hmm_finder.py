@@ -1173,7 +1173,8 @@ def main() -> None:
             "--clinker-dir", str(down / "clinker"),
             "--out-dir", str(down / "synteny"),
             "--annotation-cache", str(args.db_cache), "--cpu", args.cpu,
-            "--color-by", args.color_by]
+            "--color-by", args.color_by,
+            "--max-loci", "0"]   # show ALL loci per cluster (no representative subsample)
         if args.synteny_gene_labels:
             synteny_cmd.append("--gene-labels")
         sh(synteny_cmd)
