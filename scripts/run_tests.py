@@ -390,6 +390,29 @@ check("perhit HMM alignment: missing inputs -> {} (no raise)",
       H.run_perhit_hmm_alignment(Path("/no.hmm"), Path("/no.faa"),
                                  Path(tempfile.mkdtemp()), lambda *a, **k: None) == {})
 
+# --- provenance redaction: the user's NCBI e-mail must never reach a shared
+# manifest/METHODS (it is not needed to reproduce a run). Regression for the
+# leak where run_manifest.json embedded --email <addr> via command_line.
+check("hmm_finder: _redact_emails strips a --email value from a command line",
+      H._redact_emails("hmm_finder.py --email jane.doe@uni.edu --cpu 4")
+      == "hmm_finder.py --email <redacted-email> --cpu 4")
+check("hmm_finder: _redact_emails handles plus/dot/sub-domain addresses + is idempotent",
+      H._redact_emails(H._redact_emails("x a.b+c@sub.example.co --y")) == "x <redacted-email> --y")
+check("hmm_finder: _redact_emails leaves e-mail-free text untouched",
+      H._redact_emails("--databases 'INPHARED genomes'") == "--databases 'INPHARED genomes'")
+check("hmm_finder: _redact_emails passes non-strings through",
+      H._redact_emails(None) is None and H._redact_emails(42) == 42)
+# --- 08_scripts reproducibility copy must EXCLUDE scratch (_*) helpers (which can
+# embed the e-mail / local paths), keep real scripts + dunder, drop bytecode.
+_ig = H._ignore_scratch("/scripts",
+        ["hmm_finder.py", "_run_gp75.unix.sh", "_audit.sh", "__init__.py", "__pycache__", "foo.pyc"])
+check("hmm_finder: _ignore_scratch drops scratch _* scripts (the e-mail leak vector)",
+      {"_run_gp75.unix.sh", "_audit.sh"} <= _ig)
+check("hmm_finder: _ignore_scratch keeps real scripts + dunder files (__init__.py)",
+      "hmm_finder.py" not in _ig and "__init__.py" not in _ig)
+check("hmm_finder: _ignore_scratch drops bytecode (__pycache__, *.pyc)",
+      {"__pycache__", "foo.pyc"} <= _ig)
+
 import cluster_and_clinker_corrected as _CC  # noqa: E402
 check("clinker static PNG: bad input -> False (graceful, no raise)",
       _CC._html_to_png(Path("/nonexistent.html"), Path(tempfile.mkdtemp()) / "x.png") is False)

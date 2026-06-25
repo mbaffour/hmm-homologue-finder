@@ -52,11 +52,31 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+# Provenance records (run_manifest.json / METHODS.md) are meant to be shared, so
+# they must never embed the user's NCBI e-mail. The address is not needed to
+# reproduce a run (each user supplies their own), so we redact it at the source.
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+
+
+def _redact_emails(text):
+    """Replace any e-mail address in a string with a placeholder (idempotent)."""
+    return _EMAIL_RE.sub("<redacted-email>", text) if isinstance(text, str) else text
+
+
+def _ignore_scratch(_dir, names):
+    """copytree() ignore-fn for the 08_scripts reproducibility copy: drop bytecode
+    and scratch/run helpers (gitignored as scripts/_*) — they can embed local
+    paths or the user's NCBI e-mail — while keeping dunder files (e.g. __init__.py)."""
+    drop = {n for n in names if n == "__pycache__" or n.endswith(".pyc")}
+    drop |= {n for n in names if n.startswith("_") and not n.startswith("__")}
+    return drop
 
 # --- locate the deployable repo and the conda env, put tools on PATH ---------
 HOME = Path.home()
@@ -262,8 +282,9 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
             "code_git_commit": _git_commit(HERE),
             "started_at": started_at,
             "finished_at": finished_at,
-            # shlex-quoted so paths containing spaces can be pasted and re-run verbatim
-            "command_line": " ".join(shlex.quote(a) for a in sys.argv),
+            # shlex-quoted so paths containing spaces can be pasted and re-run verbatim;
+            # the e-mail is redacted (provenance is shared; not needed to reproduce).
+            "command_line": _redact_emails(" ".join(shlex.quote(a) for a in sys.argv)),
             "n_input_seeds": _nseed,
             "conda_env": os.environ.get("CONDA_DEFAULT_ENV", ""),
             "conda_prefix": os.environ.get("CONDA_PREFIX", ""),
@@ -272,7 +293,9 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                 "label": label, "iterations": args.iterations, "cpu": args.cpu,
                 "databases": selected_dbs, "prodigal_gate": bool(args.prodigal_gate),
                 "min_recovery": "0.70", "max_synteny_genomes": "200",
-                "email": args.email, "db_cache": str(args.db_cache), "out_dir": str(out),
+                # record only WHETHER an e-mail (online annotation) was used, never the address
+                "email": ("<redacted>" if args.email else ""),
+                "db_cache": str(args.db_cache), "out_dir": str(out),
                 "input_type": args.input_type, "trans_table": args.trans_table,
                 "no_annotate": bool(args.no_annotate),
             },
@@ -1212,7 +1235,13 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
     cp(out / "downstream" / "genbank_with_sequence", pkg / DIRS["synteny"] / "genbank_with_sequence")
     cp(out / "seed_qc", pkg / DIRS["seedqc"])
     cp(out / "downstream" / "tree", pkg / DIRS["phylo"])
-    cp(Path(__file__).resolve().parent, pkg / DIRS["scripts"])
+    # The reproducibility copy of scripts/ must EXCLUDE scratch/run helpers
+    # (gitignored as scripts/_*): they can embed local paths or the user's NCBI
+    # e-mail and must never be shipped. Keep dunder files (e.g. __init__.py).
+    _sdst = pkg / DIRS["scripts"]
+    shutil.rmtree(_sdst, ignore_errors=True)
+    _sdst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(Path(__file__).resolve().parent, _sdst, ignore=_ignore_scratch)
     log(f"  package assembled at {pkg}")
 
 
