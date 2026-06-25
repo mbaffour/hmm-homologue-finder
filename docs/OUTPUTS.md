@@ -4,6 +4,11 @@ A run writes to `<out-dir>/` (default `<fasta>_discovery/`), with the
 clean, shareable results assembled under `PACKAGE/`. Per-run working data lives
 in `run1/`, `run2/`, … and `downstream/`.
 
+> For the **complete per-file, per-column catalog** (every column in `hits.tsv`,
+> `paper_main_table.csv` — `database_records`/`n_genomes`/`n_organisms` —, `genome_metadata.csv`,
+> the interrupted-homolog tables, the scan outputs, `control_report.json`, `run_manifest.json`, …),
+> see **[REFERENCE.md → Outputs catalog](REFERENCE.md)**. This page is the orientation overview.
+
 ## PACKAGE/ — the shareable result
 
 Every folder contains a `README.txt` describing each file. Open `../report.html`

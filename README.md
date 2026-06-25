@@ -42,6 +42,20 @@ conda activate hmm-discovery
 python3 scripts/hmm_finder.py --fasta examples/example_seeds.fasta --smoke --name demo
 ```
 
+**Run it from Python with zero prompts** (for scripts/cron — no `conda activate` needed; the
+launcher puts the env's tools on `PATH`, detaches stdin, and injects no-prompt defaults):
+```bash
+~/miniforge3/envs/hmm-discovery/bin/python scripts/run_pipeline.py \
+    --fasta seed.faa --find-interrupted --out-dir ~/runs/myrun [--email you@inst.edu]
+# single genome:  ... run_pipeline.py --scan --hmm gene.hmm --accession NC_008720 --email you@inst.edu --out ~/scan1
+# preview only:   ... run_pipeline.py --fasta seed.faa --out-dir ~/x --dry-run
+```
+**Preload the databases when you have spare time** so later runs spend their time searching, not
+downloading + six-frame-translating (idempotent — already-cached DBs are skipped):
+```bash
+~/miniforge3/envs/hmm-discovery/bin/python scripts/preload_databases.py        # or: run_pipeline.py --preload
+```
+
 **First time / new machine?** Run a fast self-test to confirm the install:
 ```bash
 python3 scripts/hmm_finder.py --fasta examples/example_seeds.fasta --smoke
@@ -152,6 +166,7 @@ Reference docs (Markdown):
 
 | Doc | What's in it |
 |-----|--------------|
+| **[docs/REFERENCE.md](docs/REFERENCE.md)** | **Complete reference — every script, CLI flag, and output file/column explained in detail.** |
 | [docs/INSTALL.md](docs/INSTALL.md) | Install per platform (incl. Apple-Silicon `CONDA_SUBDIR`). |
 | [docs/USAGE.md](docs/USAGE.md) | Every run case + the complete flag reference. |
 | [docs/METHODOLOGY.md](docs/METHODOLOGY.md) | The scientific method, step by step, with tool versions. |

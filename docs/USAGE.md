@@ -3,6 +3,14 @@
 The single entry point is `scripts/hmm_finder.py`. The launchers (`run.sh`,
 `run.bat`, the Mac `.command`) just activate the environment and call it.
 
+> **Fully autonomous from Python (no prompts, no `conda activate`):** use
+> `scripts/run_pipeline.py` (it PATH-injects the env's tools, detaches stdin, and auto-injects
+> `--all-databases`/`--no-annotate`/`--skip-tool-check`; flags `--scan`/`--preset`/`--dry-run`/
+> `--preload`). **Warm the database caches ahead of time** with
+> `scripts/preload_databases.py` (or `run_pipeline.py --preload`) so later runs spend their time
+> searching, not downloading + six-frame-translating. For the **complete flag + output reference**,
+> see **[REFERENCE.md](REFERENCE.md)**.
+
 ```
 python3 scripts/hmm_finder.py [--fasta FILE] [--name LABEL] [--databases "A,B,…"]
                                  [--iterations N] [--cpu N] [--email you@inst.edu]
