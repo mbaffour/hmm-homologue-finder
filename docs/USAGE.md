@@ -29,12 +29,13 @@ Always `conda activate hmm-discovery` first (the launchers do this for you).
 | `--fasta FILE` | — | **Only required arg.** Seed protein (or nucleotide) FASTA. |
 | `--name LABEL` | FASTA stem | Output-folder label. |
 | `--out-dir DIR` | `<fasta>_discovery/` | Output root; re-running resumes finished rounds. |
+| `--no-overwrite` | off | If the output folder already holds a run, write to a fresh numbered one (`<dir>_2`, `_3`, …) instead of overwriting it. (The interactive wizard turns this on by default.) |
 | `--iterations N` | 3 | Max re-seeding rounds (stops early on convergence / 0 hits). |
 | `--cpu N` | 8 | Threads; auto-clamped to available cores. |
 | `--email ADDR` | none | NCBI email. Precedence `--email` > `$NCBI_EMAIL` > TTY prompt > offline. Never hardcoded. |
 | `--no-annotate` | off | Fully offline; skip all NCBI lookups (tables still build). |
 | `--input-type {auto,protein,nucleotide}` | auto | Seed type; nucleotide seeds are translated first. |
-| `--trans-table N` | 11 | Genetic code for translating a nucleotide seed. |
+| `--trans-table N` | 11 | NCBI genetic code — used to translate a nucleotide seed **and** for the read-through / interrupted-gene scan (e.g. 4 = Mycoplasma). |
 | `--databases "A,B,…"` | full set | Exact catalog names. On a TTY without this → interactive picker. |
 | `--all-databases` | off | Full default set without the picker (even on a TTY). |
 | `--pick-databases` | off | Force the interactive database picker. |

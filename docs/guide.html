@@ -315,6 +315,7 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <tr><td><code>--fasta FILE</code></td><td>—</td><td><b>The only required argument.</b> Seed protein (or nucleotide) FASTA. Omitted on a terminal → prompts; omitted unattended → exits.</td></tr>
     <tr><td><code>--name LABEL</code></td><td>FASTA stem</td><td>Labels the output folder (<code>LABEL_discovery/</code>).</td></tr>
     <tr><td><code>--out-dir DIR</code></td><td><code>&lt;fasta&gt;_discovery/</code></td><td>Where outputs go. Re-running the same dir resumes (skips finished rounds).</td></tr>
+    <tr><td><code>--no-overwrite</code></td><td>off</td><td>If the output folder already holds a run, write to a fresh numbered one (<code>&lt;dir&gt;_2</code>, <code>_3</code>, …) instead of overwriting. The wizard enables this by default.</td></tr>
     <tr><td><code>--iterations N</code></td><td>3</td><td>Max re-seeding rounds. Stops early on convergence or a 0-hit round.</td></tr>
     <tr><td><code>--cpu N</code></td><td>8</td><td>Threads. Auto-clamped to available cores (prevents IQ-TREE/MEME oversubscription).</td></tr>
     <tr><td><code>--email ADDR</code></td><td>none</td><td>NCBI Entrez email for organism/sequence lookups. Precedence: <code>--email</code> &gt; <code>$NCBI_EMAIL</code> &gt; TTY prompt &gt; offline. <b>Never hardcoded.</b></td></tr>
@@ -697,7 +698,7 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
   <div class="inner">
     <table>
       <tr><th>Group</th><th>Columns</th></tr>
-      <tr><td>Location</td><td><code>contig</code>, <code>strand</code>, <code>frame</code>, <code>domain_nt_start</code>/<code>domain_nt_end</code>, <code>domain_aa_len</code></td></tr>
+      <tr><td>Location</td><td><code>contig</code>, <code>organism</code> (phage name, joined from <code>genome_metadata.csv</code>), <code>strand</code>, <code>frame</code>, <code>domain_nt_start</code>/<code>domain_nt_end</code>, <code>domain_aa_len</code></td></tr>
       <tr><td>Premature stop(s)</td><td><code>internal_stops</code>, <code>stop_nt_positions</code>, <code>stop_aa_positions</code></td></tr>
       <tr><td><b>Overprinting verdict</b></td><td><code>overprinting_support</code> (strong/partial/none), <code>antisense_open_frame</code>, <code>antisense_open_stops</code> (0 = open overlapping ORF), <code>stop_silent_antisense</code> (per-stop 1/0)</td></tr>
       <tr><td>HMM stats</td><td><code>domain_bit_score</code>, <code>i_evalue</code></td></tr>

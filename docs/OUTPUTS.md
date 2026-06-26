@@ -30,8 +30,9 @@ PACKAGE/
 ├── 03_hmm_profile/profile.hmm        the calibrated profile HMM (submit to Pfam/CDD/VOGDB)
 ├── 04_alignment_phylogeny/           MSA (hits.aln.faa + stats + figure), per-hit HMM alignment
 │                                     (hits_hmmalign.sto/.a2m), and the ML tree (seeds marked)
-├── 05_synteny/                       clinker/ (interactive .html + static cluster_*.png), publication_figures/ (PNG/SVG/PDF
-│                                     + neighbour_gene_annotations.csv = ordered gene-neighbourhood table), genbank_with_sequence/
+├── 05_synteny/                       clinker/ (interactive .html + static cluster_*.png), publication_figures/ (PNG/SVG/PDF —
+│                                     per-cluster cluster_<id>_synteny.* plus cluster_all_homologs_synteny.* = ALL loci in one
+│                                     family-anchored panel; + neighbour_gene_annotations.csv = ordered table), genbank_with_sequence/
 ├── 06_database_summaries/runN_summary.tsv   per-database hit counts + provenance
 ├── 07_seed_qc/                       seed_recovery.csv (per-seed before/after) + seed alignment & QC tree
 └── 08_scripts/                       a copy of the scripts that produced this run
@@ -68,7 +69,8 @@ PACKAGE/
 One row per stop-interrupted / overprinted candidate (the read-through scan).
 | column | meaning |
 |--------|---------|
-| `contig`, `strand`, `frame` | source contig and the read-through reading frame |
+| `contig`, `organism` | source contig accession, and its organism / phage name (joined offline from `genome_metadata.csv`; falls back to the accession if unknown) |
+| `strand`, `frame` | the read-through reading frame (strand + 0/1/2) |
 | `domain_nt_start`, `domain_nt_end` | genome coordinates of the matched domain (forward strand, 1-based) |
 | `domain_aa_len`, `internal_stops` | domain length (aa); number of premature internal stops in it |
 | `stop_nt_positions`, `stop_aa_positions` | per-stop genome coordinate(s) and aa position(s) (`;`-separated) |

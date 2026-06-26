@@ -845,7 +845,9 @@ Written by `find_interrupted.py` (`_run()` → `ROW_COLS`) and copied to `PACKAG
 
 | column | meaning |
 |--------|---------|
-| `contig`, `strand`, `frame` | source contig and the read-through reading frame |
+| `contig` | source contig accession |
+| `organism` | organism / phage name for the contig (joined offline from `genome_metadata.csv`; falls back to the accession if unknown) |
+| `strand`, `frame` | the read-through reading frame (strand + 0/1/2) |
 | `domain_nt_start`, `domain_nt_end` | forward-strand 1-based genome coordinates of the matched domain |
 | `domain_aa_len` | domain length (aa), `env_to − env_from + 1` — **the homolog length to cite** |
 | `internal_stops` | number of premature internal stops in the domain |
