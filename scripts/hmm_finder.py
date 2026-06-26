@@ -93,6 +93,23 @@ def _unique_out_dir(path: Path) -> Path:
         n += 1
     return parent / f"{name}_{n}"
 
+
+def _winpath(p):
+    """Convert a Windows path (C:\\..., C:/..., \\\\UNC) to its WSL /mnt/... form when
+    running under WSL (via wslpath); return it unchanged otherwise. Lets a pasted or
+    command-builder-generated Windows path work as a --fasta / --out-dir argument."""
+    if p is None:
+        return p
+    s = str(p)
+    if re.match(r"^[A-Za-z]:[\\/]", s) or s.startswith("\\\\"):
+        try:
+            r = subprocess.run(["wslpath", "-u", s], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and r.stdout.strip():
+                return Path(r.stdout.strip())
+        except Exception:
+            pass
+    return p
+
 # --- locate the deployable repo and the conda env, put tools on PATH ---------
 HOME = Path.home()
 HERE = Path(__file__).resolve().parent          # this scripts/ folder
@@ -782,6 +799,11 @@ def main() -> None:
                          "runs (default: ~/.cache/hmm-homologue-finder) — each DB downloads "
                          "once, ever, which makes repeat runs much faster")
     args = ap.parse_args()
+    # A Windows path (C:\…) pasted into --fasta / --out-dir under WSL won't resolve as-is;
+    # convert it to /mnt/… so the command builder and pasted commands accept either form.
+    args.fasta = _winpath(args.fasta)
+    if getattr(args, "out_dir", None) is not None:
+        args.out_dir = _winpath(args.out_dir)
 
     # Clamp thread count to available cores. Over-allocating is a real autonomy
     # hazard: IQ-TREE aborts with "more threads than CPU cores available" (exit 2)

@@ -432,6 +432,14 @@ check("hmm_finder: _unique_out_dir bumps to _2 when the folder holds results",
 (_od / "gp75_discovery_2").mkdir(); (_od / "gp75_discovery_2" / "r").write_text("y")
 check("hmm_finder: _unique_out_dir skips an occupied _2 and returns _3",
       H._unique_out_dir(_base) == _od / "gp75_discovery_3")
+# Windows-path acceptance: a C:\ seed/out path pasted under WSL is converted to /mnt/...
+import shutil as _shutil
+if _shutil.which("wslpath"):
+    check("hmm_finder: _winpath converts a Windows path to /mnt under WSL",
+          str(H._winpath("C:\\Users\\x\\NEW seeds.fasta")) == "/mnt/c/Users/x/NEW seeds.fasta")
+check("hmm_finder: _winpath leaves a POSIX path unchanged",
+      str(H._winpath("/mnt/c/Users/x/seeds.fasta")) == "/mnt/c/Users/x/seeds.fasta")
+check("hmm_finder: _winpath passes None through", H._winpath(None) is None)
 
 # --- interrupted table: organism join (offline, idempotent, inserted after 'contig') ----
 _iod = Path(tempfile.mkdtemp())

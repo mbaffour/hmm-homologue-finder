@@ -862,10 +862,11 @@ document.querySelectorAll('pre').forEach(function(pre){
            'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt','b_fi'];
   function q(s){ return /[^A-Za-z0-9_.,\-\/=]/.test(s)?('"'+s+'"'):s; }
   function sq(s){ return "'"+String(s).replace(/'/g,"'\\''")+"'"; }
+  function winToWsl(p){ var m=String(p).match(/^([A-Za-z]):[\\/](.*)$/); return m?('/mnt/'+m[1].toLowerCase()+'/'+m[2].replace(/\\/g,'/')):p; }
   var ARGV=[];
   function collect(){
     var smoke=$('b_mode').value==='smoke', a=[];
-    a.push(['--fasta', ($('b_fasta').value.trim()||'my_seeds.faa')]);
+    a.push(['--fasta', winToWsl($('b_fasta').value.trim()||'my_seeds.faa')]);
     var n=$('b_name').value.trim(); if(n) a.push(['--name', n]);
     if(smoke){ a.push(['--smoke']); }
     else{
