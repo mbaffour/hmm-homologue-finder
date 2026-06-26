@@ -58,6 +58,13 @@ _CSS = (
     "border:1px solid #d4dae1;border-radius:8px;text-decoration:none;color:#1558b0;font-size:13px}"
     "img{max-width:100%;border:1px solid #e3e7ec;border-radius:8px;background:#fff}"
     ".muted{color:#6b7888;font-size:13px}"
+    ".dbchart{background:#fff;border:1px solid #e3e7ec;border-radius:8px;padding:12px 16px;margin:2px 0 6px}"
+    ".dbrow{margin:11px 0}"
+    ".dbname{font-size:12.5px;color:#33404f}"
+    ".dbtype{color:#9aa3ad;font-size:11px;margin-left:7px}"
+    ".dbval{float:right;color:#6b7888;font-size:11.5px}"
+    ".dbtrack{background:#eef1f4;border-radius:5px;height:13px;overflow:hidden;margin-top:4px}"
+    ".dbbar{height:100%;background:#3b74c4}.dbbar.zero{background:#d3d9e0}"
     ".msa{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.3;"
     "white-space:pre;overflow-x:auto;border:1px solid #e3e7ec;border-radius:8px;background:#fff;padding:8px}"
     ".msa .lbl{color:#6b7888;display:inline-block;overflow:hidden;vertical-align:bottom}"
@@ -155,6 +162,42 @@ def generate(discovery: Path) -> Path:
         p.append(f"<div class='card'><div class='l'>{e(str(l))}</div>"
                  f"<div class='v'>{e(str(v))}</div></div>")
     p.append("</div>")
+
+    # Databases searched — inline bar chart (hits per database; 0-hit DBs greyed)
+    dbsum = _read_csv(discovery / "database_hit_summary.csv")
+    if dbsum:
+        def _i(x):
+            try:
+                return int(float(x))
+            except Exception:
+                return 0
+        bars = [r for r in dbsum if not str(r.get("database", "")).startswith("ALL (")]
+        total = next((r for r in dbsum if str(r.get("database", "")).startswith("ALL (")), None)
+        if bars:
+            maxh = max((_i(r.get("hits")) for r in bars), default=1) or 1
+            p.append("<h2>Databases searched</h2>")
+            p.append("<p class='muted'>Every database scanned this run — a "
+                     "<span style='color:#9aa3ad'>grey</span> bar was searched but returned no hits. "
+                     "Bar length = total hits; <b>unique</b> = distinct sequences, <b>orgs</b> = "
+                     "distinct organisms. Publication chart: <code>database_hits.png/svg/pdf</code>.</p>")
+            p.append("<div class='dbchart'>")
+            for r in bars:
+                h = _i(r.get("hits"))
+                pct = (max(2.0, 100.0 * h / maxh) if h else 0.0)
+                cls = "dbbar" if h else "dbbar zero"
+                val = (f"{h} hits · {e(str(r.get('unique_sequences', '')))} unique · "
+                       f"{e(str(r.get('unique_organisms', '')))} orgs" if h else "searched · 0 hits")
+                p.append(
+                    f"<div class='dbrow'><div class='dbname'>{e(str(r.get('database', '')))}"
+                    f"<span class='dbtype'>{e(str(r.get('type', '')))}</span>"
+                    f"<span class='dbval'>{val}</span></div>"
+                    f"<div class='dbtrack'><div class='{cls}' style='width:{pct:.1f}%'></div></div></div>")
+            p.append("</div>")
+            if total:
+                p.append(f"<p class='muted'>Combined (deduplicated across databases): "
+                         f"<b>{e(str(total.get('hits', '')))}</b> hits → "
+                         f"<b>{e(str(total.get('unique_sequences', '')))}</b> unique homologs in "
+                         f"<b>{e(str(total.get('unique_organisms', '')))}</b> organisms.</p>")
 
     cal = manifest.get("threshold_calibration", {}) or {}
     stop = manifest.get("iteration_stop_reason", "")
