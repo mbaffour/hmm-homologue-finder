@@ -204,6 +204,7 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
     if toytree/toyplot/matplotlib are absent."""
     try:
         import math
+        import colorsys
         import toytree  # noqa: F401
         import toyplot, toyplot.svg, toyplot.png, toyplot.marker
         import matplotlib
@@ -219,13 +220,21 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
         genera = [t.split("_")[0] for t in tips]
         uniq = sorted(set(genera))
         cmap = matplotlib.colormaps["tab20"].resampled(max(len(uniq), 1))
-        gcol = {g: mcolors.to_hex(cmap(i)) for i, g in enumerate(uniq)}
+        def _readable(hx):
+            # Darken pale palette colours so EVERY tip label is legible on white
+            # (tab20's light half is too faint to read). Keep the hue, cap the lightness.
+            r, g, b = mcolors.to_rgb(hx)
+            if (0.299 * r + 0.587 * g + 0.114 * b) <= 0.55:
+                return mcolors.to_hex((r, g, b))
+            h, l, s = colorsys.rgb_to_hls(r, g, b)
+            return mcolors.to_hex(colorsys.hls_to_rgb(h, 0.38, min(1.0, s + 0.12)))
+        gcol = {g: _readable(mcolors.to_hex(cmap(i))) for i, g in enumerate(uniq)}
         tip_colors = [gcol[g] for g in genera]
         # distinguish input seeds (tips ending '_seed') from discovered homologs: seeds
         # are drawn in grey so they read as context, hits keep their host-genus colour.
         is_seed = [t.endswith("_seed") for t in tips]
         if mark_seeds and any(is_seed):
-            tip_colors = ["#9aa3ad" if s else c for s, c in zip(is_seed, tip_colors)]
+            tip_colors = ["#4d5560" if s else c for s, c in zip(is_seed, tip_colors)]
         # Robust-support dots. IQ-TREE (-alrt -B) labels each internal node
         # "SH-aLRT/UFBoot"; a split is robustly supported when SH-aLRT >= 80 AND
         # UFBoot >= 95 (Minh et al. 2020). toytree keeps that "a/b" string in `name`
@@ -264,7 +273,7 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
                        for g in uniq]
             if mark_seeds and any(is_seed):
                 entries.append(("input seed (grey)", toyplot.marker.create(shape="o", size=11,
-                                                                  mstyle={"fill": "#9aa3ad"})))
+                                                                  mstyle={"fill": "#4d5560"})))
             entries.append(("SH-aLRT>=80 and UFBoot>=95", toyplot.marker.create(shape="o", size=9,
                                                                   mstyle={"fill": "#222222"})))
             canvas.legend(entries, corner=("right", 6, 150, 16 * len(entries)))
