@@ -249,10 +249,10 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
             sizes.append(7 if ok else 0)
             ncolors.append("#222222" if ok else "transparent")
         if layout == "c":
-            dim = max(700, 9 * ntips)
+            dim = max(700, min(9 * ntips, 18000))   # cap so the canvas stays under the px limit
             canvas = toyplot.Canvas(width=dim + 280, height=dim, style={"background-color": "white"})
         else:
-            canvas = toyplot.Canvas(width=1300, height=max(400, 18 * ntips),
+            canvas = toyplot.Canvas(width=1300, height=max(400, min(18 * ntips, 24000)),
                                     style={"background-color": "white"})
         ax = canvas.cartesian(padding=25)
         ax.show = False

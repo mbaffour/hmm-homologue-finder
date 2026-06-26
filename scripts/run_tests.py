@@ -429,14 +429,20 @@ check("hmm_finder: _unique_out_dir skips an occupied _2 and returns _3",
 # --- interrupted table: organism join (offline, idempotent, inserted after 'contig') ----
 _iod = Path(tempfile.mkdtemp())
 (_iod / "interrupted_homologs.tsv").write_text(
-    "contig\tstrand\tdomain_aa_len\nKX098390\t+\t137\nZZ999\t-\t90\n")
-(_iod / "genome_metadata.csv").write_text("genome_id,organism\nKX098390,Erwinia phage Rexella\n")
+    "contig\tstrand\tdomain_aa_len\nKX098390\t+\t137\nNC_049456.2\t+\t140\nZZ999\t-\t90\n")
+(_iod / "genome_metadata.csv").write_text(
+    "genome_id,accessions,organism\n"
+    "KX098390,KX098390,Erwinia phage Rexella\n"
+    "NC_049456,NC_049456;MK863032,Pseudomonas phage Zuri\n")
 _rew = FI.add_organism_column(_iod / "interrupted_homologs.tsv", _iod / "genome_metadata.csv")
 _itl = (_iod / "interrupted_homologs.tsv").read_text().splitlines()
 check("find_interrupted: add_organism_column inserts 'organism' right after 'contig'",
       _rew and _itl[0].split("\t")[:2] == ["contig", "organism"])
 check("find_interrupted: organism joined from metadata; unknown contig falls back to its id",
-      _itl[1].split("\t")[1] == "Erwinia phage Rexella" and _itl[2].split("\t")[1] == "ZZ999")
+      _itl[1].split("\t")[1] == "Erwinia phage Rexella" and _itl[3].split("\t")[1] == "ZZ999")
+# the generalization fix: a VERSIONED contig must match a base-accession metadata key
+check("find_interrupted: versioned contig matches base-accession key (NC_049456.2 -> NC_049456)",
+      _itl[2].split("\t")[1] == "Pseudomonas phage Zuri")
 check("find_interrupted: add_organism_column is idempotent (no 2nd rewrite)",
       FI.add_organism_column(_iod / "interrupted_homologs.tsv", _iod / "genome_metadata.csv") is False)
 

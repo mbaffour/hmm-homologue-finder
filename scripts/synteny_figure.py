@@ -48,6 +48,10 @@ ensure_env_on_path()
 FAMILY_COLOR = "#ffd400"          # bold gold for the gene of interest (distinct from all categories)
 HYPO_COLOR = "#dde2e8"
 MAX_LOCI = 12
+# Absolute raster ceiling: a matplotlib Agg canvas can't exceed ~65536 px, so a family
+# with hundreds of loci would crash the PNG save. With --max-loci 0 ("show all") the
+# renderer still strides down to this many rows and discloses "n of total" in the title.
+RENDER_CAP = 250
 
 # Broad functional categories (consistent colours across every figure). Genes are
 # binned by keyword from their VOGDB function description; first match wins.
@@ -335,6 +339,13 @@ def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels
     loci = [a for a in (anchor(l) for l in loci) if a]
     if len(loci) < 2:
         return None
+    # raster safety: cap the drawn rows (evenly strided) so the canvas stays within the
+    # Agg pixel limit; disclose "n of total" in the title and keep the full set in the CSV.
+    if n_full is None:
+        n_full = len(loci)
+    if len(loci) > RENDER_CAP:
+        step = len(loci) / RENDER_CAP
+        loci = [loci[int(i * step)] for i in range(RENDER_CAP)]
     set_row_labels(loci)
     n = len(loci)
     cons = _conservation(loci) if color_by == "conservation" else {}
@@ -356,7 +367,8 @@ def draw_cluster(cid, loci, out_dir, color_by="function", suffix="", gene_labels
     lab_fs = 6 if big else 8
     xmin = min(g["s"] for l in loci for g in l["genes"])
     xmax = max(g["e"] for l in loci for g in l["genes"])
-    fig, ax = plt.subplots(figsize=(12, max(2.4, row_h * n + 1.8)))
+    # height capped at 200in so width*dpi / height*dpi stay under the Agg 65536-px limit
+    fig, ax = plt.subplots(figsize=(12, min(max(2.4, row_h * n + 1.8), 200)))
 
     # minimum x-spacing between two gene-name labels on a row, so vertical labels at
     # adjacent gene centres don't pile up into an unreadable smear.

@@ -327,14 +327,22 @@ def add_organism_column(tsv_path: Path, meta_csv: Path) -> bool:
         rows = list(csv.DictReader(fh, delimiter="\t"))
     if not rows or "organism" in rows[0]:
         return False
+    import re
+    def _base(a):   # strip a trailing version (NC_049456.2 -> NC_049456) so a versioned
+        return re.sub(r"\.\d+$", "", (a or "").strip())   # contig matches a base-accession key
     org = {}
     if meta_csv.exists():
         with open(meta_csv, newline="") as fh:
             for m in csv.DictReader(fh):
+                o = m.get("organism", "")
                 if m.get("genome_id"):
-                    org[m["genome_id"]] = m.get("organism", "")
+                    org[_base(m["genome_id"])] = o
+                for a in (m.get("accessions", "") or "").split(";"):   # all known aliases
+                    if a.strip():
+                        org[_base(a)] = o
     for r in rows:
-        r["organism"] = org.get(r.get("contig", ""), "") or r.get("contig", "")
+        c = r.get("contig", "")
+        r["organism"] = org.get(_base(c), "") or c
     cols = []
     for c in list(rows[0].keys()):
         if c == "organism":

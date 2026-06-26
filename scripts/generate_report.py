@@ -330,10 +330,19 @@ def generate(discovery: Path) -> Path:
     # join the organism name onto each interrupted row from genome_metadata.csv
     # (contig == genome_id), offline. Falls back to the contig id if unknown.
     if irows and not irows[0].get("organism"):
-        _gm = {row.get("genome_id", ""): row.get("organism", "")
-               for row in _read_csv(discovery / "genome_metadata.csv")}
+        import re as _re
+        _bz = lambda a: _re.sub(r"\.\d+$", "", (a or "").strip())   # version-strip for matching
+        _gm = {}
+        for row in _read_csv(discovery / "genome_metadata.csv"):
+            o = row.get("organism", "")
+            if row.get("genome_id"):
+                _gm[_bz(row["genome_id"])] = o
+            for a in (row.get("accessions", "") or "").split(";"):
+                if a.strip():
+                    _gm[_bz(a)] = o
         for r in irows:
-            r["organism"] = _gm.get(r.get("contig", ""), "") or r.get("contig", "")
+            c = r.get("contig", "")
+            r["organism"] = _gm.get(_bz(c), "") or c
     if interrupted.get("interrupted_candidates") or irows:
         n = interrupted.get("interrupted_candidates", len(irows))
         p.append("<h2>Stop-interrupted / overprinted homologs</h2>")
