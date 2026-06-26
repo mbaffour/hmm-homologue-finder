@@ -246,8 +246,9 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
 <section id="builder">
   <h2>Command builder</h2>
   <div class="card builder">
-    Fill this in; the command updates live. Copy it into your terminal (after
-    <code>conda activate hmm-discovery</code>).
+    Fill this in; the command updates live. <b>New to terminals?</b> Open the
+    <b>“How do I run this?”</b> panel below the command — it walks you through it with no
+    terminal experience needed.
     <div class="row">
       <div><label>Seed FASTA path (--fasta)</label><input type="text" id="b_fasta" value="my_seeds.faa"></div>
       <div><label>Output label (--name)</label><input type="text" id="b_name" value="my_protein"></div>
@@ -280,6 +281,28 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <div class="chk"><input type="checkbox" id="b_nt"><label style="margin:0">Seed is nucleotide DNA (translate; <code>--input-type nucleotide</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_fi"><label style="margin:0">Find interrupted / overprinted genes — read-through scan (<code>--find-interrupted</code>)</label></div>
     <div class="out"><pre><code id="b_out"></code></pre></div>
+    <button type="button" id="b_copy" style="margin-top:8px;padding:8px 14px;border:1px solid #d4dae1;border-radius:8px;background:#fff;color:#1558b0;cursor:pointer;font-size:13px">📋 Copy command</button>
+    <span id="b_copied" style="color:#1a9a4a;font-size:13px;margin-left:8px;display:none">copied!</span>
+    <details style="margin-top:14px;border:1px solid #d4dae1;border-radius:8px;padding:10px 14px">
+      <summary style="cursor:pointer;font-weight:600">How do I run this? (no terminal experience needed)</summary>
+      <div style="margin-top:8px;font-size:14px;line-height:1.55">
+        <p><b>Easiest — you don't even need this command.</b> In your <code>final</code> folder, double-click
+          <code>START_HERE.bat</code>. It asks you these same questions and runs everything for you. Use the
+          command builder only when you want to save or re-use an exact command.</p>
+        <p><b>To run the command shown above, step by step:</b></p>
+        <ol style="margin:6px 0 0 20px;padding:0">
+          <li><b>One time only:</b> double-click <code>START_HERE.bat</code> once and let setup finish (it builds the
+            toolkit, a few minutes). You can close that window afterwards.</li>
+          <li>Double-click <code>OPEN_TOOL_TERMINAL.bat</code> (next to <code>START_HERE.bat</code>). A window with a
+            <code>$</code> prompt opens — already inside the tool folder with everything ready.</li>
+          <li>Click <b>📋 Copy command</b> above, then in that window <b>right-click to paste</b> and press <b>Enter</b>.</li>
+          <li>It runs (minutes to ~an hour). When it finishes, open the new results folder's <code>report.html</code>
+            in your browser.</li>
+        </ol>
+        <p style="color:#6b7888;margin-top:8px">Tip: set the <b>Seed FASTA path</b> field above to your own file — a
+          Windows path like <code>C:\Users\you\Downloads\seeds.fasta</code> works fine.</p>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -862,6 +885,11 @@ document.querySelectorAll('pre').forEach(function(pre){
     out.textContent=p.join(' \\\n    ');
   }
   ids.forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',build); el.addEventListener('change',build);} });
+  var cp=$('b_copy'); if(cp){ cp.addEventListener('click',function(){
+    var t=$('b_out').textContent;
+    try{ if(navigator.clipboard){ navigator.clipboard.writeText(t); } }catch(e){}
+    var c=$('b_copied'); if(c){ c.style.display='inline'; setTimeout(function(){c.style.display='none';},1600); }
+  }); }
   build();
 })();
 </script>
