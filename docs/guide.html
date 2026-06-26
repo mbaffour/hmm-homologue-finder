@@ -282,26 +282,32 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <div class="chk"><input type="checkbox" id="b_fi"><label style="margin:0">Find interrupted / overprinted genes — read-through scan (<code>--find-interrupted</code>)</label></div>
     <div class="out"><pre><code id="b_out"></code></pre></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px">
-      <button type="button" id="b_dl" style="padding:9px 16px;border:1px solid #1558b0;border-radius:8px;background:#1558b0;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Download one-click launcher (.bat)</button>
-      <button type="button" id="b_copy" style="padding:9px 14px;border:1px solid #d4dae1;border-radius:8px;background:#fff;color:#1558b0;cursor:pointer;font-size:13px">Copy command</button>
-      <span id="b_copied" style="color:#1a9a4a;font-size:13px;display:none">copied</span>
+      <button type="button" id="b_copy" style="padding:9px 16px;border:1px solid #1558b0;border-radius:8px;background:#1558b0;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Copy command (paste into PowerShell)</button>
+      <button type="button" id="b_dl" style="padding:9px 14px;border:1px solid #d4dae1;border-radius:8px;background:#fff;color:#1558b0;cursor:pointer;font-size:13px">Download .bat launcher</button>
+      <span id="b_copied" style="color:#1a9a4a;font-size:13px;display:none">copied — paste into PowerShell, press Enter</span>
       <span id="b_dlok" style="color:#1a9a4a;font-size:13px;display:none">downloaded — now double-click run_my_search.bat</span>
     </div>
     <details style="margin-top:14px;border:1px solid #d4dae1;border-radius:8px;padding:10px 14px">
       <summary style="cursor:pointer;font-weight:600">How do I run this? (no terminal experience needed)</summary>
       <div style="margin-top:8px;font-size:14px;line-height:1.55">
-        <p><b>Easiest — one click, no terminal:</b> click <b>Download one-click launcher</b> above. You get a file
-          called <code>run_my_search.bat</code> — double-click it. It opens the toolkit, installs it on first use,
-          and runs your search. Leave the window open until it says finished, then open <code>report.html</code> in
-          your results folder. (This works when you opened this guide from inside the tool folder,
-          <code>final\hmm-homologue-finder\docs\guide.html</code>.)</p>
-        <p><b>Even simpler if you don't need a specific command:</b> double-click <code>START_HERE.bat</code> in your
-          <code>final</code> folder — it asks these same questions and runs everything.</p>
-        <p style="color:#6b7888;margin-top:8px"><b>Or the manual way:</b> double-click <code>OPEN_TOOL_TERMINAL.bat</code>
-          (a ready window opens inside the tool folder), then <b>Copy command</b> and right-click to paste, Enter. The
-          command starts with <code>bash run.sh</code>, which sets up the environment itself — you don't activate anything.</p>
+        <p><b>Easiest — copy &amp; paste, no downloaded file:</b></p>
+        <ol style="margin:4px 0 8px 0;padding-left:22px">
+          <li>Click <b>Copy command (paste into PowerShell)</b> above.</li>
+          <li>Press <b>Start</b>, type <code>PowerShell</code>, press <b>Enter</b> (a blue window opens).</li>
+          <li><b>Right-click</b> inside that window (this pastes), then press <b>Enter</b>.</li>
+        </ol>
+        <p style="margin:0 0 8px 0">That one line calls WSL and runs everything — it installs the toolkit on the first
+          run (a few minutes), then does your search. Leave the window open until it says finished, then open
+          <code>report.html</code> in your results folder. Nothing to activate; the command sets up its own environment.
+          (The command knows your full path because you opened this guide from inside the tool folder,
+          <code>final\hmm-homologue-finder\docs\guide.html</code> — always open it from there.)</p>
+        <p style="color:#6b7888;margin-top:8px"><b>Prefer a double-click file?</b> Click <b>Download .bat launcher</b> to get
+          <code>run_my_search.bat</code>. If Windows blocks it ("Windows protected your PC" → <i>More info → Run anyway</i>,
+          or right-click the file → <i>Properties → Unblock</i>), use the copy-paste method above instead — it never gets blocked.</p>
+        <p style="color:#6b7888;margin-top:8px"><b>Even simpler if you don't need a specific command:</b> double-click
+          <code>START_HERE.bat</code> in your <code>final</code> folder — it asks these same questions and runs everything.</p>
         <p style="color:#6b7888;margin-top:8px">Tip: set the <b>Seed FASTA path</b> field to your own file — a Windows
-          path like <code>C:\Users\you\Downloads\seeds.fasta</code> works fine.</p>
+          path like <code>C:\Users\you\Downloads\seeds.fasta</code> works fine (it's converted automatically).</p>
       </div>
     </details>
   </div>
@@ -890,7 +896,14 @@ document.querySelectorAll('pre').forEach(function(pre){
   function build(){
     $('b_dbcustom_wrap').style.display = ($('b_db').value==='custom')?'block':'none';
     ARGV=collect();
-    out.textContent='bash run.sh '+fmt(ARGV, q, ' \\\n    ');
+    var pkg=pkgWsl();
+    // When opened from inside the tool folder we know the full run.sh path, so we can
+    // emit a SELF-CONTAINED one-liner that runs from PowerShell / Windows Terminal with
+    // no downloaded file (which Windows often blocks). Otherwise fall back to the
+    // in-folder form. Single line on purpose — PowerShell can't paste \-continued lines.
+    out.textContent = pkg
+      ? ('wsl -d Ubuntu -- bash -c "bash '+sq(pkg+'/run.sh')+' '+fmt(ARGV, sq, ' ')+'"')
+      : ('bash run.sh '+fmt(ARGV, q, ' \\\n    '));
   }
   function pkgWsl(){
     var href; try{ href=decodeURIComponent(location.href); }catch(e){ href=location.href; }
