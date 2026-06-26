@@ -280,6 +280,8 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <div class="chk"><input type="checkbox" id="b_noseed"><label style="margin:0">Skip the pre-run seed QC tree (<code>--no-seed-tree</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_nt"><label style="margin:0">Seed is nucleotide DNA (translate; <code>--input-type nucleotide</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_fi"><label style="margin:0">Find interrupted / overprinted genes — read-through scan (<code>--find-interrupted</code>)</label></div>
+    <div class="chk"><input type="checkbox" id="b_detach" checked><label style="margin:0"><b>Keep running even if I close the window</b> (<code>--detach</code>) — recommended for long / walk-away runs</label></div>
+    <p style="margin:2px 0 0 24px;font-size:12.5px;color:#6b7888">Detached runs have no window to answer prompts, so they use the <b>email</b> and <b>databases</b> you set above (blank email = runs offline). They print where the progress log is, then you can close the window; double-click <code>CHECK_RUN.bat</code> any time to see how it's going.</p>
     <div class="out"><pre><code id="b_out"></code></pre></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px">
       <button type="button" id="b_dl" style="padding:9px 16px;border:1px solid #1558b0;border-radius:8px;background:#1558b0;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Download .bat launcher</button>
@@ -338,6 +340,7 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <tr><td><code>--prodigal-gate</code></td><td>off</td><td>Stricter: require six-frame hits to overlap a Prodigal gene. Off by default to keep genuine antisense/alternate-frame homologues.</td></tr>
     <tr><td><code>--find-interrupted</code></td><td>off</td><td>Also <b>read-through</b>-scan the nucleotide databases for homologues interrupted by a premature stop codon — overprinted/pseudogenized genes the stop-to-stop search misses. Writes <code>interrupted_homologs.tsv</code> + protein/DNA FASTAs, with an <b>overprinting verdict</b> (<code>overprinting_support</code> = strong/partial/none — is the stop synonymous in an open antisense frame?). <a href="#deepdive">See deep-dive panel 3.</a></td></tr>
     <tr><td><code>--no-seed-tree</code></td><td>off</td><td>Skip the pre-run seed-only QC tree + alignment.</td></tr>
+    <tr><td><code>--detach</code> <span style="color:#6b7888">(run.sh)</span></td><td>off</td><td>Run in the background in its own session so closing the terminal window can't kill a long / walk-away run. Console output → <code>hmm_run_console_&lt;time&gt;.log</code> next to your seed; watch progress with <code>CHECK_RUN.bat</code>. A detached run can't prompt — set <code>--email</code> (else it runs offline) and <code>--databases</code> (else defaults).</td></tr>
     <tr><td><code>--synteny-gene-labels</code></td><td>off</td><td>Label neighbour genes with functional annotation in synteny figures (can clutter dense regions).</td></tr>
     <tr><td><code>--color-by {function,conservation,both}</code></td><td>both</td><td>How to colour synteny neighbourhood genes: by VOGDB functional category, by cross-locus conservation, or both.</td></tr>
     <tr><td><code>--skip-tool-check</code></td><td>off</td><td>Skip the startup software preflight.</td></tr>
@@ -864,7 +867,7 @@ document.querySelectorAll('pre').forEach(function(pre){
   var $=function(id){return document.getElementById(id);};
   var out=$('b_out');
   var ids=['b_fasta','b_name','b_mode','b_iter','b_cpu','b_table','b_email','b_db','b_dbcustom',
-           'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt','b_fi'];
+           'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt','b_fi','b_detach'];
   function q(s){ return /[^A-Za-z0-9_.,\-\/=]/.test(s)?('"'+s+'"'):s; }
   function sq(s){ return "'"+String(s).replace(/'/g,"'\\''")+"'"; }
   function winToWsl(p){ var m=String(p).match(/^([A-Za-z]):[\\/](.*)$/); return m?('/mnt/'+m[1].toLowerCase()+'/'+m[2].replace(/\\/g,'/')):p; }
@@ -889,6 +892,7 @@ document.querySelectorAll('pre').forEach(function(pre){
     if(!smoke && $('b_nocontrols').checked) a.push(['--no-controls']);
     if(!smoke && $('b_prodigal').checked) a.push(['--prodigal-gate']);
     if(!smoke && $('b_noseed').checked) a.push(['--no-seed-tree']);
+    if($('b_detach') && $('b_detach').checked) a.push(['--detach']);
     return a;
   }
   function fmt(a, qf, sep){ return a.map(function(x){ return x.length>1?(x[0]+' '+qf(x[1])):x[0]; }).join(sep); }
@@ -915,13 +919,19 @@ document.querySelectorAll('pre').forEach(function(pre){
     var pkg=pkgWsl();
     if(!pkg){ alert('Open this guide by double-clicking docs\\guide.html INSIDE the tool folder, then this button can build the launcher. Otherwise use Copy command + OPEN_TOOL_TERMINAL.bat.'); return; }
     var cmd='bash '+sq(pkg+'/run.sh')+' '+fmt(ARGV, sq, ' ');
+    var det=ARGV.some(function(x){return x[0]==='--detach';});
+    var intro=det
+      ? 'echo Starting your run. The FIRST run also installs the toolkit (a few minutes).\r\necho It then keeps running in the background — you can close this window when it says so.\r\n'
+      : 'echo Starting your run. The FIRST run also installs the toolkit (a few minutes).\r\necho Leave this window open until it says the run is finished.\r\n';
+    var outro=det
+      ? 'echo ============ It is now running in the background — you can close this window. Use CHECK_RUN.bat to watch it. ============\r\n'
+      : 'echo ============ Run finished. Open report.html in your results folder. ============\r\n';
     var bat='@echo off\r\ntitle HMM Homologue Finder run\r\n'
-      +'echo Starting your run. The FIRST run also installs the toolkit (a few minutes).\r\n'
-      +'echo Leave this window open until it says the run is finished.\r\n'
+      +intro
       +'echo.\r\n'
       +'wsl -d Ubuntu -- bash -c "'+cmd.replace(/"/g,'')+'"\r\n'
       +'echo.\r\n'
-      +'echo ============ Run finished. Open report.html in your results folder. ============\r\n'
+      +outro
       +'pause\r\n';
     var a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob([bat],{type:'application/octet-stream'}));

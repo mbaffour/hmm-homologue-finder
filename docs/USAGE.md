@@ -47,6 +47,7 @@ Always `conda activate hmm-discovery` first (the launchers do this for you).
 | `--prodigal-gate` | off | Stricter: require six-frame hits to overlap a Prodigal gene. |
 | `--find-interrupted` | off | Also read-through-scan the nucleotide DBs for homologs interrupted by a premature stop (overprinted/pseudogenized genes the stop-to-stop search misses). Writes `interrupted_homologs.tsv` (incl. genome coordinates, the full read-through ORF, the actual stop codon's coordinate `natural_stop_nt`, and an **overprinting/silent-stop verdict** `overprinting_support` = strong/partial/none) plus three FASTAs: `interrupted_homologs_domain_aa.faa`, `…_full_orf_aa.faa`, `…_full_orf_nt.fna`. See [OUTPUTS.md](OUTPUTS.md). |
 | `--no-seed-tree` | off | Skip the pre-run seed-only QC tree + alignment. |
+| `--detach` *(run.sh)* | off | Run in the background in its **own session** so closing the terminal window (a SIGHUP) can't kill a long / walk-away run. Re-launches itself with `setsid`; console output goes to `hmm_run_console_<timestamp>.log` next to your seed. Check progress any time with `final/CHECK_RUN.bat`. A detached run has no terminal to prompt at, so pass `--email` (else it runs offline) and `--databases` (else the defaults are used). |
 | `--synteny-gene-labels` | off | Label neighbour genes with function in synteny figures. |
 | `--color-by {function,conservation,both}` | both | How to colour synteny neighbourhood genes. |
 | `--skip-tool-check` | off | Skip the startup software preflight. |

@@ -4,6 +4,40 @@
 # pipeline, which asks for your seed FASTA.
 set -u -o pipefail   # NOT -e: conda hook + `command -v` probes return non-zero by design
 cd "$(dirname "$0")"
+HERE="$(pwd)"
+
+# --detach: re-launch this run in its OWN session (setsid) so closing the terminal
+# window — which sends SIGHUP to the foreground job and would otherwise kill a long
+# run — cannot stop it. The detached copy does the normal setup + search; its console
+# output is redirected to a log file (next to your seed, else your home folder).
+# --detach is stripped before relaunch so the run happens exactly once. Detached runs
+# have no terminal, so they never prompt: pass --email for online lookups (else they
+# run offline) and --databases to choose DBs (else the defaults are used).
+case " $* " in
+  *" --detach "*)
+    detach_args=()
+    for a in "$@"; do [ "$a" = "--detach" ] || detach_args+=("$a"); done
+    seed=""; want=0
+    for a in "$@"; do
+      if [ "$want" = 1 ]; then seed="$a"; want=0; fi
+      [ "$a" = "--fasta" ] && want=1
+    done
+    case "$seed" in [A-Za-z]:[\\/]*) seed="$(wslpath -u "$seed" 2>/dev/null || printf '%s' "$seed")";; esac
+    logdir="$HOME"
+    if [ -n "$seed" ]; then sd="$(dirname "$seed" 2>/dev/null || true)"; [ -n "$sd" ] && [ -d "$sd" ] && logdir="$sd"; fi
+    log="$logdir/hmm_run_console_$(date +%Y%m%d_%H%M%S).log"
+    setsid nohup bash "$HERE/run.sh" ${detach_args[@]+"${detach_args[@]}"} </dev/null >"$log" 2>&1 &
+    bgpid=$!
+    printf '\n============================================================\n'
+    printf ' Your search is now running IN THE BACKGROUND (pid %s).\n' "$bgpid"
+    printf ' You can safely CLOSE THIS WINDOW — the run keeps going.\n\n'
+    printf '   progress log : %s\n' "$log"
+    printf '   when it finishes, open  report.html  in your results folder.\n'
+    printf '   (double-click CHECK_RUN.bat any time to see how it is going)\n'
+    printf '============================================================\n\n'
+    exit 0
+    ;;
+esac
 
 ENV_NAME="hmm-discovery"
 
