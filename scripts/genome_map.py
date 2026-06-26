@@ -300,11 +300,11 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
             fig, axes = rec.plot_on_multiple_lines(
                 nucl_per_line=nucl, figure_width=min(22.0, max(12.0, nucl / 1800.0)),
                 elevate_outline_annotations=True, annotate_inline=True,
-                max_label_length=16, max_line_length=14)
+                max_label_length=46, max_line_length=20)
             axes_list = list(axes) if hasattr(axes, "__iter__") else [axes]
         else:
             ax = rec.plot(figure_width=fig_w, elevate_outline_annotations=True,
-                          annotate_inline=True, max_label_length=24, max_line_length=20)[0]
+                          annotate_inline=True, max_label_length=60, max_line_length=24)[0]
             axes_list = [ax]
             fig = ax.figure
     finally:
