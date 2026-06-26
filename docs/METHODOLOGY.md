@@ -106,7 +106,24 @@ round) is the canonical set used for the figures, the published profile HMM, and
 the main paper table, so tables and figures describe the same homolog set.
 
 ## 7. Downstream characterisation
-- **Clustering** — CD-HIT (40% identity, 80% coverage).
+- **Clustering** — CD-HIT (`-c 0.4 -aL 0.8`): **40 % amino-acid identity with the alignment
+  spanning ≥80 % of the longer sequence's length**. *Why these cut-offs:* 40 % identity sits at
+  the upper edge of the homology "twilight zone", so genuinely related but diverged homologs are
+  grouped into one cluster while unrelated sequences stay separate; requiring the alignment to
+  cover 80 % of the **longer** sequence makes a cluster reflect **full-length** homology rather
+  than a shared small motif (a short conserved domain inside two otherwise different proteins
+  will not merge them). A cluster is
+  therefore a *sub-family* of mutually similar homologs, and is the unit whose gene
+  neighbourhoods the synteny step compares. The **same phage frequently appears under two
+  accessions** (e.g. an INPHARED id *and* a RefSeq `NC_` id for the same genome); these are
+  collapsed to one representative (canonical-organism de-duplication, preferring the more
+  complete / RefSeq record) so a genome is drawn once, not as two near-identical tracks.
+  *Why some cluster numbers are **absent** from the synteny figures:* a cluster that reduces to
+  a **single distinct phage** (most often one genome under two accessions, merged by the step
+  above) has nothing to compare — a synteny panel needs ≥2 genomes — so no per-cluster panel is
+  drawn and that number is listed in the figure index's *"Why some cluster numbers are absent"*
+  note. Nothing is lost: those homologs still appear in the tree, the alignment, the hit tables,
+  and the combined all-loci synteny panel.
 - **Synteny** — Prodigal gene calls provide flanking-gene context; neighbourhoods
   are compared per cluster with clinker (interactive `cluster_*.html`; a static
   `cluster_*.png` is also exported per cluster when a headless browser is installed)
@@ -155,6 +172,53 @@ the main paper table, so tables and figures describe the same homolog set.
   the input set. No per-iteration trees are built (they answer no scientific
   question and waste compute).
 - **Motifs** — MEME (<=3 motifs, width 6-30 aa); scanned with FIMO.
+
+## 7a. Figure colours — what they mean and why the figures look as they do
+Colours are **consistent across every figure** so a gene category or a clade means the same
+thing wherever you see it. There is nothing arbitrary in the palette; each colour encodes a
+specific, recorded decision.
+
+**Synteny panels & GenBank neighbourhood maps — coloured by broad gene FUNCTION (default).**
+Each neighbouring gene is binned into one of **eight functional categories** from keywords in
+its real GenBank / VOGDB product description (the maps fetch the genome's genuine annotation, so
+the colour reflects the published function, not a guess). The rule order matters and is
+deliberate — the *first* matching rule wins, so e.g. "DNA-directed **RNA polymerase**" is caught
+by *transcription / regulation* before the generic "polymerase" keyword could mis-file it under
+*replication*:
+- **structural** (blue) — capsid, tail, baseplate, portal, head, fibre, sheath, tape measure …
+- **packaging** (purple) — terminase, headful packaging
+- **replication / nucleotide metabolism** (green) — polymerase, primase, helicase, ligase, nuclease …
+- **transcription / regulation** (orange) — RNA polymerase, sigma factor, repressor …
+- **lysis** (red) — holin, endolysin, spanin, amidase …
+- **integration / mobile** (brown) — integrase, transposase, intron …
+- **host / metabolism / defense** (teal) — methyltransferase, restriction, toxin …
+- **RNA gene** (pink) — tRNA, tmRNA, ncRNA …
+
+The **gene of interest (the HMM hit) is bold gold** — a colour reserved for it alone, so it is
+never confused with a functional category (on the maps it carries no text label of its own; the
+gold + the legend identify it). A gene with no functional keyword, or one annotated
+"hypothetical / uncharacterized / DUF", is light grey **"hypothetical / unknown"** — this is
+honest (the genome's own annotation gives it no function), not a pipeline gap; uncultured
+metagenomic genomes that ship no annotation at all fall here too. A **colour-blind-safe** palette
+(Paul Tol "muted", distinguishable under the common dichromacies) is available with
+`--palette colorblind`; gold and grey are unchanged.
+
+**Synteny — coloured by CONSERVATION (`--color-by conservation`; `both` writes both versions).**
+The same arrows are instead shaded on a **blue gradient by how many genomes in the cluster share
+each gene** (clinker orthogroups): a gene present in *every* genome is dark blue (the conserved
+backbone that always travels with the gene of interest), one present in only a few is pale
+(accessory / variable). Use the **function** view to ask "what does each neighbour do" and the
+**conservation** view to ask "which neighbours are part of the core, syntenic block".
+
+**Phylogeny — tips coloured by host GENUS.** Each tip is coloured by the host genus (the first
+word of the organism name) from a 20-colour qualitative palette; any colour too pale to read on
+white is automatically darkened so every label stays legible. Your **input seeds are drawn in
+dark slate grey** (and listed as "input seed" in the legend) so you can see exactly where the
+starting set falls among everything discovered — the deliverable tree deliberately includes the
+seeds *in context*, while a separate seeds-pruned "homologs only" tree gives a cleaner view of
+just the discoveries. A **dot on an internal branch** marks **robust support — SH-aLRT ≥ 80 AND
+UFBoot ≥ 95** (two independent measures, because ultrafast-bootstrap alone is over-optimistic; a
+branch with **no** dot is simply not strongly resolved and should not be over-read).
 
 ## 7b. Threshold calibration (controls)
 The bit-score thresholds used to tier hits (strict 45, moderate 30) are calibrated
