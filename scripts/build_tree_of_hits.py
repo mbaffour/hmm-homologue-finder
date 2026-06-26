@@ -257,17 +257,28 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
             ok = _supported(name, sup)
             sizes.append(7 if ok else 0)
             ncolors.append("#222222" if ok else "transparent")
+        # Reserve a dedicated right-hand column WIDE ENOUGH for the legend labels —
+        # including the long "SH-aLRT>=80 and UFBoot>=95" key — so they are never clipped
+        # at the canvas edge. The tree is confined to the left of that column (bounds=)
+        # so the labels and the legend never collide.
+        leg_labels = list(uniq) + (["input seed (grey)"] if (mark_seeds and any(is_seed)) else []) \
+                     + ["SH-aLRT>=80 and UFBoot>=95"]
+        # ~13 px per character at toyplot's legend font + marker & padding; generous so
+        # the longest label (the support key) is never clipped.
+        leg_w = min(560, int(max((len(s) for s in leg_labels), default=12) * 13) + 80)
         if layout == "c":
             dim = max(700, min(9 * ntips, 18000))   # cap so the canvas stays under the px limit
-            canvas = toyplot.Canvas(width=dim + 280, height=dim, style={"background-color": "white"})
+            canvas = toyplot.Canvas(width=dim + leg_w + 40, height=dim, style={"background-color": "white"})
+            ax = canvas.cartesian(padding=25)
         else:
-            canvas = toyplot.Canvas(width=1300, height=max(400, min(18 * ntips, 24000)),
-                                    style={"background-color": "white"})
-        ax = canvas.cartesian(padding=25)
+            tree_w = 1240
+            height = max(400, min(18 * ntips, 24000))
+            canvas = toyplot.Canvas(width=tree_w + leg_w, height=height, style={"background-color": "white"})
+            ax = canvas.cartesian(bounds=(25, tree_w, 25, height - 25))
         ax.show = False
         tre.draw(axes=ax, layout=layout, tip_labels_align=(layout != "c"),
                  tip_labels_colors=tip_colors, node_sizes=sizes, node_colors=ncolors)
-        # host-genus colour legend + a support-dot key
+        # host-genus colour legend + a support-dot key, in the reserved right column
         try:
             entries = [(g, toyplot.marker.create(shape="o", size=11, mstyle={"fill": gcol[g]}))
                        for g in uniq]
@@ -276,7 +287,7 @@ def _render_newick(newick_path: Path, out_dir: Path, stem: str, layout: str = "r
                                                                   mstyle={"fill": "#4d5560"})))
             entries.append(("SH-aLRT>=80 and UFBoot>=95", toyplot.marker.create(shape="o", size=9,
                                                                   mstyle={"fill": "#222222"})))
-            canvas.legend(entries, corner=("right", 6, 150, 16 * len(entries)))
+            canvas.legend(entries, corner=("right", 18, leg_w - 30, 16 * len(entries)))
         except Exception as e:
             print(f"  ({stem} legend skipped: {e})")
         made = []
