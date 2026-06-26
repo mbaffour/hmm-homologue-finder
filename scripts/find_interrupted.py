@@ -48,16 +48,17 @@ def open_maybe_gz(p: Path):
     return gzip.open(p, "rt") if p.suffix == ".gz" else open(p)
 
 
-def read_through_aa(nt: str, strand: str, frame: int) -> tuple[str, str]:
-    """Translate one reading frame with read-through. Returns (search_aa, marker_aa):
-    search_aa has 'X' at stops (so the HMM matches across them); marker_aa keeps '*'
-    at the same positions so the stops can be located afterwards."""
+def read_through_aa(nt: str, strand: str, frame: int, table: int = 11) -> tuple[str, str]:
+    """Translate one reading frame with read-through, under NCBI genetic code `table`
+    (11 = bacterial/archaeal/phage default; e.g. 4 = Mycoplasma TGA->W, 25 = TGA->G).
+    Returns (search_aa, marker_aa): search_aa has 'X' at stops (so the HMM matches
+    across them); marker_aa keeps '*' at the same positions so stops can be located."""
     s = nt.upper().replace("U", "T")
     if strand == "-":
         s = str(Seq(s).reverse_complement())
     s = s[frame:]
     s = s[: len(s) // 3 * 3]
-    marker = str(Seq(s).translate()) if s else ""   # '*' at stops
+    marker = str(Seq(s).translate(table=table)) if s else ""   # '*' at stops
     return marker.replace("*", STOP_SEARCH), marker
 
 
@@ -251,11 +252,11 @@ def analyze_overprinting(contig: str, small_strand: str, dom_lo1: int, dom_hi1: 
             "per_stop_silent": per_stop, "support": support}
 
 
-def _frames(seq: str):
+def _frames(seq: str, table: int = 11):
     """Yield (strand, frame, search_aa, marker_aa) for all six frames."""
     for strand in ("+", "-"):
         for frame in (0, 1, 2):
-            search, marker = read_through_aa(seq, strand, frame)
+            search, marker = read_through_aa(seq, strand, frame, table)
             if len(search) >= MIN_AA:
                 yield strand, frame, search, marker
 
@@ -373,7 +374,7 @@ def _windows(n: int):
 
 
 def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workdir: Path,
-                  min_bit: float, cpu: int) -> tuple[int, list]:
+                  min_bit: float, cpu: int, table: int = 11) -> tuple[int, list]:
     """hmmsearch one batch of (name, search_aa); return (n_scored, interrupted_rows).
     markers maps name -> marker_aa; contig_nt maps contig -> forward DNA (both for
     the SAME batch, kept small)."""
@@ -422,7 +423,7 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
         # Overprinting (silent-stop) test: is the premature stop synonymous in an OPEN
         # overlapping antisense frame? (the proof of overprinting, not just location).
         if nt and stop_fwds:
-            opa = analyze_overprinting(nt, strand, nt_start, nt_end, stop_fwds)
+            opa = analyze_overprinting(nt, strand, nt_start, nt_end, stop_fwds, table)
             anti_open_frame, anti_open_stops = opa["open_frame"], opa["open_stops"]
             stop_silent = ";".join("1" if s else "0" for s in opa["per_stop_silent"])
             overpr = opa["support"]
@@ -468,7 +469,7 @@ def _search_batch(frames: list, markers: dict, contig_nt: dict, hmm: Path, workd
 
 
 def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=print,
-         emit_fasta: bool = True) -> dict:
+         emit_fasta: bool = True, table: int = 11) -> dict:
     """Batched read-through scan — streams the DB in BATCH_CONTIGS-sized chunks so a
     huge nucleotide DB never produces one giant temp file (which abort hmmsearch).
     Temp lives next to the output (spacious), not /tmp."""
@@ -485,7 +486,7 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
             for rec in SeqIO.parse(fh, "fasta"):
                 seq = str(rec.seq)
                 contig_nt[rec.id] = seq.upper().replace("U", "T")   # for genome coords + DNA
-                for strand, frame, search, marker in _frames(seq):
+                for strand, frame, search, marker in _frames(seq, table):
                     for off, wlen in _windows(len(search)):
                         sw = search[off:off + wlen]
                         if len(sw) < MIN_AA:
@@ -497,7 +498,7 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
                 nctg += 1
                 if nctg >= BATCH_CONTIGS:
                     try:
-                        ns, rows = _search_batch(frames, markers, contig_nt, hmm, workdir, min_bit, cpu)
+                        ns, rows = _search_batch(frames, markers, contig_nt, hmm, workdir, min_bit, cpu, table)
                         n_scored += ns
                         all_rows += rows
                     except Exception as e:
@@ -506,7 +507,7 @@ def _run(genomes: Path, hmm: Path, out: Path, min_bit: float, cpu: int, log=prin
                     frames, markers, contig_nt, nctg = [], {}, {}, 0
             if frames:
                 try:
-                    ns, rows = _search_batch(frames, markers, contig_nt, hmm, workdir, min_bit, cpu)
+                    ns, rows = _search_batch(frames, markers, contig_nt, hmm, workdir, min_bit, cpu, table)
                     n_scored += ns
                     all_rows += rows
                     n_batches += 1
@@ -552,12 +553,15 @@ def main() -> None:
     ap.add_argument("--min-bit", type=float, default=25.0,
                     help="minimum domain bit score to report (default 25)")
     ap.add_argument("--cpu", type=int, default=8)
+    ap.add_argument("--trans-table", type=int, default=11,
+                    help="NCBI genetic code for the read-through translation (default 11 = "
+                         "bacterial/archaeal/phage; e.g. 4 = Mycoplasma, 25 = candidate SR1)")
     args = ap.parse_args()
     if not args.genomes.exists():
         sys.exit(f"genomes FASTA not found: {args.genomes}")
     if not args.hmm.exists():
         sys.exit(f"HMM not found: {args.hmm}")
-    s = _run(args.genomes, args.hmm, args.out, args.min_bit, args.cpu)
+    s = _run(args.genomes, args.hmm, args.out, args.min_bit, args.cpu, table=args.trans_table)
     if "error" in s:
         sys.exit(s["error"])
     print(f"  matches scored: {s['matches_scored']}; interrupted candidates: "

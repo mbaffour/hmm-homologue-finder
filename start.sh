@@ -58,9 +58,10 @@ echo "  Type or paste its path — Windows (C:\\Users\\...) or WSL (/mnt/c/...) 
 echo "  Enter = bundled example."
 FASTA="$(resolve_path "$(ask '  seed FASTA' "$HERE/examples/example_seeds.fasta")")"
 if [ ! -f "$FASTA" ]; then echo "  !! File not found: $FASTA"; exit 1; fi
-echo "  A nucleotide CDS seed is auto-detected and translated (default genetic code 11,"
-echo "  bacterial/phage). Press Enter to accept, or set a different NCBI translation table."
-TT="$(ask '  genetic code table for a nucleotide seed' '')"
+echo "  Genetic code (NCBI translation table) — used both to translate a nucleotide CDS seed"
+echo "  AND for the read-through / interrupted-gene scan. Default 11 (bacterial/archaeal/phage);"
+echo "  e.g. 4 = Mycoplasma (TGA=Trp), 25 = candidate SR1. Press Enter to keep 11."
+TT="$(ask '  genetic code table' '')"
 [ -n "$TT" ] && ARGS_TT=(--trans-table "$TT") || ARGS_TT=()
 
 # 2. mode

@@ -257,6 +257,14 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
         <select id="b_mode"><option value="full">Full run</option><option value="smoke">Smoke (fast self-test)</option></select></div>
       <div><label>Iterations (--iterations)</label><input type="number" id="b_iter" value="3" min="1" max="10"></div>
       <div><label>CPU threads (--cpu)</label><input type="number" id="b_cpu" value="8" min="1" max="256"></div>
+      <div><label>Genetic code (--trans-table)</label>
+        <select id="b_table">
+          <option value="11">11 — Bacterial/Archaeal/Phage (default)</option>
+          <option value="1">1 — Standard</option>
+          <option value="4">4 — Mycoplasma/Spiroplasma (TGA=Trp)</option>
+          <option value="25">25 — Candidate division SR1 (TGA=Gly)</option>
+          <option value="6">6 — Ciliate (TAA/TAG=Gln)</option>
+        </select></div>
     </div>
     <div class="row">
       <div><label>NCBI email (--email; blank = offline)</label><input type="text" id="b_email" value=""></div>
@@ -270,6 +278,7 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <div class="chk"><input type="checkbox" id="b_prodigal"><label style="margin:0">Strict: require Prodigal coding-locus overlap (<code>--prodigal-gate</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_noseed"><label style="margin:0">Skip the pre-run seed QC tree (<code>--no-seed-tree</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_nt"><label style="margin:0">Seed is nucleotide DNA (translate; <code>--input-type nucleotide</code>)</label></div>
+    <div class="chk"><input type="checkbox" id="b_fi"><label style="margin:0">Find interrupted / overprinted genes — read-through scan (<code>--find-interrupted</code>)</label></div>
     <div class="out"><pre><code id="b_out"></code></pre></div>
   </div>
 </section>
@@ -287,7 +296,7 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <tr><td><code>--email ADDR</code></td><td>none</td><td>NCBI Entrez email for organism/sequence lookups. Precedence: <code>--email</code> &gt; <code>$NCBI_EMAIL</code> &gt; TTY prompt &gt; offline. <b>Never hardcoded.</b></td></tr>
     <tr><td><code>--no-annotate</code></td><td>off</td><td>Fully offline: skip all NCBI lookups. Hit tables still build (generic organism labels).</td></tr>
     <tr><td><code>--input-type {auto,protein,nucleotide}</code></td><td>auto</td><td>Seed type. <code>auto</code> detects nucleotide vs protein; nucleotide seeds are translated first.</td></tr>
-    <tr><td><code>--trans-table N</code></td><td>11</td><td>Genetic code for translating a nucleotide seed (11 = bacterial/archaeal/phage).</td></tr>
+    <tr><td><code>--trans-table N</code></td><td>11</td><td>NCBI genetic code — translates a nucleotide seed <b>and</b> the read-through / interrupted-gene scan (11 = bacterial/archaeal/phage; e.g. 4 = Mycoplasma, 25 = candidate SR1).</td></tr>
     <tr><td><code>--databases "A,B,…"</code></td><td>full set</td><td>Exact catalog names (see Databases). Omitted on a TTY → interactive picker; unattended → full default set.</td></tr>
     <tr><td><code>--all-databases</code></td><td>off</td><td>Take the full default set without the interactive picker (even on a TTY).</td></tr>
     <tr><td><code>--pick-databases</code></td><td>off</td><td>Force the interactive database picker.</td></tr>
@@ -824,8 +833,8 @@ document.querySelectorAll('pre').forEach(function(pre){
 (function(){
   var $=function(id){return document.getElementById(id);};
   var out=$('b_out');
-  var ids=['b_fasta','b_name','b_mode','b_iter','b_cpu','b_email','b_db','b_dbcustom',
-           'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt'];
+  var ids=['b_fasta','b_name','b_mode','b_iter','b_cpu','b_table','b_email','b_db','b_dbcustom',
+           'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt','b_fi'];
   function q(s){ return /[^A-Za-z0-9_.,\-\/=]/.test(s)?('"'+s+'"'):s; }
   function build(){
     $('b_dbcustom_wrap').style.display = ($('b_db').value==='custom')?'block':'none';
@@ -845,6 +854,8 @@ document.querySelectorAll('pre').forEach(function(pre){
     if($('b_offline').checked) p.push('--no-annotate');
     else if(em) p.push('--email '+q(em));
     if($('b_nt').checked) p.push('--input-type nucleotide');
+    var tb=$('b_table').value; if(tb && tb!=='11') p.push('--trans-table '+tb);
+    if(!smoke && $('b_fi').checked) p.push('--find-interrupted');
     if(!smoke && $('b_nocontrols').checked) p.push('--no-controls');
     if(!smoke && $('b_prodigal').checked) p.push('--prodigal-gate');
     if(!smoke && $('b_noseed').checked) p.push('--no-seed-tree');

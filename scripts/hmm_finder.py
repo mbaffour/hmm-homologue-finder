@@ -590,7 +590,7 @@ def _interrupted_min_bit(control_summary: dict | None, floor: float = 30.0):
 
 
 def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
-                         cpu, log, control_summary: dict | None = None) -> dict:
+                         cpu, log, control_summary: dict | None = None, table: int = 11) -> dict:
     """Read-through scan of the searched NUCLEOTIDE databases for homologs that are
     interrupted by a premature stop codon (e.g. overprinted genes). Writes
     out/interrupted_homologs.tsv and returns a summary. Never raises.
@@ -628,8 +628,8 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
     # Family-calibrated reporting floor (see docstring): max(30, ROC-Youden).
     min_bit, thr_basis = _interrupted_min_bit(control_summary)
     log(f"Read-through scan for interrupted/overprinted homologs "
-        f"({len(targets)} nucleotide DB file(s)); reporting threshold {min_bit:g} bits "
-        f"[{thr_basis}]…")
+        f"({len(targets)} nucleotide DB file(s); genetic code {table}); reporting threshold "
+        f"{min_bit:g} bits [{thr_basis}]…")
     import csv as _csv
     out_tsv = out / "interrupted_homologs.tsv"
     all_rows, scored = [], 0
@@ -638,7 +638,7 @@ def run_find_interrupted(out: Path, hmm: Path, db_cache: Path, databases: str,
         try:
             # emit_fasta=False: per-DB temp runs only produce partial TSVs; the
             # protein FASTAs are written once below, from the aggregated rows.
-            s = _fi(fa, Path(hmm), tmp, min_bit, int(cpu), log, emit_fasta=False)
+            s = _fi(fa, Path(hmm), tmp, min_bit, int(cpu), log, emit_fasta=False, table=table)
             scored += s.get("matches_scored", 0)
             if tmp.exists():
                 all_rows += list(_csv.DictReader(open(tmp), delimiter="\t"))
@@ -1129,7 +1129,7 @@ def main() -> None:
     if getattr(args, "find_interrupted", False) and not args.smoke:
         interrupted_summary = run_find_interrupted(
             out, rbest / "hmm" / "benchmark_profile.hmm", args.db_cache,
-            args.databases, args.cpu, log, control_summary)
+            args.databases, args.cpu, log, control_summary, table=args.trans_table)
 
     # Consolidated methodology / reproducibility record at the run root.
     write_methods_log(out, args, fasta, label, args.databases, iter_hits,

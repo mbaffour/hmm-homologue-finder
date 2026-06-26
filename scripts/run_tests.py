@@ -198,6 +198,13 @@ import find_interrupted as FI  # noqa: E402
 _s, _m = FI.read_through_aa("ATG" + "AAA" + "TAA" + "GGG", "+", 0)   # M K * G
 check("find_interrupted: read-through marker keeps '*' at the stop", _m == "MK*G")
 check("find_interrupted: search sequence masks the stop as 'X'", _s == "MKXG")
+# genetic-code threading: read-through honours --trans-table (TGA = stop in 11, Trp in code 4)
+_s11, _m11 = FI.read_through_aa("ATG" + "TGA" + "AAA", "+", 0)            # default table 11
+check("find_interrupted: read_through_aa default table 11 -> TGA is a stop",
+      _m11 == "M*K" and _s11 == "MXK")
+_s4, _m4 = FI.read_through_aa("ATG" + "TGA" + "AAA", "+", 0, table=4)     # Mycoplasma: TGA=Trp
+check("find_interrupted: read_through_aa table 4 -> TGA translates to Trp, no stop",
+      _m4 == "MWK" and "*" not in _m4)
 check("find_interrupted: internal stop counted (1-based envelope)",
       FI.count_envelope_stops("AB*CD", 1, 5) == (1, [3]))
 check("find_interrupted: terminal stop not counted as internal",
