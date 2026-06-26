@@ -281,26 +281,27 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <div class="chk"><input type="checkbox" id="b_nt"><label style="margin:0">Seed is nucleotide DNA (translate; <code>--input-type nucleotide</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_fi"><label style="margin:0">Find interrupted / overprinted genes — read-through scan (<code>--find-interrupted</code>)</label></div>
     <div class="out"><pre><code id="b_out"></code></pre></div>
-    <button type="button" id="b_copy" style="margin-top:8px;padding:8px 14px;border:1px solid #d4dae1;border-radius:8px;background:#fff;color:#1558b0;cursor:pointer;font-size:13px">📋 Copy command</button>
-    <span id="b_copied" style="color:#1a9a4a;font-size:13px;margin-left:8px;display:none">copied!</span>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px">
+      <button type="button" id="b_dl" style="padding:9px 16px;border:1px solid #1558b0;border-radius:8px;background:#1558b0;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Download one-click launcher (.bat)</button>
+      <button type="button" id="b_copy" style="padding:9px 14px;border:1px solid #d4dae1;border-radius:8px;background:#fff;color:#1558b0;cursor:pointer;font-size:13px">Copy command</button>
+      <span id="b_copied" style="color:#1a9a4a;font-size:13px;display:none">copied</span>
+      <span id="b_dlok" style="color:#1a9a4a;font-size:13px;display:none">downloaded — now double-click run_my_search.bat</span>
+    </div>
     <details style="margin-top:14px;border:1px solid #d4dae1;border-radius:8px;padding:10px 14px">
       <summary style="cursor:pointer;font-weight:600">How do I run this? (no terminal experience needed)</summary>
       <div style="margin-top:8px;font-size:14px;line-height:1.55">
-        <p><b>Easiest — you don't even need this command.</b> In your <code>final</code> folder, double-click
-          <code>START_HERE.bat</code>. It asks you these same questions and runs everything for you. Use the
-          command builder only when you want to save or re-use an exact command.</p>
-        <p><b>To run the command shown above, step by step:</b></p>
-        <ol style="margin:6px 0 0 20px;padding:0">
-          <li><b>One time only:</b> double-click <code>START_HERE.bat</code> once and let setup finish (it builds the
-            toolkit, a few minutes). You can close that window afterwards.</li>
-          <li>Double-click <code>OPEN_TOOL_TERMINAL.bat</code> (next to <code>START_HERE.bat</code>). A window with a
-            <code>$</code> prompt opens — already inside the tool folder with everything ready.</li>
-          <li>Click <b>📋 Copy command</b> above, then in that window <b>right-click to paste</b> and press <b>Enter</b>.</li>
-          <li>It runs (minutes to ~an hour). When it finishes, open the new results folder's <code>report.html</code>
-            in your browser.</li>
-        </ol>
-        <p style="color:#6b7888;margin-top:8px">Tip: set the <b>Seed FASTA path</b> field above to your own file — a
-          Windows path like <code>C:\Users\you\Downloads\seeds.fasta</code> works fine.</p>
+        <p><b>Easiest — one click, no terminal:</b> click <b>Download one-click launcher</b> above. You get a file
+          called <code>run_my_search.bat</code> — double-click it. It opens the toolkit, installs it on first use,
+          and runs your search. Leave the window open until it says finished, then open <code>report.html</code> in
+          your results folder. (This works when you opened this guide from inside the tool folder,
+          <code>final\hmm-homologue-finder\docs\guide.html</code>.)</p>
+        <p><b>Even simpler if you don't need a specific command:</b> double-click <code>START_HERE.bat</code> in your
+          <code>final</code> folder — it asks these same questions and runs everything.</p>
+        <p style="color:#6b7888;margin-top:8px"><b>Or the manual way:</b> double-click <code>OPEN_TOOL_TERMINAL.bat</code>
+          (a ready window opens inside the tool folder), then <b>Copy command</b> and right-click to paste, Enter. The
+          command starts with <code>bash run.sh</code>, which sets up the environment itself — you don't activate anything.</p>
+        <p style="color:#6b7888;margin-top:8px">Tip: set the <b>Seed FASTA path</b> field to your own file — a Windows
+          path like <code>C:\Users\you\Downloads\seeds.fasta</code> works fine.</p>
       </div>
     </details>
   </div>
@@ -859,30 +860,59 @@ document.querySelectorAll('pre').forEach(function(pre){
   var ids=['b_fasta','b_name','b_mode','b_iter','b_cpu','b_table','b_email','b_db','b_dbcustom',
            'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt','b_fi'];
   function q(s){ return /[^A-Za-z0-9_.,\-\/=]/.test(s)?('"'+s+'"'):s; }
+  function sq(s){ return "'"+String(s).replace(/'/g,"'\\''")+"'"; }
+  var ARGV=[];
+  function collect(){
+    var smoke=$('b_mode').value==='smoke', a=[];
+    a.push(['--fasta', ($('b_fasta').value.trim()||'my_seeds.faa')]);
+    var n=$('b_name').value.trim(); if(n) a.push(['--name', n]);
+    if(smoke){ a.push(['--smoke']); }
+    else{
+      var it=$('b_iter').value; if(it && it!=='3') a.push(['--iterations', it]);
+      var db=$('b_db').value;
+      if(db==='pick') a.push(['--pick-databases']);
+      else if(db==='custom'){ var d=$('b_dbcustom').value.trim(); if(d) a.push(['--databases', d]); }
+    }
+    var cpu=$('b_cpu').value; if(cpu && cpu!=='8') a.push(['--cpu', cpu]);
+    if($('b_offline').checked) a.push(['--no-annotate']);
+    else { var em=$('b_email').value.trim(); if(em) a.push(['--email', em]); }
+    if($('b_nt').checked) a.push(['--input-type','nucleotide']);
+    var tb=$('b_table').value; if(tb && tb!=='11') a.push(['--trans-table', tb]);
+    if(!smoke && $('b_fi').checked) a.push(['--find-interrupted']);
+    if(!smoke && $('b_nocontrols').checked) a.push(['--no-controls']);
+    if(!smoke && $('b_prodigal').checked) a.push(['--prodigal-gate']);
+    if(!smoke && $('b_noseed').checked) a.push(['--no-seed-tree']);
+    return a;
+  }
+  function fmt(a, qf, sep){ return a.map(function(x){ return x.length>1?(x[0]+' '+qf(x[1])):x[0]; }).join(sep); }
   function build(){
     $('b_dbcustom_wrap').style.display = ($('b_db').value==='custom')?'block':'none';
-    var smoke=$('b_mode').value==='smoke';
-    var p=['python3 scripts/hmm_finder.py'];
-    var f=$('b_fasta').value.trim()||'my_seeds.faa'; p.push('--fasta '+q(f));
-    var n=$('b_name').value.trim(); if(n) p.push('--name '+q(n));
-    if(smoke){ p.push('--smoke'); }
-    else{
-      var it=$('b_iter').value; if(it && it!=='3') p.push('--iterations '+it);
-      var db=$('b_db').value;
-      if(db==='pick') p.push('--pick-databases');
-      else if(db==='custom'){ var d=$('b_dbcustom').value.trim(); if(d) p.push('--databases '+q(d)); }
-    }
-    var cpu=$('b_cpu').value; if(cpu && cpu!=='8') p.push('--cpu '+cpu);
-    var em=$('b_email').value.trim();
-    if($('b_offline').checked) p.push('--no-annotate');
-    else if(em) p.push('--email '+q(em));
-    if($('b_nt').checked) p.push('--input-type nucleotide');
-    var tb=$('b_table').value; if(tb && tb!=='11') p.push('--trans-table '+tb);
-    if(!smoke && $('b_fi').checked) p.push('--find-interrupted');
-    if(!smoke && $('b_nocontrols').checked) p.push('--no-controls');
-    if(!smoke && $('b_prodigal').checked) p.push('--prodigal-gate');
-    if(!smoke && $('b_noseed').checked) p.push('--no-seed-tree');
-    out.textContent=p.join(' \\\n    ');
+    ARGV=collect();
+    out.textContent='bash run.sh '+fmt(ARGV, q, ' \\\n    ');
+  }
+  function pkgWsl(){
+    var href; try{ href=decodeURIComponent(location.href); }catch(e){ href=location.href; }
+    if(href.toLowerCase().indexOf('file:')!==0) return null;
+    var pth=href.replace(/^file:\/+/,'').replace(/[?#].*$/,'').replace(/\/docs\/guide\.html$/i,'');
+    var m=pth.match(/^([A-Za-z]):\/(.*)$/);
+    return m?('/mnt/'+m[1].toLowerCase()+'/'+m[2]):null;
+  }
+  function makeLauncher(){
+    var pkg=pkgWsl();
+    if(!pkg){ alert('Open this guide by double-clicking docs\\guide.html INSIDE the tool folder, then this button can build the launcher. Otherwise use Copy command + OPEN_TOOL_TERMINAL.bat.'); return; }
+    var cmd='bash '+sq(pkg+'/run.sh')+' '+fmt(ARGV, sq, ' ');
+    var bat='@echo off\r\ntitle HMM Homologue Finder run\r\n'
+      +'echo Starting your run. The FIRST run also installs the toolkit (a few minutes).\r\n'
+      +'echo Leave this window open until it says the run is finished.\r\n'
+      +'echo.\r\n'
+      +'wsl -d Ubuntu -- bash -c "'+cmd.replace(/"/g,'')+'"\r\n'
+      +'echo.\r\n'
+      +'echo ============ Run finished. Open report.html in your results folder. ============\r\n'
+      +'pause\r\n';
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([bat],{type:'application/octet-stream'}));
+    a.download='run_my_search.bat'; document.body.appendChild(a); a.click(); a.remove();
+    var d=$('b_dlok'); if(d){ d.style.display='inline'; setTimeout(function(){d.style.display='none';},4000); }
   }
   ids.forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',build); el.addEventListener('change',build);} });
   var cp=$('b_copy'); if(cp){ cp.addEventListener('click',function(){
@@ -890,6 +920,7 @@ document.querySelectorAll('pre').forEach(function(pre){
     try{ if(navigator.clipboard){ navigator.clipboard.writeText(t); } }catch(e){}
     var c=$('b_copied'); if(c){ c.style.display='inline'; setTimeout(function(){c.style.display='none';},1600); }
   }); }
+  var dl=$('b_dl'); if(dl){ dl.addEventListener('click',makeLauncher); }
   build();
 })();
 </script>
