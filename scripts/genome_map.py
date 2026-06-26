@@ -251,8 +251,12 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
         return f"\n[{c.split(' / ')[0]}]" if (functional_labels and c in CC) else ""
 
     def _lab(g):
+        # The gene of interest is identified by its bold-gold colour + the legend, so it
+        # gets NO inline text label: on a short anchor arrow DFV centres the wide
+        # "gene of interest" box on the feature and the (always-raised, see below) gold
+        # arrow then bisects it ("gen…rest"). functional_labels can still tag it.
         if g["role"] == "anchor":
-            return "gene of interest" + _tag(g)
+            return (_tag(g).strip() or None)
         if g["role"] == "overlap":
             return (g.get("label") or "overlapping gene") + _tag(g)
         if labels and id(g) in keep and g.get("label"):

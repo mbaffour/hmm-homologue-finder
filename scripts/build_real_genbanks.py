@@ -73,48 +73,64 @@ def _clean_name(title: str) -> str:
     return t.strip().rstrip(",").strip()
 
 
-def fetch_ncbi(ids: list[str], email: str) -> tuple[dict[str, str], dict[str, str]]:
-    """Batch-fetch genome sequences AND phage names from NCBI nuccore.
+def fetch_ncbi(ids: list[str], email: str) -> tuple[dict[str, str], dict[str, str], dict[str, list]]:
+    """Batch-fetch genome sequences, phage names, AND the genome's REAL gene
+    annotations from NCBI nuccore — by retrieving the full GenBank record
+    (``rettype='gbwithparts'``) rather than bare FASTA. This is what lets the
+    neighbourhood maps label flanking genes with their genuine ``/product`` names
+    (terminase, major capsid, tail fibre, …) instead of re-predicting anonymous
+    Prodigal ORFs that all render as 'hypothetical / unknown'.
 
-    Returns (sequences, names): both keyed by accession (with and without
-    version). `names` holds the organism/phage name parsed from the record
-    title (empty for records without a usable title).
+    Returns (sequences, names, feats), each keyed by accession with AND without
+    version: ``seqs[acc]`` = nucleotide sequence; ``names[acc]`` = organism/phage
+    name; ``feats[acc]`` = ``[(start, end, strand, product, gene, translation)]``
+    with 1-based inclusive coordinates (empty list if the record had no CDS).
     """
     Entrez.email = email
     seqs: dict[str, str] = {}
     names: dict[str, str] = {}
-    batch = 40
+    feats: dict[str, list] = {}
+    batch = 20  # full GenBank records are larger than FASTA → smaller batches
     for i in range(0, len(ids), batch):
         chunk = ids[i:i + batch]
-        # --- phage names (esummary: fast, no sequence) ---
-        for attempt in range(3):
-            try:
-                h = Entrez.esummary(db="nuccore", id=",".join(chunk))
-                for rec in Entrez.read(h):
-                    acc = rec.get("AccessionVersion", "")
-                    nm = _clean_name(rec.get("Title", ""))
-                    if acc and nm:
-                        names[acc] = nm
-                        names[acc.split(".")[0]] = nm
-                break
-            except Exception as e:
-                print(f"  esummary retry {attempt+1}: {e}")
-                time.sleep(5)
-        # --- sequences (efetch fasta) ---
         for attempt in range(3):
             try:
                 h = Entrez.efetch(db="nuccore", id=",".join(chunk),
-                                  rettype="fasta", retmode="text")
-                for rec in SeqIO.parse(io.StringIO(h.read()), "fasta"):
-                    seqs[rec.id.split(".")[0]] = str(rec.seq)
-                    seqs[rec.id] = str(rec.seq)
+                                  rettype="gbwithparts", retmode="text")
+                for rec in SeqIO.parse(io.StringIO(h.read()), "genbank"):
+                    acc = rec.id
+                    base = acc.split(".")[0]
+                    s = str(rec.seq)
+                    seqs[acc] = s
+                    seqs[base] = s
+                    nm = (rec.annotations.get("organism") or _clean_name(rec.description) or "").strip()
+                    if nm and nm.lower() not in ("", "."):
+                        names[acc] = nm
+                        names[base] = nm
+                    cds = []
+                    for f in rec.features:
+                        if f.type != "CDS" or f.location is None:
+                            continue
+                        try:
+                            st = int(f.location.start) + 1   # 0-based half-open -> 1-based inclusive
+                            en = int(f.location.end)
+                        except Exception:
+                            continue
+                        strand = 1 if (f.location.strand or 1) >= 0 else -1
+                        prod = (f.qualifiers.get("product") or [""])[0]
+                        gene = (f.qualifiers.get("gene") or [""])[0]
+                        transl = (f.qualifiers.get("translation") or [""])[0]
+                        cds.append((st, en, strand, prod, gene, transl))
+                    cds.sort()
+                    feats[acc] = cds
+                    feats[base] = cds
                 break
             except Exception as e:
-                print(f"  efetch retry {attempt+1} ({chunk[0]}…): {e}")
+                print(f"  efetch gb retry {attempt+1} ({chunk[0]}…): {e}")
                 time.sleep(5)
         time.sleep(0.4)  # be polite to NCBI
         print(f"  NCBI fetched {min(i+batch, len(ids))}/{len(ids)}")
-    return seqs, names
+    return seqs, names, feats
 
 
 def fetch_catalogue(url: str, wanted: set[str]) -> dict[str, str]:
@@ -175,15 +191,28 @@ def prodigal_genes(genome_id: str, seq: str):
 
 
 def build(genome_id: str, seq: str, hits: pd.DataFrame, out_dir: Path,
-          phage_name: str = "") -> Path | None:
-    genes = prodigal_genes(genome_id, seq)
+          phage_name: str = "", real_feats: list | None = None) -> Path | None:
+    # Flanking-gene annotation: prefer the genome's REAL CDS features (with their
+    # /product names) when available (NCBI GenBank records); fall back to a Prodigal
+    # gene-call only for metagenomic catalogue genomes, which ship no annotation.
+    if real_feats:
+        genes = list(real_feats)                                       # (s,e,strand,product,gene,aa)
+    else:
+        genes = [(s, e, st, "", "", aa) for (s, e, st, aa) in prodigal_genes(genome_id, seq)]
     if not genes:
         return None
     # window = span of (all hit ORFs in this genome) + nearest flanking genes
     h_lo = int(hits.nt_start.min())
     h_hi = int(hits.nt_end.max())
     centre = (h_lo + h_hi) // 2
-    nearby = sorted(sorted(genes, key=lambda g: abs((g[0]+g[1])//2 - centre))[:FLANKS*2+2],
+
+    def _is_family_call(g):
+        # a real gene that IS the family ORF (reciprocal overlap) — drawn separately
+        # as the gene of interest, so don't also list it as a flank
+        ov = max(0, min(g[1], h_hi) - max(g[0], h_lo))
+        return ov > 0.6 * max(1, g[1] - g[0]) and ov > 0.6 * max(1, h_hi - h_lo)
+    flank_pool = [g for g in genes if not _is_family_call(g)]
+    nearby = sorted(sorted(flank_pool, key=lambda g: abs((g[0]+g[1])//2 - centre))[:FLANKS*2+2],
                     key=lambda g: g[0])
     lo = max(1, min([h_lo] + [g[0] for g in nearby]) - 100)
     hi = min(len(seq), max([h_hi] + [g[1] for g in nearby]) + 100)
@@ -197,10 +226,14 @@ def build(genome_id: str, seq: str, hits: pd.DataFrame, out_dir: Path,
                     annotations={"molecule_type": "DNA", "topology": "linear",
                                  "organism": label, "source": label})
     feats = []
-    for (gs, ge, gst, aa) in nearby:
+    for (gs, ge, gst, prod, gene, aa) in nearby:
+        q = {"product": [prod or "hypothetical protein"]}
+        if gene:
+            q["gene"] = [gene]
+        if aa:
+            q["translation"] = [aa]
         feats.append(SeqFeature(FeatureLocation(max(0, gs-lo), max(1, ge-lo), strand=gst),
-                                type="CDS", qualifiers={"product": ["flanking CDS"],
-                                                        "translation": [aa or "X"]}))
+                                type="CDS", qualifiers=q))
     for _, hrow in hits.iterrows():
         hs, he = int(hrow.nt_start), int(hrow.nt_end)
         strand = 1 if hrow.strand == "+" else -1
@@ -214,13 +247,15 @@ def build(genome_id: str, seq: str, hits: pd.DataFrame, out_dir: Path,
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", stem)[:70].strip("_")
     out = out_dir / f"{safe}.gbk"
     SeqIO.write(rec, str(out), "genbank")
-    # genome-map figure marking the gene of interest (the HMM hit) among its neighbours
+    # genome-map figure marking the gene of interest (the HMM hit) among its neighbours,
+    # now carrying each flank's REAL product/gene so the map colours + labels them by
+    # function instead of collapsing every neighbour to 'hypothetical / unknown'.
     try:
         import genome_map as GM
         a_st = 1 if str(hits.iloc[0].strand) == "+" else -1
         fk = {(g[0], g[1]) for g in nearby}
         GM.draw(GM.build_genes((h_lo, h_hi, a_st),
-                               [(g[0], g[1], g[2], {}) for g in nearby],  # unnamed flanks here
+                               [(g[0], g[1], g[2], {"product": g[3], "gene": g[4]}) for g in nearby],
                                flank_keys=fk),
                 (h_lo, h_hi), out_dir / f"{safe}_genome_map",
                 "gene of interest (HMM hit) + neighbours",
@@ -270,13 +305,13 @@ def main() -> None:
     #    never send a placeholder address to NCBI; metagenomic catalogues still run.
     ncbi_ids = [g for g in genome_ids if is_ncbi(g)]
     if ncbi_ids and email:
-        print(f"Fetching {len(ncbi_ids)} NCBI genomes…")
-        seqs, names = fetch_ncbi(ncbi_ids, email)
+        print(f"Fetching {len(ncbi_ids)} NCBI genomes (with annotations)…")
+        seqs, names, feats = fetch_ncbi(ncbi_ids, email)
     else:
         if ncbi_ids:
             print(f"(offline: skipping {len(ncbi_ids)} NCBI genome(s) — no --email/$NCBI_EMAIL; "
                   "their neighbourhoods are omitted)")
-        seqs, names = {}, {}
+        seqs, names, feats = {}, {}, {}
 
     # 2. metagenomic genomes, grouped by catalogue prefix (uncultured -> no name)
     meta_ids = [g for g in genome_ids if not is_ncbi(g)]
@@ -293,7 +328,8 @@ def main() -> None:
             missing.append(gid)
             continue
         nm = names.get(gid) or names.get(gid.split(".")[0], "")
-        if build(gid, seq, by_genome[gid], args.out_dir, phage_name=nm):
+        rf = feats.get(gid) or feats.get(gid.split(".")[0])
+        if build(gid, seq, by_genome[gid], args.out_dir, phage_name=nm, real_feats=rf):
             built += 1
             named += bool(nm)
     print(f"\nBuilt {built} real-sequence GenBank files in {args.out_dir} "
