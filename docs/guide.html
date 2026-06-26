@@ -251,8 +251,12 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     terminal experience needed.
     <div class="row">
       <div><label>Seed FASTA path (--fasta)</label><input type="text" id="b_fasta" value="my_seeds.faa"></div>
-      <div><label>Output label (--name)</label><input type="text" id="b_name" value="my_protein"></div>
+      <div><label>Results folder name (--name)</label><input type="text" id="b_name" value="my_protein"></div>
     </div>
+    <div class="row">
+      <div style="flex:1 1 100%"><label>Save results in this folder (--out-dir; optional)</label><input type="text" id="b_outdir" value="" placeholder="blank = a folder next to your seed file;  or a full path, e.g.  C:\Users\you\Documents\gp75_results"></div>
+    </div>
+    <p style="margin:2px 0 0 0;font-size:12.5px;color:#6b7888"><b>Where your results go:</b> leave <b>Save results in</b> blank and they land in a <code>&lt;name&gt;_discovery</code> folder right next to your seed file. Or type a full folder path — Windows (<code>C:\…</code>) or WSL (<code>/mnt/…</code>) — to put them exactly where you want (that folder becomes the results folder). The <b>don't-overwrite</b> box below keeps a previous run safe (it writes <code>…_2</code>, <code>…_3</code> instead of replacing it).</p>
     <div class="row">
       <div><label>Run mode</label>
         <select id="b_mode"><option value="full">Full run</option><option value="smoke">Smoke (fast self-test)</option></select></div>
@@ -280,6 +284,7 @@ python3 scripts/scan_genome.py --hmm gene.hmm --accession KX098390 --email you@i
     <div class="chk"><input type="checkbox" id="b_noseed"><label style="margin:0">Skip the pre-run seed QC tree (<code>--no-seed-tree</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_nt"><label style="margin:0">Seed is nucleotide DNA (translate; <code>--input-type nucleotide</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_fi"><label style="margin:0">Find interrupted / overprinted genes — read-through scan (<code>--find-interrupted</code>)</label></div>
+    <div class="chk"><input type="checkbox" id="b_nooverwrite" checked><label style="margin:0">Don't overwrite an existing results folder — make a new numbered one (<code>--no-overwrite</code>)</label></div>
     <div class="chk"><input type="checkbox" id="b_detach" checked><label style="margin:0"><b>Keep running even if I close the window</b> (<code>--detach</code>) — recommended for long / walk-away runs</label></div>
     <p style="margin:2px 0 0 24px;font-size:12.5px;color:#6b7888">Detached runs have no window to answer prompts, so they use the <b>email</b> and <b>databases</b> you set above (blank email = runs offline). They print where the progress log is, then you can close the window; double-click <code>CHECK_RUN.bat</code> any time to see how it's going.</p>
     <div class="out"><pre><code id="b_out"></code></pre></div>
@@ -866,8 +871,8 @@ document.querySelectorAll('pre').forEach(function(pre){
 (function(){
   var $=function(id){return document.getElementById(id);};
   var out=$('b_out');
-  var ids=['b_fasta','b_name','b_mode','b_iter','b_cpu','b_table','b_email','b_db','b_dbcustom',
-           'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt','b_fi','b_detach'];
+  var ids=['b_fasta','b_name','b_outdir','b_mode','b_iter','b_cpu','b_table','b_email','b_db','b_dbcustom',
+           'b_offline','b_nocontrols','b_prodigal','b_noseed','b_nt','b_fi','b_nooverwrite','b_detach'];
   function q(s){ return /[^A-Za-z0-9_.,\-\/=]/.test(s)?('"'+s+'"'):s; }
   function sq(s){ return "'"+String(s).replace(/'/g,"'\\''")+"'"; }
   function winToWsl(p){ var m=String(p).match(/^([A-Za-z]):[\\/](.*)$/); return m?('/mnt/'+m[1].toLowerCase()+'/'+m[2].replace(/\\/g,'/')):p; }
@@ -876,6 +881,7 @@ document.querySelectorAll('pre').forEach(function(pre){
     var smoke=$('b_mode').value==='smoke', a=[];
     a.push(['--fasta', winToWsl($('b_fasta').value.trim()||'my_seeds.faa')]);
     var n=$('b_name').value.trim(); if(n) a.push(['--name', n]);
+    var od=$('b_outdir')?$('b_outdir').value.trim():''; if(od) a.push(['--out-dir', winToWsl(od)]);
     if(smoke){ a.push(['--smoke']); }
     else{
       var it=$('b_iter').value; if(it && it!=='3') a.push(['--iterations', it]);
@@ -892,6 +898,7 @@ document.querySelectorAll('pre').forEach(function(pre){
     if(!smoke && $('b_nocontrols').checked) a.push(['--no-controls']);
     if(!smoke && $('b_prodigal').checked) a.push(['--prodigal-gate']);
     if(!smoke && $('b_noseed').checked) a.push(['--no-seed-tree']);
+    if($('b_nooverwrite') && $('b_nooverwrite').checked) a.push(['--no-overwrite']);
     if($('b_detach') && $('b_detach').checked) a.push(['--detach']);
     return a;
   }
