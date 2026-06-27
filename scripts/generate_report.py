@@ -42,6 +42,13 @@ def _b64(p: Path) -> str:
         return ""
 
 
+def _howto(html: str) -> str:
+    """A consistent 'How to read this' explanatory callout placed under each figure, so the
+    reasoning behind every figure (what it shows, what the colours mean) travels with the
+    report — mirrors docs/METHODOLOGY.md §7a."""
+    return f"<div class='howto'><b>How to read this:</b> {html}</div>"
+
+
 _CSS = (
     "body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;"
     "background:#f6f7f9;color:#1a2230}.wrap{max-width:980px;margin:0 auto;padding:28px 22px 70px}"
@@ -58,6 +65,8 @@ _CSS = (
     "border:1px solid #d4dae1;border-radius:8px;text-decoration:none;color:#1558b0;font-size:13px}"
     "img{max-width:100%;border:1px solid #e3e7ec;border-radius:8px;background:#fff}"
     ".muted{color:#6b7888;font-size:13px}"
+    ".howto{background:#eef4fb;border-left:3px solid #1558b0;border-radius:4px;padding:9px 13px;"
+    "margin:7px 0 16px;font-size:13px;color:#33424f;line-height:1.55}.howto b{color:#1558b0}"
     ".dbchart{background:#fff;border:1px solid #e3e7ec;border-radius:8px;padding:12px 16px;margin:2px 0 6px}"
     ".dbrow{margin:11px 0}"
     ".dbname{font-size:12.5px;color:#33404f}"
@@ -193,6 +202,12 @@ def generate(discovery: Path) -> Path:
                     f"<span class='dbval'>{val}</span></div>"
                     f"<div class='dbtrack'><div class='{cls}' style='width:{pct:.1f}%'></div></div></div>")
             p.append("</div>")
+            p.append(_howto(
+                "Each bar is the number of hits in that database. This family is recovered mainly by "
+                "<b>six-frame translation of genome databases</b>, so <b>0 hits in reviewed-protein / "
+                "domain databases</b> (SwissProt, RefSeq proteins, VOGDB, Pfam) is the expected, "
+                "informative result — the gene is real but absent from standard annotation (evidence "
+                "the family is novel and specific, not an artefact)."))
             if total:
                 p.append(f"<p class='muted'>Combined (deduplicated across databases): "
                          f"<b>{e(str(total.get('hits', '')))}</b> hits → "
@@ -274,6 +289,12 @@ def generate(discovery: Path) -> Path:
         if aln_b64:
             p.append(f"<img alt='coloured multiple sequence alignment' "
                      f"src='data:image/png;base64,{aln_b64}'>")
+            p.append(_howto(
+                "A publication alignment of the unique homologs, <b>coloured by residue class</b> "
+                "(ClustalX scheme). <b>Columns that are a solid block of one colour are conserved</b> "
+                "across the family — its diagnostic positions — while ragged, gappy regions are "
+                "variable loops/insertions. The line above quantifies it (conserved columns, mean "
+                "pairwise identity)."))
 
     # Inline, residue-coloured MSA of the final hits (text, beyond the static figure).
     aln_fa = discovery / "downstream" / "tree" / "hits.aln.faa"
@@ -306,6 +327,12 @@ def generate(discovery: Path) -> Path:
                   "each hit aligned to the family HMM in <code>hits_hmmalign.a2m</code>.")
         p.append(f"<p class='muted'>{note}</p>")
         p.append("<div class='msa'>" + "".join(rows_html) + "</div>")
+        p.append(_howto(
+            "Each column is one aligned residue position across the unique homologs; residues are "
+            "coloured by <b>amino-acid chemical class</b>, so a <b>conserved column appears as a "
+            "vertical band of one colour</b> (the family's core motifs), while gaps mark "
+            "insertions/deletions in some members. More, taller, uniform colour blocks = a more "
+            "conserved family."))
 
     if ho_b64:
         p.append("<h2>Phylogeny (unique homologs)</h2>")
@@ -315,6 +342,12 @@ def generate(discovery: Path) -> Path:
                  "Newick: <code>hits_tree_homologs_only.treefile</code>.</p>")
         p.append(f"<img alt='ML tree of discovered homologs (seeds pruned)' "
                  f"src='data:image/png;base64,{ho_b64}'>")
+        p.append(_howto(
+            "A maximum-likelihood tree — <b>branch length = evolutionary distance</b>, and tips are "
+            "<b>coloured by host genus</b> (legend at right). A <b>dot on a branch = strong support</b> "
+            "(SH-aLRT &ge;80 <b>and</b> UFBoot &ge;95 — two measures, because ultrafast bootstrap alone "
+            "is over-optimistic); a branch with <b>no dot</b> is not strongly resolved, so don't "
+            "over-read its exact placement."))
     if tree_b64:
         heading = "Phylogeny — homologs in seed context" if ho_b64 else "Phylogeny (unique homologs)"
         p.append(f"<h2>{heading}</h2>")
@@ -325,6 +358,11 @@ def generate(discovery: Path) -> Path:
                  "Newick: <code>hits_tree.treefile</code>.</p>")
         p.append(f"<img alt='ML tree of homologs with seeds in context' "
                  f"src='data:image/png;base64,{tree_b64}'>")
+        p.append(_howto(
+            "The same tree with your <b>input seeds added in dark grey</b> (tips ending "
+            "<code>_seed</code>), so you can see where your starting set falls among everything "
+            "discovered. A grey seed next to a coloured hit <b>of the same organism is expected</b> "
+            "(that organism was both an input and a recovered homolog) — not a duplicate."))
 
     # Gene-neighbourhood synteny — embed a representative static publication panel
     # (the interactive clinker, incl. its static PNGs, is linked above under Files).
@@ -353,6 +391,14 @@ def generate(discovery: Path) -> Path:
                  "<code>cluster_*.png</code> exports) in <code>downstream/clinker/</code>.</p>")
         p.append(f"<img alt='gene-neighbourhood synteny panel' "
                  f"src='data:image/png;base64,{syn_png}'>")
+        p.append(_howto(
+            "Each <b>row is one genome's gene neighbourhood</b>, centred (anchored) on the "
+            "<b>family gene (gold)</b>. By default genes are <b>coloured by broad function</b> — "
+            "blue=structural, green=replication, orange=transcription/regulation, red=lysis, "
+            "purple=packaging, teal=host/defense, grey=hypothetical. Genes of the <b>same colour "
+            "stacking vertically across rows = a conserved syntenic block</b> travelling with the "
+            "gene of interest. A <b>conservation</b>-coloured version (blue gradient = how many "
+            "genomes share each gene) is in <code>downstream/synteny/</code>."))
 
     if paper:
         show = [c for c in ("rank", "representative_organism", "accession", "n_genomes",
