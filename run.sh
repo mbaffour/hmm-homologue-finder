@@ -107,4 +107,11 @@ if [ "${1:-}" = "--scan" ]; then
   shift
   exec $KEEP_AWAKE python3 scripts/scan_genome.py "$@"
 fi
+# `run.sh --scan-host-genera <run_dir> …` searches the run's model six-frame through the
+# RefSeq representative genomes of the phages' host genera (prophage search). Combine with
+# the top-of-file --detach to run it in the background.
+if [ "${1:-}" = "--scan-host-genera" ]; then
+  shift
+  exec $KEEP_AWAKE bash scripts/scan_host_genera.sh "$@"
+fi
 exec $KEEP_AWAKE python3 scripts/hmm_finder.py "$@"

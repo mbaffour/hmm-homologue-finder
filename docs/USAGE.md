@@ -169,6 +169,25 @@ sequences), `scan_neighbourhood.csv` (the **flanking genes**, see below), the fe
 **0 if the gene was detected, 1 if absent** — handy in shell loops over many genomes.
 Flags: `--min-bit` (default 25), `--trans-table` (for a nucleotide seed), `--cpu`.
 
+## Case 12 — Scan a model through MANY genomes (a collection / host genera)
+`scan_genome.py` does one genome at a time; for a **bounded collection** use:
+```bash
+# scan a model through a list of genome FASTAs (http/ftp URLs or local paths), six-frame, batched:
+bash scripts/scan_genome_collection.sh profile.hmm genome_list.txt out_dir [batch=25] [max=0]
+
+# after a discovery run: scan its model through the RefSeq representative genomes of the
+# phages' HOST GENERA (prophage search) — genera auto-detected from the run's hits:
+bash run.sh --scan-host-genera <run_dir> [out_dir] [batch] [--genera "Escherichia,Klebsiella,…"] [--max N]
+bash run.sh --detach --scan-host-genera <run_dir>      # run it in the background
+```
+`scan_genome_collection.sh` downloads → scans → aggregates → deletes **batch by batch**, so
+memory + disk stay bounded and a few-hundred-genome set finishes on a laptop. `--scan-host-genera`
+wires the whole flow (detect host genera → fetch their RefSeq reference/representative genomes →
+batched six-frame scan → `collection_hits.tsv` + `collection_hits_aa.faa`). **0 hits = the family is
+phage-specific** (no prophage homolog in those hosts). For the EXHAUSTIVE bacterial search the catalog
+has **"RefSeq bacterial genomes"** (the full set, six-frame) — but it is **server-scale** (~600 GB,
+days-to-weeks); on a workstation prefer the host genera or a representative subset.
+
 **Flanking genes (`scan_neighbourhood.csv`) + a genome map.** By default the scan also
 describes the genes around each hit, ordered relative to your gene (`pos_index` 0 = your
 gene, ± up/downstream; `relationship` = upstream / downstream / **overlapping**;
