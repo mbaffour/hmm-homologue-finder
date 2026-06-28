@@ -200,6 +200,29 @@ BUILTIN_DATABASES: list[dict] = [
             "Host/background specificity check. Useful for showing whether candidate homologs are phage-enriched rather than broadly bacterial."
         ),
     ),
+    _db(
+        name="RefSeq bacterial genomes",
+        db_type="nucleotide",
+        streaming=True,
+        optional=True,
+        size_hint="~600 GB compressed (~2 TB six-frame)",
+        est_time="SERVER-SCALE: days-to-weeks (NOT a laptop job)",
+        url="https://ftp.ncbi.nlm.nih.gov/refseq/release/bacteria/",
+        download_url="https://ftp.ncbi.nlm.nih.gov/refseq/release/bacteria/bacteria.*.genomic.fna.gz",
+        notes=(
+            "ALL NCBI RefSeq bacterial GENOMES (nucleotide; ~3.5K part files, ~600 GB "
+            "compressed, ~2 TB uncompressed). 6-frame translated on the fly — recovers "
+            "unannotated / antisense ORFs in bacterial genomes (e.g. a phage gene sitting in "
+            "a prophage), which the bacterial-PROTEINS database cannot. **SERVER-SCALE:** the "
+            "search streams part-by-part so disk stays bounded, but six-frame search over ~2 TB "
+            "is days-to-weeks on a few cores — on a workstation/laptop use a representative "
+            "subset or just the phages' host genera instead of the full set."
+        ),
+        relevance=(
+            "Exhaustive bacterial-genome six-frame search (prophage / unannotated homologs). "
+            "Intended for HPC/server runs; for a laptop prefer a bounded bacterial set."
+        ),
+    ),
 
     # ══════════════════════════════════════════════════════════════════════
     # TIER 4 — Auto-download on first use. Need prep but the app handles it.
