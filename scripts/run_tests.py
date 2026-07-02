@@ -440,6 +440,11 @@ if _shutil.which("wslpath"):
 check("hmm_finder: _winpath leaves a POSIX path unchanged",
       str(H._winpath("/mnt/c/Users/x/seeds.fasta")) == "/mnt/c/Users/x/seeds.fasta")
 check("hmm_finder: _winpath passes None through", H._winpath(None) is None)
+# Deliverable privacy: machine paths / user / host are normalised out of shared provenance.
+check("hmm_finder: _redact_env normalises the home path to ~",
+      H._redact_env(os.path.join(os.path.expanduser("~"), "run", "x")).startswith("~"))
+check("hmm_finder: _redact_env is a no-op on path-free text",
+      H._redact_env("family HMM — 55 homologs") == "family HMM — 55 homologs")
 
 # --- interrupted table: organism join (offline, idempotent, inserted after 'contig') ----
 _iod = Path(tempfile.mkdtemp())

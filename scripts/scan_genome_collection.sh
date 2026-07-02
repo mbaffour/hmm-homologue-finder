@@ -36,7 +36,8 @@ _fetch() {
   esac
 }
 
-mapfile -t SRC < <(grep -vE '^\s*(#|$)' "$LIST")
+# read the source list into an array (portable to macOS bash 3.2, which lacks mapfile)
+SRC=(); while IFS= read -r _line; do [ -n "$_line" ] && SRC+=("$_line"); done < <(grep -vE '^[[:space:]]*(#|$)' "$LIST")
 total=${#SRC[@]}; [ "$MAX" -gt 0 ] && [ "$MAX" -lt "$total" ] && total=$MAX
 nb=$(( (total + BATCH - 1) / BATCH ))
 : > "$AGG"; : > "$AGGAA"; hdr=0; hits=0
@@ -46,7 +47,7 @@ while [ "$i" -lt "$total" ]; do
   b=$((b+1)); end=$((i+BATCH)); [ "$end" -gt "$total" ] && end=$total
   : > "$OUT/_batch.fna"
   j=$i; while [ "$j" -lt "$end" ]; do _fetch "${SRC[$j]}" >> "$OUT/_batch.fna"; j=$((j+1)); done
-  nseq=$(grep -c '^>' "$OUT/_batch.fna" 2>/dev/null || echo 0)
+  nseq=$(grep -c '^>' "$OUT/_batch.fna" 2>/dev/null); nseq=${nseq:-0}   # grep -c prints 0 itself; no '|| echo 0' (double-counts on empty)
   if [ "${nseq:-0}" -gt 0 ]; then
     python3 scripts/scan_genome.py --hmm "$HMM" --genome "$OUT/_batch.fna" \
         --out "$OUT/_bout" --find-interrupted >/dev/null 2>&1 || true

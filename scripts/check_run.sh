@@ -2,7 +2,7 @@
 # Show whether a background (detached) search is still running and its latest progress.
 # Invoked by final/CHECK_RUN.bat; safe to run any time.
 echo "=== Is a search running right now? ==="
-if ps -eo etime,args 2>/dev/null | grep -E '[h]mm_finder\.py' | grep -v grep; then
+if ps -eo etime,args 2>/dev/null | grep -E '[h]mm_finder\.py|[s]can_genome\.py|[s]can_genome_collection\.sh|[s]can_host_genera\.sh|[r]un_pipeline' | grep -v grep; then
   echo "  ^ YES — a search is running (elapsed time shown on the left)."
 else
   echo "  No search process is currently running (it may be finished, or not started)."

@@ -70,6 +70,61 @@ def _redact_emails(text):
     return _EMAIL_RE.sub("<redacted-email>", text) if isinstance(text, str) else text
 
 
+def _redact_env(text):
+    """Normalise machine-identifying paths / user / host in shared provenance + tool logs so
+    the deliverable doesn't leak the author's filesystem layout or machine name (idempotent).
+    Covers the home dir, the Windows-user path segment, and the hostname baked into HMMER
+    .tbl / IQ-TREE .iqtree,.log headers. The e-mail is handled separately (_redact_emails)."""
+    if not isinstance(text, str):
+        return text
+    import getpass
+    import socket
+    subs = []
+    home = os.path.expanduser("~")
+    if home and home not in ("~", "/"):
+        subs.append((home, "~"))
+    try:
+        user = getpass.getuser()
+    except Exception:
+        user = ""
+    if user:
+        subs += [("/home/" + user, "~"), ("/Users/" + user, "/Users/<user>"),
+                 ("\\Users\\" + user, "\\Users\\<user>")]
+    try:
+        host = socket.gethostname()
+    except Exception:
+        host = ""
+    if host and len(host) > 2:
+        subs.append((host, "<host>"))
+    for a, b in subs:
+        if a:
+            text = text.replace(a, b)
+    return text
+
+
+def _scrub_env_paths(out):
+    """One end-of-run pass: rewrite machine-identifying paths + hostname (and any stray
+    e-mail) in the SHAREABLE provenance + tool logs — the top-level run_manifest.json /
+    METHODS.md, the controls/ tables, and the whole PACKAGE/ bundle — so a shared deliverable
+    carries no filesystem layout or machine name. Intermediate run*/benchmark logs are not
+    shipped, so they are left untouched (keeps the pass fast)."""
+    out = Path(out)
+    exts = {".json", ".md", ".log", ".tbl", ".iqtree", ".txt", ".sto"}
+    files = [out / "run_manifest.json", out / "METHODS.md"]
+    for d in (out / "PACKAGE", out / "controls"):
+        if d.exists():
+            files += [p for p in d.rglob("*") if p.is_file() and p.suffix.lower() in exts]
+    for p in files:
+        try:
+            if p.is_file():
+                t = p.read_text(encoding="utf-8", errors="ignore")
+                r = _redact_env(_redact_emails(t))
+                if r != t:
+                    p.write_text(r, encoding="utf-8")
+        except Exception:
+            pass
+
+
 def _ignore_scratch(_dir, names):
     """copytree() ignore-fn for the 08_scripts reproducibility copy: drop bytecode
     and scratch/run helpers (gitignored as scripts/_*) — they can embed local
@@ -1244,6 +1299,9 @@ def main() -> None:
     except Exception as e:
         log(f"  (package READMEs skipped: {e})")
 
+    # Final privacy pass: strip machine-identifying paths / hostname (and any stray e-mail)
+    # from the shared provenance + tool logs (top-level + PACKAGE) before the deliverable ships.
+    _scrub_env_paths(out)
     log(f"=== DONE. Package: {out / 'PACKAGE'} ===")
 
 
