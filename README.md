@@ -36,6 +36,11 @@ bash setup.sh                 # one-time: creates the conda env, installs all to
 bash run.sh                   # interactive: prompts for your seed FASTA, runs everything
 ```
 
+> **Heads-up:** the first *real* run downloads its databases (streamed, six-frame-translated,
+> then **cached** so later runs reuse them) — budget disk + bandwidth for it. Per-database
+> sizes are in **[docs/DATABASES.md](docs/DATABASES.md)** (individual DBs range from ~2 GB to
+> tens of GB). Tip: preload them ahead of time (see below).
+
 Prefer flags? 
 ```bash
 conda activate hmm-discovery
