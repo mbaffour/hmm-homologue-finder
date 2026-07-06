@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install Python dependencies
-        run: pip install biopython pandas matplotlib numpy
+        run: pip install -r engine/requirements.txt
       - name: Byte-compile all Python (catches syntax/import-time breakage repo-wide)
         run: python3 -m compileall -q scripts engine
       - name: Run unit tests
