@@ -176,6 +176,7 @@ DEPLOY = (_bundled_engine
           else HOME / "Documents" / "HMM-Discovery-Deployable-20260602")
 from env_paths import ensure_env_on_path  # noqa: E402  (sibling helper in scripts/)
 from db_catalog import list_databases, pick_databases  # noqa: E402
+from run_selection import best_run_index, read_hits_rows  # noqa: E402  (shared with export_csv)
 ensure_env_on_path()
 
 # Reuse the engine's validated convergence rule (hit count <5 % AND ΔLENG <3)
@@ -430,6 +431,24 @@ def write_methods_log(out: Path, args, fasta: Path, label: str, selected_dbs: st
                       f"{_roc.get('optimal_threshold')} (sensitivity {_roc.get('sensitivity_at_optimum')}, "
                       f"specificity {_roc.get('specificity_at_optimum')} there); the pipeline's fixed "
                       f"strict threshold (45) is retained for tiering. See `controls/roc_curve.svg`."]
+            _dec = cs.get("sixframe_decoy") or {}
+            if _dec.get("status") == "ok":
+                # The controls above use curated proteomes and shuffled seeds; none is a
+                # six-frame translation of genomic DNA, which is where the hits come from.
+                # This bounds the false-positive rate of the search that was actually run.
+                _bd, _wt = _dec.get("best_decoy_bit_score"), _dec.get("weakest_true_positive_bit_score")
+                L += [f"- **Empirical FDR vs a six-frame decoy:** {_dec.get('n_decoy_sequences'):,} "
+                      f"reversed ORFs sampled from the {_dec.get('n_sixframe_orfs_total'):,} real "
+                      f"six-frame ORFs searched (reversal preserves length and composition exactly). "
+                      f"Best decoy {_bd} bits vs weakest true positive {_wt} bits "
+                      f"(gap {_dec.get('gap_bits')} bits); "
+                      f"{_dec.get('decoys_at_or_above_threshold')} decoys scored ≥45, giving an "
+                      f"empirical FDR of {_dec.get('empirical_fdr')}. Reporting filters were opened "
+                      f"(`--max -E 100000`) so weak decoy scores are not censored. "
+                      f"See `controls/sixframe_decoy_control.json`."]
+            elif _dec.get("status") == "error":
+                L += [f"- **Empirical FDR vs a six-frame decoy:** NOT measured "
+                      f"({_dec.get('reason', 'control did not run')})."]
         if seed_recovery:
             sr = seed_recovery
             miss = sr.get("not_recovered_after") or []
@@ -517,22 +536,22 @@ def _hmm_leng(hmm_path) -> int:
 
 
 def _best_run_index(out: Path, iterations: int) -> int:
-    """Pick the most complete run (most validated hit rows) as the canonical set
-    for figures + the main paper table. After convergence this is the refined
-    final round; ties resolve to the earliest run for determinism. Matches
-    export_csv.py's `best_run = max(run_frames, key=len)`. Falls back to 1."""
-    best_i, best_n = 1, -1
+    """Pick the canonical run — the iteration the deposited HMM, the controls, the
+    figures and the exported tables all describe.
+
+    Delegates to `run_selection.best_run_index` (most distinct homolog LOCI, ties to the
+    later converged round) so this and export_csv.py cannot drift apart again. They
+    previously used different rules — hit ROWS with ties to the earliest here, unique
+    SEQUENCES with ties to the latest there — so on a row-count tie the package shipped a
+    profile.hmm, controls and tree from one round beside tables from another, meaning the
+    reported sensitivity/specificity did not describe the model that produced the hits.
+    Falls back to 1."""
+    run_rows = {}
     for i in range(1, iterations + 1):
         tsv = out / f"run{i}" / "benchmark" / "validated" / "hits.tsv"
-        if not tsv.exists():
-            continue
-        try:
-            n = max(0, sum(1 for _ in tsv.open("r", errors="replace")) - 1)  # rows minus header
-        except OSError:
-            continue
-        if n > best_n:
-            best_i, best_n = i, n
-    return best_i
+        if tsv.exists():
+            run_rows[i] = read_hits_rows(tsv)
+    return best_run_index(run_rows) if run_rows else 1
 
 
 def _looks_like_nucleotide(fasta: Path) -> bool:
@@ -1183,6 +1202,27 @@ def main() -> None:
         control_summary = run_controls(
             rbest / "hmm" / "benchmark_profile.hmm", fasta, out,
             args.biology_mode, 45.0, 30.0, args.cpu, log)
+
+        # Empirical FDR against the space the hits actually came from. The controls above
+        # score the model on curated proteomes and shuffled seeds; none of those is a
+        # six-frame translation of genomic DNA, so their perfect specificity says the
+        # negatives were easy, not that a six-frame ORF cannot score highly by chance.
+        # This scans reversed real six-frame ORFs (length + composition preserved) and
+        # reports the decoy ceiling, the gap to the weakest true positive, and the FDR.
+        if not args.smoke:
+            try:
+                from sixframe_decoy_control import run as _decoy_control  # noqa: E402
+                control_summary["sixframe_decoy"] = _decoy_control(
+                    rbest / "hmm" / "benchmark_profile.hmm",
+                    rbest / "validated" / "hits.tsv",
+                    Path(args.db_cache).expanduser(), out / "controls",
+                    threshold=45.0, cpu=args.cpu,
+                    # --databases is a comma-separated STRING; split it (iterating the
+                    # string itself would match on single characters)
+                    db_names=[s.strip() for s in str(args.databases or "").split(",") if s.strip()],
+                    log=log)
+            except Exception as e:
+                log(f"  (six-frame decoy control skipped: {e})")
 
     # Per-seed recovery QC (named, before vs after): which of the original input
     # seeds does the model actually recover — against the INITIAL model (run1) and

@@ -319,12 +319,20 @@ hmm.write_text("HMMER3/f [3.4]\nNAME  x\nLENG  137\nALPH  amino\nHMM  A C D E\n"
 check("hmm_leng reads LENG", H._hmm_leng(hmm) == 137)
 check("hmm_leng missing -> 0", H._hmm_leng(td / "nope.hmm") == 0)
 
+# The canonical run is chosen by DISTINCT HOMOLOG LOCI, and a tie hands it to the LATER
+# (converged) round. This used to be "most hit rows, ties -> earliest" here while
+# export_csv used "most unique sequences, ties -> latest": on a row-count tie the two
+# disagreed, so the deposited HMM/controls/figures described a different round than the
+# tables, and the reported sensitivity did not characterise the model that found the hits.
 bd = td / "disc"
-for ri, nrows in [(1, 3), (2, 5), (3, 5)]:
+_cols = "hit_id\tgenome_id\tcontig\tstrand\torf_nt_start\torf_nt_end\taa_sequence\torganism\n"
+for ri, nloci in [(1, 3), (2, 5), (3, 5)]:
     vd = bd / f"run{ri}" / "benchmark" / "validated"
     vd.mkdir(parents=True)
-    (vd / "hits.tsv").write_text("hit_id\thdr\n" + "".join(f"h{j}\tx\n" for j in range(nrows)))
-check("best_run_index picks most complete (ties->earliest)", H._best_run_index(bd, 3) == 2)
+    (vd / "hits.tsv").write_text(_cols + "".join(
+        f"h{j}\tG{j}\tG{j}\t+\t{100+j*1000}\t{400+j*1000}\tMK{'A'*j}\tPhage {j}\n"
+        for j in range(nloci)))
+check("best_run_index: ties resolve to the later converged round", H._best_run_index(bd, 3) == 3)
 check("best_run_index empty -> 1", H._best_run_index(td / "empty", 3) == 1)
 
 check("convergence_check wired from engine", H.convergence_check is not None)
@@ -472,9 +480,64 @@ _fdf = pd.DataFrame({
     "domain_aa_len": ["137", "137"], "orf_aa_len": ["138", "160"], "organism": ["A", "B"],
     "genome_id": ["G1", "G2"], "db_name": ["d", "d"], "domain_coverage": ["1", "1"],
     "confidence_tier": ["high", "high"], "hit_id": ["h1", "h2"]})
-_pt = EX._paper_table(_fdf)
+_dd = EX._dedup_hits(_fdf)
+_pt = EX._paper_table(_dd)          # paper table is now a projection of the dedup table
 check("export: paper_main_table gains full_length_aa sourced from orf_aa_len",
       "full_length_aa" in _pt.columns and set(int(x) for x in _pt["full_length_aa"]) == {138, 160})
+check("export: paper_main_table and hits_deduplicated cannot disagree on the homolog count",
+      len(_pt) == len(_dd) == 2)
+
+# --- homolog identity = genomic LOCUS, not the HMM envelope string ---------------------
+# The same gene re-trimmed by a refined model in a later round (and re-catalogued in a
+# second database) must collapse to ONE homolog; this is what inflated 55 to 71.
+import run_selection as _RS  # noqa: E402
+_drift = [
+    # one Erwinia gene: same genome+strand, overlapping ORF, three different envelopes
+    {"organism": "Erwinia phage K", "genome_id": "OQ181210", "strand": "+",
+     "orf_nt_start": "48467", "orf_nt_end": "49354", "aa_sequence": "MKAAAAAA", "run_label": "1"},
+    {"organism": "Erwinia phage K", "genome_id": "OQ181210", "strand": "+",
+     "orf_nt_start": "48470", "orf_nt_end": "49354", "aa_sequence": "MKAAAA", "run_label": "2"},
+    # the SAME physical genome mirrored into RefSeq under a different accession
+    {"organism": "Erwinia phage K", "genome_id": "NC_070999", "strand": "+",
+     "orf_nt_start": "48467", "orf_nt_end": "49354", "aa_sequence": "MKAAAAAA", "run_label": "2"},
+    # a genuinely different gene elsewhere in the same genome
+    {"organism": "Erwinia phage K", "genome_id": "OQ181210", "strand": "+",
+     "orf_nt_start": "9000", "orf_nt_end": "9600", "aa_sequence": "MWWWW", "run_label": "1"},
+]
+_lids = _RS.locus_ids(_drift)
+check("locus id: envelope drift + a RefSeq mirror collapse to one locus",
+      _lids[0] == _lids[1] == _lids[2])
+check("locus id: a non-overlapping gene stays a separate locus", _lids[3] != _lids[0])
+check("locus id: antisense partner on the opposite strand is not merged",
+      _RS.locus_ids(_drift[:1] + [dict(_drift[0], strand="-")])[0]
+      != _RS.locus_ids(_drift[:1] + [dict(_drift[0], strand="-")])[1])
+check("run selection: ties resolve to the LATER converged round",
+      _RS.best_run_index({1: _drift[:1], 2: _drift[:1]}) == 2)
+check("run selection: the round recovering more distinct loci wins",
+      _RS.best_run_index({1: _drift, 2: _drift[:1]}) == 1)
+
+# --- six-frame decoy control: a missing tool must never read as a clean result ---------
+import sixframe_decoy_control as _DC  # noqa: E402
+_dcd = Path(tempfile.mkdtemp())
+(_dcd / "sixframe").mkdir()
+(_dcd / "sixframe" / "db.sixframe.min30.faa").write_text(
+    "".join(f">o{i}\n{'MKAILVGDTQ'*4}\n" for i in range(50)))
+check("decoy control: finds the cached six-frame ORF files it will reverse",
+      len(_DC.find_sixframe_files(_dcd)) == 1)
+_faa, _ns, _nt = _DC.build_decoy(_DC.find_sixframe_files(_dcd), _dcd / "d.faa", n=10, log=lambda m: None)
+_seqs = [l.strip() for l in _faa.read_text().splitlines() if not l.startswith(">")]
+check("decoy control: reversal preserves length and composition exactly",
+      len(_seqs) == 10 and all(sorted(s) == sorted("MKAILVGDTQ" * 4) for s in _seqs))
+check("decoy control: the decoy is actually reversed, not a copy",
+      _seqs[0] == ("MKAILVGDTQ" * 4)[::-1])
+_orig_exe = _DC._hmmsearch_exe
+_DC._hmmsearch_exe = lambda: ""                      # simulate hmmsearch missing
+_dres = _DC.run(_dcd / "x.hmm", _dcd / "hits.tsv", _dcd, _dcd / "ctl", n=10, log=lambda m: None)
+_DC._hmmsearch_exe = _orig_exe
+# Regression: returning [] here made max() fall back to 0.0, so a scan that never ran was
+# published as "best decoy 0.0 bits, clean separation, FDR 0.0".
+check("decoy control: an unavailable hmmsearch reports an error, NOT a clean separation",
+      _dres.get("status") == "error" and not _dres.get("clean_separation"))
 
 import cluster_and_clinker_corrected as _CC  # noqa: E402
 check("clinker static PNG: bad input -> False (graceful, no raise)",

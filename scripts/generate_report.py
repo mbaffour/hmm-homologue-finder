@@ -84,6 +84,25 @@ _CSS = (
 )
 
 
+def _n_homologs(discovery: Path, fallback="") -> str:
+    """Authoritative homolog count = rows of hits_deduplicated.csv.
+
+    That table is what paper_main_table.csv projects, so quoting it here keeps the report
+    headline, the paper table and the figures on one number. Deriving the headline from a
+    per-run summary instead let the card describe a different round than the tree — the
+    report once read "55 unique homologs" directly above a 54-tip phylogeny."""
+    for cand in (discovery / "hits_deduplicated.csv",
+                 discovery / "PACKAGE" / "01_summary_tables" / "hits_deduplicated.csv"):
+        try:
+            if cand.exists():
+                n = sum(1 for _ in cand.open("r", encoding="utf-8", errors="replace")) - 1
+                if n >= 0:
+                    return str(n)
+        except OSError:
+            pass
+    return str(fallback)
+
+
 def _read_fasta(p: Path) -> list:
     """Minimal (name, sequence) FASTA reader — no Bio dependency in the report."""
     recs, name, seq = [], None, []
@@ -154,7 +173,11 @@ def generate(discovery: Path) -> Path:
         ("Iterations", params.get("iterations", "")),
         ("Databases", params.get("databases", "")),
         ("Hits (final run)", last.get("total_hits", "")),
-        ("Unique homologs", last.get("unique_sequences", "")),
+        # Authoritative homolog count: the row count of hits_deduplicated.csv, which is the
+        # same table paper_main_table.csv projects. Deriving it from a per-run summary let
+        # the headline describe a different round than the tree, so the card once read 55
+        # above a figure with 54 tips.
+        ("Unique homologs", _n_homologs(discovery, last.get("unique_sequences", ""))),
         ("Organisms", last.get("unique_organisms", "")),
     ]
 

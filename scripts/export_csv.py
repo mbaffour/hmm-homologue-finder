@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from canonical import canonical_organism as _canonical_organism  # shared source of truth
+from run_selection import best_run_index, locus_ids  # one rule for locus id + canonical run
 from package_layout import DIRS, PER_RUN  # single source of truth for PACKAGE/ layout
 
 
@@ -46,6 +47,13 @@ def _base_acc(gid: str) -> str:
     return re.sub(r"\.\d+$", "", str(gid or ""))
 
 
+def _locus_ids(d: pd.DataFrame) -> list:
+    """Physical-locus label per hit row — see `run_selection.locus_ids` for the rule.
+    Kept as a thin adapter so the DataFrame and the pipeline paths share ONE
+    implementation of what makes two hits the same homolog."""
+    return locus_ids(d.to_dict("records"))
+
+
 def _read_tsv(p: Path) -> pd.DataFrame:
     try:
         return pd.read_csv(p, sep="\t", dtype=str).fillna("")
@@ -53,72 +61,116 @@ def _read_tsv(p: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _paper_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Compact main-paper table: one row per unique homolog (collapsed by exact
-    sequence), with the key columns a reader needs. The full 37-column table is
-    the supplementary file."""
-    d = df.copy()
-    d["_ev"] = pd.to_numeric(d["evalue"], errors="coerce")
-    d["_bs"] = pd.to_numeric(d["bit_score"], errors="coerce")
-    d["_dl"] = pd.to_numeric(d["domain_aa_len"], errors="coerce")
-    # full length of the hit = the Met-anchored ORF/gene length (orf_aa_len),
-    # distinct from the matched-domain length above.
-    d["_ol"] = pd.to_numeric(d["orf_aa_len"], errors="coerce") if "orf_aa_len" in d.columns else pd.NA
-    rows = []
-    for _, g in d.groupby("aa_sequence", sort=False):
-        rep = g.sort_values("_bs", ascending=False).iloc[0]
-        rows.append({
-            "representative_organism": rep.get("organism", ""),
-            "accession": rep.get("genome_id", ""),
-            "database": rep.get("db_name", ""),
-            # number of DATABASE RECORDS carrying this exact sequence (the same gene catalogued
-            # under several accessions/DBs), NOT biological gene copies/paralogs; n_genomes and
-            # n_organisms are the physical counts.
-            "database_records": len(g),
-            "n_genomes": g["genome_id"].map(_base_acc).nunique(),
-            "n_organisms": len(_canon_org_set(g)),
-            "domain_aa_len": "" if pd.isna(rep["_dl"]) else int(rep["_dl"]),
-            "full_length_aa": "" if pd.isna(rep["_ol"]) else int(rep["_ol"]),
-            "domain_coverage": rep.get("domain_coverage", ""),
-            "best_evalue": "" if pd.isna(g["_ev"].min()) else f"{g['_ev'].min():.2g}",
-            "best_bit_score": "" if pd.isna(g["_bs"].max()) else round(float(g["_bs"].max()), 1),
-            "confidence_tier": rep.get("confidence_tier", ""),
-            "example_hit_id": rep.get("hit_id", ""),
-        })
-    out = pd.DataFrame(rows)
-    if not out.empty:
-        out = out.sort_values("best_bit_score", ascending=False, na_position="last").reset_index(drop=True)
-        out.insert(0, "rank", range(1, len(out) + 1))
+def _paper_table(dedup: pd.DataFrame) -> pd.DataFrame:
+    """Compact main-paper table: a projection of the deduplicated homolog table.
+
+    It is derived from `_dedup_hits` output rather than recomputed from the raw hits, so
+    the two exports cannot disagree about how many homologs were found — they previously
+    used different groupings and different rounds, and shipped 55 next to 71."""
+    if dedup is None or dedup.empty:
+        return pd.DataFrame()
+    keep = [
+        ("representative_organism", "representative_organism"),
+        ("representative_genome", "accession"),
+        ("representative_db", "database"),
+        ("n_loci", "n_loci"),                    # genomic copies of the gene
+        ("n_copies", "database_records"),        # raw records, NOT independent support
+        ("n_genomes", "n_genomes"),
+        ("n_organisms", "n_organisms"),
+        ("domain_aa_len", "domain_aa_len"),
+        ("max_domain_aa_len_any_round", "max_domain_aa_len_any_round"),
+        ("full_length_aa", "full_length_aa"),
+        ("domain_coverage", "domain_coverage"),
+        ("best_evalue", "best_evalue"),
+        ("best_bit_score", "best_bit_score"),
+        ("confidence_tier", "confidence_tier"),
+        ("example_hit_id", "example_hit_id"),
+    ]
+    out = dedup[[src for src, _ in keep if src in dedup.columns]].copy()
+    out.columns = [dst for src, dst in keep if src in dedup.columns]
+    out = out.sort_values("best_bit_score", ascending=False, na_position="last").reset_index(drop=True)
+    out.insert(0, "rank", range(1, len(out) + 1))
     return out
 
 
-def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
-    """Collapse hits that are the SAME protein found across multiple databases or
-    iterations into one row per unique sequence, recording how many — and which —
-    databases/runs/genomes recovered it. A hit found in several databases is
-    stronger evidence, and a single 'unique homologs' table is what most analyses
-    want. Identity = exact amino-acid sequence (unambiguous for both six-frame and
-    protein-database hits)."""
+def _dedup_hits(allh: pd.DataFrame, all_rounds: pd.DataFrame = None) -> pd.DataFrame:
+    """Collapse hits that are the SAME gene — found in several databases, or re-called
+    in a later iteration — into one row per homolog LOCUS, recording how many, and
+    which, databases/runs/genomes recovered it.
+
+    Identity is the genomic locus (see `_locus_ids`), NOT the amino-acid string: the
+    string is the HMM envelope slice and is re-trimmed whenever the model is refined,
+    so grouping on it counted one gene up to three times.
+
+    On independence: `n_databases` counts database *records*, and it is NOT a measure of
+    corroboration — INPHARED redistributes RefSeq `NC_` records, so the same physical
+    genome routinely appears in both. `n_organisms` (distinct phages) is the honest
+    breadth metric and is what the table is sorted by.
+
+    `allh` should be the CANONICAL run (see `run_selection.best_run_index`) so this table
+    describes the same iteration as the deposited HMM, the controls and the figures.
+    Pass every round as `all_rounds` to additionally report, per gene, the longest
+    envelope any round called (`max_domain_aa_len_any_round`) — membership and the
+    reported sequences still come from the canonical run, so nothing drifts, but a gene
+    that an earlier round called longer is no longer silently published short."""
     if allh.empty or "aa_sequence" not in allh.columns:
         return pd.DataFrame()
     d = allh.copy()
     d["_ev"] = pd.to_numeric(d.get("evalue"), errors="coerce")
     d["_bs"] = pd.to_numeric(d.get("bit_score"), errors="coerce")
+    d["_dl"] = pd.to_numeric(d.get("domain_aa_len"), errors="coerce")
+
+    # Assign loci over EVERY round so a gene keeps one identity across iterations, then
+    # keep only the loci the canonical run recovered.
+    if all_rounds is not None and not all_rounds.empty:
+        u = all_rounds.copy()
+        u["_locus"] = _locus_ids(u)
+        u["_dl_any"] = pd.to_numeric(u.get("domain_aa_len"), errors="coerce")
+        longest = u.groupby("_locus")["_dl_any"].max()
+        key = ["genome_id", "contig", "nt_start", "nt_end", "strand", "run_label"]
+        key = [c for c in key if c in u.columns and c in d.columns]
+        d = d.merge(u[key + ["_locus"]].drop_duplicates(subset=key), on=key, how="left")
+        d["_locus"] = d["_locus"].fillna(pd.Series(_locus_ids(d), index=d.index))
+        d["_longest_any"] = d["_locus"].map(longest)
+    else:
+        d["_locus"] = _locus_ids(d)
+        d["_longest_any"] = d["_dl"]
 
     def _uniq(series) -> list:
         return sorted({str(x) for x in series if str(x).strip() and str(x) != "nan"})
 
+    # ---- stage 1: one representative per physical gene copy (locus) ----------------
+    # Collapses the two things that used to inflate the count: the same genome catalogued
+    # in more than one database, and the same gene re-trimmed by a refined model in a
+    # later round. Each locus keeps its BEST call (highest bit score, longest domain on
+    # a tie) so a later, shorter envelope cannot shrink a reported protein.
+    reps = []
+    for _locus, g in d.groupby("_locus", sort=False):
+        rep = g.sort_values(["_bs", "_dl"], ascending=False, na_position="last").iloc[0].copy()
+        rep["_records"] = len(g)
+        rep["_max_dl"] = g["_longest_any"].max()   # longest envelope in ANY round
+        rep["_min_ev"] = g["_ev"].min()
+        rep["_max_bs"] = g["_bs"].max()
+        rep["_dbs"] = _uniq(g.get("db_name", pd.Series(dtype=str)))
+        rep["_runs"] = _uniq(g.get("run_label", pd.Series(dtype=str)))
+        rep["_genomes"] = _uniq(_base_acc(x) for x in g.get("genome_id", pd.Series(dtype=str)))
+        reps.append(rep)
+    R = pd.DataFrame(reps)
+    if R.empty:
+        return pd.DataFrame()
+
+    # ---- stage 2: group gene copies that are the SAME PROTEIN ----------------------
+    # One row per distinct homolog protein; `n_loci` says how many genomic copies carry
+    # it. Because stage 1 already fixed the envelope drift, this count is stable across
+    # iterations — grouping the raw rows on the string was what produced the inflated
+    # "unique homolog" figure.
     rows = []
-    for seq, g in d.groupby("aa_sequence", sort=False):
-        rep = g.sort_values("_bs", ascending=False, na_position="last").iloc[0]
-        dbs = _uniq(g.get("db_name", pd.Series(dtype=str)))
-        runs = _uniq(g.get("run_label", pd.Series(dtype=str)))
-        # count PHYSICAL genomes (base accession) so versioned+unversioned aliases of the same
-        # genome across databases don't inflate n_genomes
-        genomes = _uniq(_base_acc(x) for x in g.get("genome_id", pd.Series(dtype=str)))
-        orgs = _uniq(g.get("organism", pd.Series(dtype=str)))   # raw names (display)
-        # unique organisms by canonical identity (host-genus aliases collapsed;
-        # metagenomic/unnamed fall back to genome accession)
+    for seq, g in R.groupby("aa_sequence", sort=False):
+        rep = g.sort_values(["_max_bs", "_max_dl"], ascending=False, na_position="last").iloc[0]
+        dbs = _uniq(x for lst in g["_dbs"] for x in lst)
+        runs = _uniq(x for lst in g["_runs"] for x in lst)
+        genomes = _uniq(x for lst in g["_genomes"] for x in lst)
+        orgs = _uniq(g.get("organism", pd.Series(dtype=str)))    # raw names (display)
         canon = {_canonical_organism(r.get("organism", ""), r.get("genome_id", ""))
                  for _, r in g.iterrows()}
         canon.discard("")
@@ -127,24 +179,36 @@ def _dedup_hits(allh: pd.DataFrame) -> pd.DataFrame:
             "representative_genome": rep.get("genome_id", ""),
             "representative_db": rep.get("db_name", ""),
             "source_type": rep.get("source_type", ""),
-            # breadth = how many UNIQUE ORGANISMS carry this exact sequence (the
-            # headline discovery metric; immune to the same phage appearing in
-            # several databases under different accessions)
+            # breadth = how many distinct PHAGES carry this protein. This is the honest
+            # corroboration metric: it is immune to one phage appearing in several
+            # databases under different accessions.
             "n_organisms": len(canon), "organisms": ";".join(orgs),
+            # genomic copies of the gene (one per locus)
+            "n_loci": len(g),
+            "n_genomes": len(genomes),
+            # NOTE: database *records*, NOT independent corroboration — INPHARED
+            # redistributes RefSeq NC_ records, so one physical genome routinely appears
+            # in both. Use n_organisms for breadth claims.
             "n_databases": len(dbs), "databases": ";".join(dbs),
-            "n_genomes": len(genomes), "n_runs": len(runs), "runs": ";".join(runs),
-            "n_copies": len(g),
+            "n_runs": len(runs), "runs": ";".join(runs),
+            "n_copies": int(g["_records"].sum()),
             "domain_aa_len": rep.get("domain_aa_len", ""),
+            # longest envelope any round called for this gene. Publishing only the final
+            # round's call reported two Erwinia proteins ~43 % short of this.
+            "max_domain_aa_len_any_round": "" if pd.isna(g["_max_dl"].max()) else int(g["_max_dl"].max()),
             "full_length_aa": rep.get("orf_aa_len", ""),
-            "best_evalue": "" if pd.isna(g["_ev"].min()) else f"{g['_ev'].min():.2g}",
-            "best_bit_score": "" if pd.isna(g["_bs"].max()) else round(float(g["_bs"].max()), 1),
+            "domain_coverage": rep.get("domain_coverage", ""),
+            "best_evalue": "" if pd.isna(g["_min_ev"].min()) else f"{g['_min_ev'].min():.2g}",
+            "best_bit_score": "" if pd.isna(g["_max_bs"].max()) else round(float(g["_max_bs"].max()), 1),
             "confidence_tier": rep.get("confidence_tier", ""),
+            "example_hit_id": rep.get("hit_id", ""),
             "aa_sequence": seq,
         })
     out = pd.DataFrame(rows)
     if not out.empty:
-        # Order by breadth (most widespread variant first) — the discovery story.
-        out = out.sort_values("n_organisms", ascending=False, kind="stable").reset_index(drop=True)
+        # Order by breadth (most widespread protein first) — the discovery story.
+        out = out.sort_values(["n_organisms", "best_bit_score"], ascending=False,
+                              kind="stable").reset_index(drop=True)
         out.insert(0, "homolog_id", [f"H{i:04d}" for i in range(1, len(out) + 1)])
     return out
 
@@ -155,14 +219,19 @@ def _db_hit_summary(hits: pd.DataFrame, dbsum: pd.DataFrame) -> pd.DataFrame:
     Swiss-Prot). `dbsum` is the engine's per-database record for the representative
     run (database, status, hit_count, strict_count, nt_orf_mode, runtime_seconds);
     unique sequence/organism counts come from the validated `hits`. A trailing ALL
-    row is deduplicated across databases."""
+    row is deduplicated across databases.
+
+    Every "unique_sequences" figure here goes through `_dedup_hits`, so this file, the
+    homolog table and the paper table all count homologs the same way. Counting distinct
+    `aa_sequence` strings directly (as this used to) counts one gene once per envelope
+    the model happened to cut, which is how the package ended up quoting 55 in one file
+    and 71 in another."""
     if dbsum is None or dbsum.empty:
         return pd.DataFrame()
     hit_stats = {}
     if hits is not None and not hits.empty and "db_name" in hits.columns:
         for db, g in hits.groupby("db_name", sort=False):
-            useq = int(g["aa_sequence"].nunique()) if "aa_sequence" in g.columns else 0
-            hit_stats[db] = (useq, len(_canon_org_set(g)))
+            hit_stats[db] = (len(_dedup_hits(g)), len(_canon_org_set(g)))
     rows = []
     for _, d in dbsum.iterrows():
         db = str(d.get("database", ""))
@@ -187,7 +256,7 @@ def _db_hit_summary(hits: pd.DataFrame, dbsum: pd.DataFrame) -> pd.DataFrame:
         out = pd.concat([out, pd.DataFrame([{
             "database": "ALL (deduplicated across databases)",
             "type": "", "status": "", "hits": len(hits), "strict_hits": "",
-            "unique_sequences": int(hits["aa_sequence"].nunique()) if "aa_sequence" in hits.columns else 0,
+            "unique_sequences": len(_dedup_hits(hits)),
             "unique_organisms": len(_canon_org_set(hits)), "runtime_seconds": "",
         }])], ignore_index=True)
     return out
@@ -299,10 +368,19 @@ def export(discovery: Path) -> list[str]:
         allh.to_csv(discovery / "all_runs_hits.csv", index=False)
         written.append(str(discovery / "all_runs_hits.csv"))
 
-        # Deduplicated view: one row per unique homolog with cross-database/run
-        # provenance ("found in N databases"). The full all_runs_hits.csv is kept
-        # as the complete, un-collapsed record.
-        dedup = _dedup_hits(allh)
+        # Canonical run = the iteration the WHOLE package describes, chosen by the shared
+        # rule in run_selection so the deposited HMM, the controls, the figures and the
+        # tables can no longer disagree about which round they came from.
+        # run_frames are in run1..runN order, so index i -> run i+1.
+        _by_idx = {i + 1: f.to_dict("records") for i, f in enumerate(run_frames)}
+        best_i = best_run_index(_by_idx)
+        best_run = run_frames[best_i - 1]
+
+        # Deduplicated view: one row per distinct homolog protein, with cross-database
+        # provenance. Built from the CANONICAL run so its count matches the deposited HMM,
+        # the tree and the controls; `all_rounds` only adds the longest-envelope audit
+        # column. The full all_runs_hits.csv stays as the complete, un-collapsed record.
+        dedup = _dedup_hits(best_run, all_rounds=allh)
         if not dedup.empty:
             dedup.to_csv(discovery / "hits_deduplicated.csv", index=False)
             written.append(str(discovery / "hits_deduplicated.csv"))
@@ -318,20 +396,15 @@ def export(discovery: Path) -> list[str]:
                 "passed_filter": int((g["passes_orf_filter"] == "True").sum()),
                 "six_frame_hits": int((g["source_type"] == "six_frame_orf").sum()),
                 "protein_db_hits": int((g["source_type"] == "annotated_protein").sum()),
-                "unique_sequences": int(g["aa_sequence"].nunique()),
+                "unique_sequences": len(_dedup_hits(g)),   # same definition as every other table
                 "unique_organisms": len(_canon_org_set(g)),
                 "databases": ";".join(sorted(x for x in g["db_name"].unique() if x)),
             })
         pd.DataFrame(rows).to_csv(discovery / "hit_summary.csv", index=False)
         written.append(str(discovery / "hit_summary.csv"))
 
-        # Compact main-paper table from the canonical run = the one recovering the most UNIQUE
-        # homologs; ties break toward the LATER (converged) round so this matches the manifest's
-        # converged headline (run_frames are in run1..runN order). Selecting by raw row count with
-        # a first-tie-wins max() previously picked an earlier round with fewer unique homologs.
-        best_run = max(enumerate(run_frames),
-                       key=lambda t: (int(t[1]["aa_sequence"].nunique()), t[0]))[1]
-        paper = _paper_table(best_run)
+        # Projection of the SAME deduplicated table, so the two exports cannot disagree.
+        paper = _paper_table(dedup)
         if not paper.empty:
             paper.to_csv(discovery / "paper_main_table.csv", index=False)
             written.append(str(discovery / "paper_main_table.csv"))
