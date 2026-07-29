@@ -109,7 +109,10 @@ def _scrub_env_paths(out):
     carries no filesystem layout or machine name. Intermediate run*/benchmark logs are not
     shipped, so they are left untouched (keeps the pass fast)."""
     out = Path(out)
-    exts = {".json", ".md", ".log", ".tbl", ".iqtree", ".txt", ".sto"}
+    # .csv/.tsv included: every exported table was previously OUTSIDE redaction, so any
+    # table carrying a path, a hostname or an address shipped unscrubbed. The package is
+    # the artefact people share, so the scrubber has to cover the tables in it.
+    exts = {".json", ".md", ".log", ".tbl", ".iqtree", ".txt", ".sto", ".csv", ".tsv"}
     files = [out / "run_manifest.json", out / "METHODS.md"]
     for d in (out / "PACKAGE", out / "controls"):
         if d.exists():

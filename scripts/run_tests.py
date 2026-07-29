@@ -516,6 +516,47 @@ check("run selection: ties resolve to the LATER converged round",
 check("run selection: the round recovering more distinct loci wins",
       _RS.best_run_index({1: _drift, 2: _drift[:1]}) == 1)
 
+# --- accession extraction from free-form / seed FASTA headers --------------------------
+# `\b` never matched before an accession in an underscore-joined header, because `_` is a
+# word character -- so EVERY user seed header silently resolved to no accession.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "engine"))
+from pipeline.synteny import nt_accession_in as _ntacc  # noqa: E402
+from pipeline.synteny import extract_nucleotide_accession as _exacc  # noqa: E402
+for _hdr, _want in [
+        ("Escherichia_phage_vB_Eco_SPSP_OV049961.1", "OV049961.1"),
+        ("MAG:_Caudoviricetes_sp._isolate_MSP0469_OR222123.1", "OR222123.1"),
+        ("Shigella_virus_Moo19_NC_070850.1", "NC_070850.1"),
+        ("Some_phage_PQ123456.1", "PQ123456.1"),      # PQ/PV were missing from the prefix list
+        ("Some_phage_PV987654.2", "PV987654.2"),
+        ("NC_023589.1", "NC_023589.1")]:
+    check(f"accession: resolves in {_hdr[:34]}", _ntacc(_hdr) == _want)
+# Negatives matter more than positives here: loosening the boundary must not invent an
+# accession out of a gene or strain name.
+for _neg in ("gp75", "Klebsiella_phage_KP32", "vB_EcoM_AP22", "phage_T4",
+             "hypothetical_protein", "Escherichia_phage_NC_1234", "contig_12345"):
+    check(f"accession: correctly finds none in {_neg}", _ntacc(_neg) == "")
+check("accession: pipeline header extractor still works (regression)",
+      _exacc("", "MK321214|1_1|Phage name|x").startswith("MK321214"))
+
+# --- streamed collection fetch: a plain-text URL must not silently yield zero bytes ----
+_sgc = (Path(__file__).resolve().parent / "scan_genome_collection.sh").read_text(errors="replace")
+# Check the CODE, not the prose — the comment explaining the bug names the old command.
+_sgc_code = "\n".join(l for l in _sgc.splitlines() if not l.lstrip().startswith("#"))
+# `gunzip -c` on plain text emitted NOTHING and no error, so a successful fetch reported
+# "0 contigs" and the scan concluded the gene was absent.
+check("collection scan: uses gzip -dcf so plain-text fetches survive",
+      "gzip -dcf" in _sgc_code and "gunzip -c" not in _sgc_code)
+check("collection scan: skips per-batch neighbour calling that was thrown away",
+      "--no-neighbours" in _sgc)
+check("collection scan: keeps the address out of the shipped list file",
+      "__EMAIL__" in _sgc and "NCBI_EMAIL" in _sgc)
+
+# --- PII: exported tables must be inside the redaction sweep ---------------------------
+_hf_src = (Path(__file__).resolve().parent / "hmm_finder.py").read_text(errors="replace")
+_exts_line = next((l for l in _hf_src.splitlines() if l.strip().startswith("exts = {")), "")
+check("scrub: .csv/.tsv are redacted (every exported table was previously exempt)",
+      '".csv"' in _exts_line and '".tsv"' in _exts_line)
+
 # --- six-frame decoy control: a missing tool must never read as a clean result ---------
 import sixframe_decoy_control as _DC  # noqa: E402
 _dcd = Path(tempfile.mkdtemp())

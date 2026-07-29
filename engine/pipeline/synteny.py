@@ -93,8 +93,18 @@ _KEYWORD_MAP: list[tuple[str, str]] = [
 ]
 
 # Nucleotide accession patterns (covers RefSeq, GenBank, ENA/DDBJ, INPHARED, GPD, etc.)
+#
+# The boundaries are lookarounds, NOT \b, because `_` is a word character: with \b an
+# underscore-joined FASTA header such as
+#     Escherichia_phage_vB_Eco_SPSP_OV049961.1
+#     MAG:_Caudoviricetes_sp._isolate_MSP0469_OR222123.1
+# matched NOTHING, since there is no word boundary before `OV`/`OR`. Seed headers are
+# written that way, so accession lookup silently failed on every one of them.
+# `(?<![A-Za-z0-9])` still refuses a match inside a longer alphanumeric token, so a
+# gene name like `KP32` in `Klebsiella_phage_KP32` remains a non-match (too few digits),
+# and `vB_EcoM_AP22` does not resolve to an `AP` accession.
 _NT_ACCESSION_RE = re.compile(
-    r'\b('
+    r'(?<![A-Za-z0-9])('
     r'(?:'
     # RefSeq
     r'NC|NZ|NG|NT|NW|NM|NR|'
@@ -102,12 +112,14 @@ _NT_ACCESSION_RE = re.compile(
     r'AC|AP|AE|CP|AY|DQ|EF|EU|FJ|GQ|HM|HQ|JF|JN|JQ|JX|'
     r'KC|KF|KJ|KM|KP|KR|KT|KU|KX|KY|'
     r'MF|MG|MH|MK|MN|MT|MW|MZ|'
-    r'OK|OL|OM|ON|OP|OQ|OR|OV|OW|OX|OY|OZ|PP|PS|'
+    # OB/OU and PQ/PT/PU/PV were missing; they appear in recent GenBank-only phage
+    # depositions, which is exactly the set a stale database snapshot fails to cover.
+    r'OB|OK|OL|OM|ON|OP|OQ|OR|OU|OV|OW|OX|OY|OZ|PP|PQ|PS|PT|PU|PV|'
     # ENA/DDBJ (common in INPHARED)
     r'AL|BK|BX|CR|CU|FN|FO|FP|FQ|FR|HE|HF|HG|LK|LM|LN|LO|LP|LR|LS|LT'
     r')_?[0-9]{5,9}'
     r'(?:\.[0-9]+)?'
-    r')\b',
+    r')(?![A-Za-z0-9])',
     re.IGNORECASE,
 )
 
@@ -401,6 +413,19 @@ def extract_nucleotide_accession(protein_id: str, genome_id: str = "") -> str:
 def extract_protein_accession(protein_id: str) -> str:
     """Return a NCBI protein accession (WP_, YP_, NP_, XP_) if present."""
     m = _PROT_ACCESSION_RE.search(protein_id or "")
+    return m.group(1) if m else ""
+
+
+def nt_accession_in(text: str) -> str:
+    """First nucleotide accession embedded anywhere in a free-form label — a FASTA
+    header, a contig id, an organism string — or '' if there is none.
+
+    Unlike `extract_nucleotide_accession`, which knows the pipeline's own header
+    formats, this makes no assumption about layout. It exists for user-supplied seed
+    headers, which are typically underscore-joined
+    (`Escherichia_phage_vB_Eco_SPSP_OV049961.1`) and therefore have no word boundary
+    before the accession."""
+    m = _NT_ACCESSION_RE.search(text or "")
     return m.group(1) if m else ""
 
 
