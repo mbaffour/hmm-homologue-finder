@@ -191,6 +191,112 @@ def _frame_stop_count(contig: str, strand: str, frame: int, lo1: int, hi1: int) 
     return cnt
 
 
+def _codon_at_pos(contig: str, strand: str, frame: int, fwd_i0: int):
+    """(codon, fwd_lo0, fwd_hi0) for the frame codon covering forward 0-based `fwd_i0`, or
+    None off the contig. A thin wrapper over `_codon_covering` that additionally reports
+    WHERE the codon sits, so a caller can step codon-by-codon without re-deriving the frame
+    arithmetic (one source of truth). Note the codon is read 5'->3' in the gene, so on '-'
+    codon[0] is the HIGHEST forward base — hence the two branches below."""
+    cov = _codon_covering(contig, strand, frame, fwd_i0)
+    if not cov:
+        return None
+    codon, idx = cov
+    lo0 = (fwd_i0 - idx) if strand == "+" else (fwd_i0 + idx - 2)
+    if lo0 < 0 or lo0 + 3 > len(contig):
+        return None
+    return codon, lo0, lo0 + 2
+
+
+def antisense_open_extent(contig: str, anti_strand: str, frame: int,
+                          dom_lo1: int, dom_hi1: int, table: int = 11):
+    """Full extent of the OPEN reading frame that the domain is nested inside, measured in
+    the overlapping (antisense) frame (`anti_strand`, `frame`).
+
+    WHY: `_frame_stop_count` only asks whether the DOMAIN WINDOW is stop-free, so the true
+    length of the overlapping ORF is never computed — yet that length is the discriminating,
+    length-dependent half of the overprinting argument (an open frame across L codons is
+    improbable by chance, and the improbability grows with L; docs/METHODOLOGY.md quotes
+    ~0.7% for the 137-aa gp75 length). Reporting a REAL L instead of an illustrative one is
+    the difference between an anecdote and a measurement.
+
+    Walks outward from the domain window, codon by codon in that frame, to the first stop in
+    each direction — reusing `_codon_covering` via `_codon_at_pos`, so no whole-contig
+    reverse-complement is ever built (these contigs are whole phage genomes).
+
+    Returns (orf_lo1, orf_hi1, orf_aa_len): FORWARD-strand 1-based inclusive nucleotide
+    bounds of the stop-free stretch — the flanking stop codons themselves are EXCLUDED — and
+    its length in codons. Returns (0, 0, 0) when the frame or coordinates cannot be resolved
+    (house style: never raise; the caller leaves the column empty).
+
+    SELF-GATING (was a real bug): the returned span is only ever a stop-free ORF, never an
+    "envelope". The starting envelope — the two antisense codons COVERING the domain edges —
+    is stop-tested BEFORE the outward walk, and so is every codon between them; if any is a
+    stop this returns (0, 0, 0). Without that test a locus whose antisense frame is closed
+    (`antisense_open_stops` > 0) still got a span back, and a caller could publish a
+    stop-riddled interval as "the computed open antisense ORF". A non-zero length from this
+    function now MEANS the frame is open across the whole domain window.
+
+    STILL NOT EVIDENCE OF EXPRESSION: an open frame is a necessary sequence signature of
+    overprinting, not proof the antisense ORF is transcribed or translated.
+    """
+    try:
+        L = len(contig or "")
+        if L < 3 or anti_strand not in ("+", "-") or int(frame) not in (0, 1, 2):
+            return 0, 0, 0
+        frame = int(frame)
+        d_lo, d_hi = int(dom_lo1), int(dom_hi1)
+        if d_hi < d_lo:
+            d_lo, d_hi = d_hi, d_lo
+        if d_hi < 1 or d_lo > L:
+            return 0, 0, 0        # window entirely off the contig: clamping it to the edge
+                                  # would report an ORF for a locus that isn't on this contig
+        lo0 = max(0, min(L - 1, d_lo - 1))     # a 1-2 bp overhang at a contig end is normal
+        hi0 = max(0, min(L - 1, d_hi - 1))     # for a windowed frame, so clamp rather than bail
+        # The domain's edges are codon boundaries of the SMALL gene, not of this frame, so
+        # take the antisense codons that COVER those edges as the starting envelope.
+        a = _codon_at_pos(contig, anti_strand, frame, lo0)
+        b = _codon_at_pos(contig, anti_strand, frame, hi0)
+        if not a or not b:
+            return 0, 0, 0
+        # The envelope codons are part of the span this function returns, so they must be
+        # stop-tested like any other codon of the ORF. (They are also exactly the codons
+        # `_frame_stop_count` cannot see: it counts only codons lying FULLY inside the window,
+        # so an edge-straddling stop is invisible to `antisense_open_stops`.)
+        if _aa(a[0], table) == "*" or _aa(b[0], table) == "*":
+            return 0, 0, 0
+        left, right = min(a[1], b[1]), max(a[2], b[2])
+        # ...and so is everything between them: the domain window is NOT taken on trust. A
+        # closed antisense frame has no ORF containing the domain, and reporting its envelope
+        # as one is how a stop-riddled interval ends up in a CSV labelled "open ORF".
+        cur = left
+        while cur + 2 < right:          # `left` is codon a; stop once cur IS the last codon
+            c = _codon_at_pos(contig, anti_strand, frame, cur + 3)
+            if not c:
+                return 0, 0, 0
+            if _aa(c[0], table) == "*":
+                return 0, 0, 0          # frame closed across the domain -> no ORF to report
+            cur = c[1]
+        # Codons of one frame tile the contig in steps of 3 on BOTH strands, so stepping the
+        # forward coordinate by 3 lands exactly on the neighbouring codon either way.
+        cur = left
+        while True:
+            c = _codon_at_pos(contig, anti_strand, frame, cur - 3)
+            if not c or _aa(c[0], table) == "*":
+                break                                  # contig edge, or the flanking stop
+            cur = c[1]
+        orf_lo0 = cur
+        cur = right
+        while True:
+            c = _codon_at_pos(contig, anti_strand, frame, cur + 3)
+            if not c or _aa(c[0], table) == "*":
+                break
+            cur = c[2]
+        orf_hi0 = cur
+        return orf_lo0 + 1, orf_hi0 + 1, (orf_hi0 - orf_lo0 + 1) // 3
+    except Exception:
+        return 0, 0, 0
+
+
 def _stop_silent_in_frame(contig: str, small_strand: str, stop_fwd1: int,
                           anti: str, frame: int, table: int = 11) -> bool:
     """Is the premature stop (small-gene codon at forward 1-based stop_fwd1..+2)

@@ -1274,6 +1274,38 @@ def main() -> None:
         except Exception as _e:
             log(f"  (organism join for interrupted table skipped: {_e})")
 
+    # Family census: seeds IN vs homologs FOUND vs the UNION, clustered at 100/95/90 % identity.
+    # Without this the run reports only what the search found (e.g. 55 homologs from 101 seeds),
+    # which reads as a LOSS; the number a reader actually wants is how much the known family
+    # grew. Runs after write_csv_exports (needs all_runs_hits.csv) and after the seed-recovery
+    # QC (whose CSV supplies the per-seed recovered/after_bit columns).
+    census_summary: dict = {}
+    if not args.smoke:
+        try:
+            import family_census
+            census_summary = family_census.census(out, fasta, cpu=int(args.cpu), log=log)
+            if census_summary.get("headline"):
+                log(f"  Family census: {census_summary['headline']}")
+        except Exception as _e:                      # census() itself never raises; import can
+            log(f"  (family census skipped: {_e})")
+
+    # Overprinting evidence: name the HOST GENE each interrupted homolog is nested inside.
+    # The detector only records the antisense frame index, so the gene that makes the finding
+    # interesting (for gp75, a virion RNA polymerase) was never identified anywhere.
+    overprint_summary: dict = {}
+    if getattr(args, "find_interrupted", False) and not args.smoke:
+        try:
+            import overprint_report
+            overprint_summary = overprint_report.run(
+                out, email=getattr(args, "email", None), cpu=int(args.cpu), log=log)
+        except Exception as _e:
+            log(f"  (overprinting report skipped: {_e})")
+
+    # Re-export so the census / overprinting tables are picked up by the stage summaries and
+    # mirrored into PACKAGE (export_csv is idempotent and pure-filesystem).
+    if census_summary or overprint_summary:
+        write_csv_exports(out, log)
+
     if args.smoke:
         # Smoke test = prove search + extraction work on new input; skip the
         # heavy downstream (tree/synteny need many hits + genomic coordinates).
@@ -1466,6 +1498,15 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
     cp(out / "downstream" / "genbank_with_sequence", pkg / DIRS["synteny"] / "genbank_with_sequence")
     cp(out / "seed_qc", pkg / DIRS["seedqc"])
     cp(out / "downstream" / "tree", pkg / DIRS["phylo"])
+    # The controls are the EVIDENCE behind the report's headline claims — sensitivity /
+    # specificity, the ROC AUC and Youden cutoff, and the six-frame reversed-decoy FDR. They
+    # were never copied here, so the package asserted those numbers while the data supporting
+    # them stayed behind in the run directory.
+    if "controls" in DIRS:
+        cp(out / "controls", pkg / DIRS["controls"])
+    # Per-locus overprinting tables + the antisense diagrams.
+    if "overprint" in DIRS:
+        cp(out / "downstream" / "overprinting", pkg / DIRS["overprint"])
     # The reproducibility copy of scripts/ must EXCLUDE scratch/run helpers
     # (gitignored as scripts/_*): they can embed local paths or the user's NCBI
     # e-mail and must never be shipped. Keep dunder files (e.g. __init__.py).

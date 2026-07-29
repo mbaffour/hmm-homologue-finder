@@ -8,6 +8,8 @@ For a <name>_discovery directory this writes:
   - <root>/hit_summary.csv                per-run counts (hits, passed, six-frame vs
                                           protein-DB, unique sequences/organisms, DBs)
   - <root>/database_summary.csv           per-run database provenance, merged
+  - <root>/stage*_summary.csv             one table per pipeline stage (stage_summary.py)
+  - <root>/pipeline_stage_summary.csv     all stage tables concatenated
 Mirrors the merged CSVs into PACKAGE/01_summary_tables/ and per-run hits.csv into PACKAGE
 when a PACKAGE/ exists. Never raises on a single bad file.
 """
@@ -23,6 +25,19 @@ import pandas as pd
 from canonical import canonical_organism as _canonical_organism  # shared source of truth
 from run_selection import best_run_index, locus_ids  # one rule for locus id + canonical run
 from package_layout import DIRS, PER_RUN  # single source of truth for PACKAGE/ layout
+import stage_summary  # per-stage summary tables (same schema, concatenable)
+
+# Files mirrored from the run root into PACKAGE/01_summary_tables/. Some are written by
+# OTHER modules (family census, overprinting), so anything absent is simply skipped —
+# listing a file here is a request, not a promise that it exists.
+TABLE_EXPORTS = (
+    "paper_main_table.csv", "hits_deduplicated.csv", "database_hit_summary.csv",
+    "database_hits.png", "database_hits.svg", "database_hits.pdf",
+    "hit_summary.csv", "database_summary.csv", "genome_metadata.csv",
+    "homolog_stats.csv", "all_runs_hits.csv",
+    "family_census.csv", "family_census_members.csv",
+    "overprinted_loci.csv", "overprinting_summary.csv",
+)
 
 
 def _canon_org_set(g) -> set:
@@ -390,16 +405,22 @@ def export(discovery: Path) -> list[str]:
 
         rows = []
         for rl, g in allh.groupby("run_label"):
-            rows.append({
-                "run": rl,
-                "total_hits": len(g),
-                "passed_filter": int((g["passes_orf_filter"] == "True").sum()),
-                "six_frame_hits": int((g["source_type"] == "six_frame_orf").sum()),
-                "protein_db_hits": int((g["source_type"] == "annotated_protein").sum()),
-                "unique_sequences": len(_dedup_hits(g)),   # same definition as every other table
-                "unique_organisms": len(_canon_org_set(g)),
-                "databases": ";".join(sorted(x for x in g["db_name"].unique() if x)),
-            })
+            # Optional columns are OMITTED when absent, never defaulted. `g["passes_orf_filter"]`
+            # used to be indexed directly, so a hits.tsv written without it raised KeyError and
+            # took the whole export down — no stage tables, no package, from one missing column.
+            # Filling 0 instead would be worse: it would report "no hit passed validation" out of
+            # a check that never ran (the defect stage_summary._stage03 guards against).
+            row = {"run": rl, "total_hits": len(g)}
+            if "passes_orf_filter" in g.columns:
+                row["passed_filter"] = int((g["passes_orf_filter"] == "True").sum())
+            if "source_type" in g.columns:
+                row["six_frame_hits"] = int((g["source_type"] == "six_frame_orf").sum())
+                row["protein_db_hits"] = int((g["source_type"] == "annotated_protein").sum())
+            row["unique_sequences"] = len(_dedup_hits(g))   # same definition as every other table
+            row["unique_organisms"] = len(_canon_org_set(g))
+            if "db_name" in g.columns:
+                row["databases"] = ";".join(sorted(x for x in g["db_name"].unique() if x))
+            rows.append(row)
         pd.DataFrame(rows).to_csv(discovery / "hit_summary.csv", index=False)
         written.append(str(discovery / "hit_summary.csv"))
 
@@ -461,14 +482,39 @@ def export(discovery: Path) -> list[str]:
         pd.concat(db_frames, ignore_index=True).to_csv(discovery / "database_summary.csv", index=False)
         written.append(str(discovery / "database_summary.csv"))
 
+    # Per-stage summary tables (one shared schema) + the concatenated pipeline table.
+    # Written BEFORE the mirror block so the freshly-built stage*_summary.csv files are
+    # picked up by the glob below on this same pass, not one export late.
+    written += stage_summary.build(discovery)
+
     if pkg.exists():
         tables = pkg / DIRS["tables"]
         tables.mkdir(parents=True, exist_ok=True)
-        for name in ("paper_main_table.csv", "hits_deduplicated.csv", "database_hit_summary.csv",
-                     "database_hits.png", "database_hits.svg", "database_hits.pdf",
-                     "hit_summary.csv",
-                     "database_summary.csv", "genome_metadata.csv", "homolog_stats.csv",
-                     "all_runs_hits.csv"):
+
+        # The mirror is AUTHORITATIVE for the stage tables: whatever is in the run root is
+        # what PACKAGE ships, including the absence of a table.
+        #
+        # This deletion pass is load-bearing, not tidiness. stage_summary.build() unlinks the
+        # table of a stage that produced nothing (controls removed, --find-interrupted
+        # dropped, a stage that failed this time), but nothing else in the pipeline ever
+        # removes a file from PACKAGE: the loop below only copies, assemble_package does
+        # pkg.mkdir(exist_ok=True) rather than wiping, and exporting into an existing output
+        # directory is allowed. Without this, a re-export left the PREVIOUS run's
+        # stage05_controls_summary.csv sitting in PACKAGE/01_summary_tables/ — a confident
+        # table of numbers from a step that did not run.
+        stale = list(tables.glob("stage*_summary.csv")) + [tables / stage_summary.SUMMARY_NAME]
+        for p in stale:
+            if p.exists() and not (discovery / p.name).exists():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+
+        # Named tables + every stage table, discovered by glob so adding a stage to
+        # stage_summary.py never needs an edit here. sorted() keeps stage00..stage08 order.
+        names = list(TABLE_EXPORTS) + sorted(
+            p.name for p in discovery.glob("stage*_summary.csv")) + [stage_summary.SUMMARY_NAME]
+        for name in dict.fromkeys(names):        # de-dup, preserve order
             src = discovery / name
             if src.exists():
                 shutil.copy2(src, tables / name)

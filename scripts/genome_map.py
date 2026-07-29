@@ -19,6 +19,14 @@ from pathlib import Path
 # Layout-role -> lane only (colour comes from functional category, below).
 _LANE = {"overlap": 0.55}
 
+# ONE definition of "overprint" for this whole file. Phage genes routinely share a base or
+# two (the ATGA start/stop overlap is the commonest arrangement in a phage operon), so a
+# bare "overlaps by >=1 bp" is an operon neighbour, not an overprint. Both the row-packing
+# (_dfv_tolerant_levels) and the legend (_legend_handles) key off this same threshold, so a
+# gene that is stacked onto its own row because it genuinely overprints the gene of interest
+# is exactly the gene the legend names — the figure cannot say two different things.
+OVERPRINT_MIN_OVERLAP_BP = 60
+
 
 def _scheme(palette="default"):
     """(CATEGORY_COLORS, FAMILY_COLOR, HYPO_COLOR, categorize) — reuse the synteny scheme
@@ -62,7 +70,7 @@ MAP_TOOLS = ("dfv", "pub", "pygenomeviz", "matplotlib", "easyfig", "auto")
 
 def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genome",
          tool="dfv", genbank=None, labels=True, palette="default",
-         functional_labels=False, module_brackets=False):
+         functional_labels=False, module_brackets=False, marks=None):
     """Draw a linear genome map (PNG + SVG + PDF) coloured by functional category, your gene
     gold, the track labelled `track_name` (phage name; may be two lines name\\naccession).
     Genes are strand arrows (direction = strand); overlapping genes are stacked onto separate
@@ -72,8 +80,12 @@ def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genom
     Easyfig; falls back). Any renderer that is unavailable falls back to 'pub'.
     `palette`: 'default' or 'colorblind' (Paul Tol muted). `functional_labels`: also tag the
     gene of interest + its overlap partner with their functional category. `module_brackets`:
-    bracket contiguous same-category runs with the module name (dfv only). Returns the base
-    path or None."""
+    bracket contiguous same-category runs with the module name (dfv only).
+    `marks`: optional [(nt_pos, label, colour)] drawn as labelled vertical ticks at genome
+    coordinates — e.g. one per PREMATURE STOP on an interrupted/overprinted locus, which is
+    the single most informative element of that figure and was previously inexpressible.
+    Rendered by the 'dfv' and 'pub' renderers; the default None is a strict no-op, so every
+    existing caller's output is unchanged. Returns the base path or None."""
     genes = [g for g in genes if g.get("start") is not None and g.get("end") is not None]
     if not genes:
         return None
@@ -96,12 +108,13 @@ def draw(genes: list, anchor, out_base, title: str, log=print, track_name="genom
         try:
             return _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=labels,
                              palette=palette, functional_labels=functional_labels,
-                             module_brackets=module_brackets)
+                             module_brackets=module_brackets, marks=marks)
         except Exception as e:
             log(f"  (DNA Features Viewer unavailable: {e}; using the built-in renderer)")
             tool = "pub"
     try:
-        return _draw_pub(genes, anchor, out_base, title, track_name, log, labels=labels)
+        return _draw_pub(genes, anchor, out_base, title, track_name, log, labels=labels,
+                         marks=marks)
     except Exception as e:
         log(f"  (genome map skipped: {e})")
         return None
@@ -214,8 +227,40 @@ def _draw_module_brackets(axes_list, runs):
             ax.set_ylim(ymin, ymax + h * 4)            # headroom for the brackets
 
 
+def _draw_marks(axes_list, marks):
+    """Draw each `(nt_pos, label, colour)` as a dashed vertical tick at its GENOME coordinate,
+    labelled along the tick, on whichever wrapped line contains that coordinate. Built for the
+    premature stops of an interrupted/overprinted locus: the stop is a single base, so a gene
+    arrow cannot show it and only a positional tick can.
+
+    Strict no-op for a None/empty list — that is what keeps every pre-existing caller's figure
+    byte-identical. Individually tolerant of malformed entries (skips them) and it never moves
+    the axes limits: `axvline` + a blended-transform label add no data extent, so the gene rows
+    laid out above stay exactly where the renderer put them."""
+    if not marks:
+        return
+    for ax in axes_list:
+        x0, x1 = sorted(ax.get_xlim())
+        for m in marks:
+            try:
+                pos = float(m[0])
+                lab = str(m[1]) if len(m) > 1 and m[1] else ""
+                col = (m[2] if len(m) > 2 and m[2] else "#c0392b")
+            except Exception:
+                continue                                    # malformed mark -> skip, never raise
+            if not (x0 <= pos <= x1):
+                continue                                    # falls on another wrapped line
+            ax.axvline(pos, color=col, lw=1.1, ls=(0, (3, 2)), zorder=25)
+            if lab:
+                # x in DATA coords, y in AXES fraction -> the label always sits at the top of
+                # the panel whatever y-range the renderer ended up with.
+                ax.text(pos, 0.99, lab, transform=ax.get_xaxis_transform(), rotation=90,
+                        ha="right", va="top", fontsize=6, color=col, zorder=26)
+
+
 def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
-              palette="default", functional_labels=False, module_brackets=False):
+              palette="default", functional_labels=False, module_brackets=False,
+              marks=None):
     """Publication genome map via **DNA Features Viewer** (Edinburgh Genome Foundry) — the
     default, cleanest renderer. Clean strand arrows; OVERLAPPING genes auto-stacked onto their
     own level (an overprint partner never hides the gene of interest); labels de-overlapped with
@@ -290,7 +335,7 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
         if fs and any(("text" in getattr(f, "data", {})) or ("is_base" in getattr(f, "data", {}))
                       for f in fs):
             return _cfl_orig(fs)
-        return _dfv_tolerant_levels(fs, 60)
+        return _dfv_tolerant_levels(fs, OVERPRINT_MIN_OVERLAP_BP)
 
     _pg["compute_features_levels"] = _patched_cfl
     try:
@@ -327,6 +372,8 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
 
     if module_brackets:
         _draw_module_brackets(axes_list, _module_runs(genes, CC))
+    # after the brackets (which resize the y-axis) so the tick labels land on the final top
+    _draw_marks(axes_list, marks)
 
     nm = str(track_name).split("\n")
     header = nm[0] + (f"\n{nm[1]}" if len(nm) > 1 else "")
@@ -364,7 +411,7 @@ def _draw_dfv(genes, anchor, out_base, title, track_name, log, labels=True,
     return out_base
 
 
-def _draw_pub(genes, anchor, out_base, title, track_name, log, labels=True):
+def _draw_pub(genes, anchor, out_base, title, track_name, log, labels=True, marks=None):
     """Publication genome diagram (works for any genome): genes as strand arrows (direction
     = strand) coloured by functional category; the gene of interest is bold gold. Overlapping
     genes are PACKED onto separate lanes so nothing is hidden. Gene-name labels (toggle with
@@ -448,6 +495,7 @@ def _draw_pub(genes, anchor, out_base, title, track_name, log, labels=True):
     fig.set_size_inches(width, height)
     ytop = (lbase + rowstep * (label_rows + 1)) if labels else (top_y + H + 0.4)
     ax.set_ylim(yruler - 0.55, ytop + 0.3)
+    _draw_marks([ax], marks)          # after the final ylim, so tick labels sit at the top
     ax.set_xticks([])
     ax.set_yticks([])
     for sp in ax.spines.values():
@@ -532,6 +580,44 @@ def _draw_easyfig(genbank, out_base, title, log):
     return Path(out_base)
 
 
+def _overprint_partners(genes):
+    """The genes that genuinely ANTISENSE-OVERPRINT the gene of interest: opposite strand AND
+    overlapping it by at least OVERPRINT_MIN_OVERLAP_BP.
+
+    Both conditions are load-bearing, and `role == 'overlap'` (which is >=1 bp, either strand)
+    satisfies neither:
+      * SAME-STRAND overlaps are not overprinting at all — they are ordinary translational
+        coupling (ATGA / TAATG), the commonest gene arrangement in a phage operon.
+      * A few-bp opposite-strand overlap of two convergent genes is a gene boundary, not a
+        nested gene; only an overlap that is a real fraction of a gene can host one.
+    Returns [] when the anchor is missing or carries no coordinates, so a caller cannot
+    conjure an overprint out of a gene list that never described one.
+    """
+    anchor = next((g for g in genes if g.get("role") == "anchor"), None)
+    if not anchor:
+        return []
+    try:
+        a_s, a_e = int(anchor["start"]), int(anchor["end"])
+        a_st = int(anchor.get("strand", 1) or 0)
+    except Exception:
+        return []
+    if not a_st:                       # unstranded anchor: "antisense" is undefined
+        return []
+    out = []
+    for g in genes:
+        if g is anchor or g.get("role") == "anchor":
+            continue
+        try:
+            s, e, st = int(g["start"]), int(g["end"]), int(g.get("strand", 1) or 0)
+        except Exception:
+            continue
+        if not st or (st > 0) == (a_st > 0):
+            continue                                       # same strand (or unstranded)
+        if min(e, a_e) - max(s, a_s) + 1 >= OVERPRINT_MIN_OVERLAP_BP:
+            out.append(g)
+    return out
+
+
 def _legend_handles(genes, CC, FAM, HYPO):
     """Legend patches for the categories actually present, each annotated with a COUNT
     (e.g. 'structural (3)') so the functional composition is readable without counting arrows."""
@@ -544,6 +630,21 @@ def _legend_handles(genes, CC, FAM, HYPO):
     handles += [Patch(facecolor=CC[c], edgecolor="#33373d", label=f"{c} ({counts[c]})") for c in present]
     if n_hypo:
         handles += [Patch(facecolor=HYPO, edgecolor="#33373d", label=f"hypothetical / other ({n_hypo})")]
+    # A gene that really is nested antisense inside the gene of interest was never named in
+    # the legend, so a reader saw an arrow straddling the gold one with nothing to say what
+    # that means — for this project it is the headline biology. The swatch is deliberately
+    # UNFILLED: an overprinting partner is coloured by its own function (transcription,
+    # replication, …) like every other gene, so claiming a colour here would contradict the
+    # category entries above. No count suffix (unlike the category entries): the role is a
+    # RELATIONSHIP to the gene of interest, and the arrows carrying it are already the ones
+    # straddling the gold one.
+    # The test is _overprint_partners, NOT `role == 'overlap'`: role is >=1 bp on EITHER
+    # strand, so keying off it stamped "overprinting partner (antisense)" on a 4 bp
+    # same-strand ATGA overlap — an ordinary operon arrangement this file already treats as
+    # noise (it collapses sub-OVERPRINT_MIN_OVERLAP_BP overlaps onto one row).
+    if _overprint_partners(genes):
+        handles += [Patch(facecolor="none", edgecolor="#33373d", linewidth=1.2, linestyle="--",
+                          label="overprinting partner (antisense)")]
     return handles
 
 

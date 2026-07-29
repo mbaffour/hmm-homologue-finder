@@ -98,23 +98,59 @@ FLANKS = 7  # ORFs each side of the family gene (publication default for phage n
 # ----------------------------------------------------------------------------
 # CD-HIT clustering of the correct family domains
 # ----------------------------------------------------------------------------
-def cdhit(faa: Path, out_prefix: Path) -> dict[int, list[tuple[str, bool]]]:
-    """Run CD-HIT; return {cluster_id: [(member_id, is_representative), ...]}."""
-    subprocess.run(
-        ["cd-hit", "-i", str(faa), "-o", str(out_prefix),
-         "-c", "0.4", "-n", "2", "-M", "0", "-T", "8", "-aL", "0.8", "-d", "0"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
-    )
-    clusters: dict[int, list[tuple[str, bool]]] = {}
+# Flags for THIS step (neighbourhood grouping), pinned as constants so the figure
+# grouping is reproducible and so a second caller cannot silently drift from it:
+#   -c 0.4  remote-homology band — these are divergent phage proteins, not orthologs
+#   -n 2    cd-hit's own required word size for the 0.4-0.5 identity band
+#   -aL 0.8 the alignment must cover 80 % of the LONGER sequence, so a short domain
+#           cannot be absorbed into an unrelated long protein at only 40 % identity
+CDHIT_IDENT = 0.4
+CDHIT_WORD = 2
+CDHIT_ALIGN_LONGER = 0.8
+CDHIT_THREADS = 8
+
+
+def parse_clstr(text: str) -> list[list[tuple[str, bool]]]:
+    """Parse cd-hit `.clstr` text -> one ``[(member_name, is_representative), ...]``
+    list per cluster, in file order.
+
+    Split out from `cdhit` because this is where the bugs live — cd-hit truncates
+    every name with a literal ``...`` and marks the cluster representative with a
+    trailing ``*`` — and parsing needs no cd-hit binary, so it can be unit-tested.
+
+    cd-hit numbers clusters sequentially from 0 in file order, so a cluster's INDEX
+    in the returned list is its cd-hit cluster id; callers can `enumerate` it.
+    """
+    clusters: list[list[tuple[str, bool]]] = []
     cur = None
-    for line in Path(str(out_prefix) + ".clstr").read_text().splitlines():
+    for line in str(text or "").splitlines():
         if line.startswith(">Cluster"):
-            cur = int(line.split()[-1])
-            clusters[cur] = []
+            cur = []
+            clusters.append(cur)
         elif cur is not None and ">" in line:
             name = line.split(">")[1].split("...")[0]
-            clusters[cur].append((name, "*" in line))
+            cur.append((name, "*" in line))
     return clusters
+
+
+def cdhit(faa: Path, out_prefix: Path,
+          ident: float = CDHIT_IDENT, word: int = CDHIT_WORD,
+          aL: float = CDHIT_ALIGN_LONGER, cpu: int = CDHIT_THREADS,
+          ) -> dict[int, list[tuple[str, bool]]]:
+    """Run CD-HIT; return {cluster_id: [(member_id, is_representative), ...]}.
+
+    The defaults reproduce the flags this step has always used, so the clinker
+    grouping is byte-identical to before. The parameters exist so a second caller
+    (`family_census.py`, which clusters the seeds-plus-hits union at 100/95/90 %)
+    goes through ONE cd-hit wrapper instead of growing a divergent copy.
+    """
+    subprocess.run(
+        ["cd-hit", "-i", str(faa), "-o", str(out_prefix),
+         "-c", f"{ident:g}", "-n", str(word), "-M", "0", "-T", str(cpu),
+         "-aL", f"{aL:g}", "-d", "0"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
+    )
+    return dict(enumerate(parse_clstr(Path(str(out_prefix) + ".clstr").read_text())))
 
 
 # ----------------------------------------------------------------------------

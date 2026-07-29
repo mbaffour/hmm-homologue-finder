@@ -120,8 +120,13 @@ check("seed_recovery classify never", SR.classify(False, False) == "never_recove
 
 # --- package layout: distinct numbered folders + per-folder README generation --
 import package_layout as PL  # noqa: E402
-check("package_layout: 8 distinct numbered dirs (no 00/00 collision)",
-      len(set(PL.DIRS.values())) == 8 and len({d[:2] for d in PL.DIRS.values()}) == 8)
+check("package_layout: every folder name and number prefix is distinct (no 00/00 collision)",
+      len(set(PL.DIRS.values())) == len(PL.DIRS)
+      and len({d[:2] for d in PL.DIRS.values()}) == len(PL.DIRS))
+# The evidence behind the report's AUC / decoy-FDR claims, and the overprinting outputs, must
+# have a home in the package — controls/ previously never shipped at all.
+check("package_layout: controls and overprinting folders exist",
+      "controls" in PL.DIRS and "overprint" in PL.DIRS)
 _pk = Path(tempfile.mkdtemp()) / "PACKAGE"
 (_pk / PL.DIRS["tables"]).mkdir(parents=True)
 (_pk / PL.DIRS["tables"] / "paper_main_table.csv").write_text("x\n")
