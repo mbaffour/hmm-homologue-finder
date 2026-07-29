@@ -538,6 +538,32 @@ for _neg in ("gp75", "Klebsiella_phage_KP32", "vB_EcoM_AP22", "phage_T4",
 check("accession: pipeline header extractor still works (regression)",
       _exacc("", "MK321214|1_1|Phage name|x").startswith("MK321214"))
 
+# --- --clear-cache: reclaim the streamed DBs at the END of the run, not per database ---
+# Per-database discarding would force every iteration to re-download AND re-six-frame-
+# translate; translation is the expensive step, so the cache is kept for the whole run and
+# reclaimed once at the end.
+_cc = Path(tempfile.mkdtemp())
+(_cc / "cache" / "DB").mkdir(parents=True)
+(_cc / "cache" / "DB" / "genomes.fna").write_bytes(b"x" * 5000)
+(_cc / "cache" / "DB" / "genomes.fna.sixframe.min30.faa").write_bytes(b"y" * 9000)
+(_cc / "annotation" / "vogdb").mkdir(parents=True)
+(_cc / "annotation" / "vogdb" / "profiles.hmm").write_bytes(b"keep")
+(_cc / "db_setup").mkdir()
+(_cc / "db_setup" / "pfam.h3i").write_bytes(b"keep")
+_freed = H.clear_database_cache(_cc, lambda m: None)
+check("clear-cache: reclaims the downloads + six-frame translations", _freed == 14000
+      and not (_cc / "cache").exists())
+check("clear-cache: keeps annotation/ and db_setup/ (small, slow to rebuild)",
+      (_cc / "annotation" / "vogdb" / "profiles.hmm").exists()
+      and (_cc / "db_setup" / "pfam.h3i").exists())
+check("clear-cache: absent cache is a no-op, not an error",
+      H.clear_database_cache(Path(tempfile.mkdtemp()), lambda m: None) == 0)
+# The cache is shared between concurrent runs and has NO lock file, so clearing it while
+# another search is mid-flight would delete a database out from under it.
+import inspect as _inspect  # noqa: E402
+check("clear-cache: guards against a concurrent run before deleting",
+      "_pipeline_processes_running" in _inspect.getsource(H.clear_database_cache))
+
 # --- streamed collection fetch: a plain-text URL must not silently yield zero bytes ----
 _sgc = (Path(__file__).resolve().parent / "scan_genome_collection.sh").read_text(errors="replace")
 # Check the CODE, not the prose — the comment explaining the bug names the old command.

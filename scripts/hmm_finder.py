@@ -827,6 +827,14 @@ def main() -> None:
     ap.add_argument("--all-databases", action="store_true",
                     help="search the full default database set without the interactive prompt "
                          "(use in scripts where you want everything but still have a TTY)")
+    ap.add_argument("--clear-cache", action="store_true",
+                    help="delete the streamed database downloads + six-frame translations when "
+                         "the run finishes, reclaiming the disk (often 100+ GB). The cache is "
+                         "kept DURING the run so iterations 2..N reuse the translations instead "
+                         "of re-downloading and re-translating every round; it is only cleared "
+                         "once, at the end. Skipped if another pipeline process is running, "
+                         "since the cache is shared and has no lock file. Keeps annotation/ and "
+                         "db_setup/ (small, slow to rebuild).")
     ap.add_argument("--no-seed-tree", action="store_true",
                     help="skip the pre-run seed QC tree + seed alignment (a quick "
                          "phylogeny/alignment of just the input seeds, for sanity-checking "
@@ -1345,7 +1353,74 @@ def main() -> None:
     # Final privacy pass: strip machine-identifying paths / hostname (and any stray e-mail)
     # from the shared provenance + tool logs (top-level + PACKAGE) before the deliverable ships.
     _scrub_env_paths(out)
+
+    # Reclaim the streamed database cache now that every iteration is finished.
+    if getattr(args, "clear_cache", False):
+        clear_database_cache(args.db_cache, log)
+
     log(f"=== DONE. Package: {out / 'PACKAGE'} ===")
+
+
+def _pipeline_processes_running() -> int:
+    """How many OTHER pipeline processes are alive (0 if it cannot be determined).
+
+    The cache is shared between concurrent runs and has no lock file, so clearing it while
+    another search is mid-flight would delete a database out from under it.
+    """
+    try:
+        ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True,
+                            timeout=10)
+        me = str(os.getpid())
+        pat = ("hmm_finder.py", "run_all_database_benchmark", "scan_genome.py",
+               "scan_genome_collection.sh", "preload_databases.py")
+        n = 0
+        for ln in ps.stdout.splitlines()[1:]:
+            pid, _, cmd = ln.strip().partition(" ")
+            if pid == me or "ps -eo" in cmd:
+                continue
+            if any(p in cmd for p in pat):
+                n += 1
+        return n
+    except Exception:
+        return 0
+
+
+def clear_database_cache(db_cache, log) -> int:
+    """Delete the streamed database downloads + six-frame translations, returning bytes freed.
+
+    Why at the END of the run rather than per database: the engine can already discard each
+    file right after scanning it (its `--keep-cache` is what suppresses that), but the
+    six-frame ORF cache is only reused when the download is kept, so discarding per database
+    forces every iteration to re-download AND re-translate — and translation is the expensive
+    step. Keeping the cache for the whole run and reclaiming it once at the end gives both:
+    iterations 2..N reuse the translations, and nothing is left behind afterwards.
+
+    Only `cache/` (the multi-GB downloads and their `.sixframe.*.faa` translations) is removed.
+    `annotation/` and `db_setup/` hold small, slow-to-rebuild artefacts such as the VOGDB
+    profiles and are kept.
+    """
+    root = Path(db_cache).expanduser()
+    target = root / "cache"
+    if not target.is_dir():
+        log(f"  (no database cache to clear at {target})")
+        return 0
+    busy = _pipeline_processes_running()
+    if busy:
+        log(f"  cache NOT cleared: {busy} other pipeline process(es) are running and share it "
+            f"(no lock file) — clear it later with: python3 scripts/manage_cache.py --clear-all")
+        return 0
+    try:
+        freed = sum(f.stat().st_size for f in target.rglob("*") if f.is_file())
+    except OSError:
+        freed = 0
+    try:
+        shutil.rmtree(target, ignore_errors=True)
+        log(f"  cleared the database cache: {freed / (1024**3):.1f} GB reclaimed from {target}")
+        log(f"  (annotation/ and db_setup/ kept — small and slow to rebuild)")
+        return freed
+    except Exception as e:
+        log(f"  (cache clear failed: {e})")
+        return 0
 
 
 def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
