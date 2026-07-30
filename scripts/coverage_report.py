@@ -177,6 +177,18 @@ def build(run_dir: Path, cov: Path, log=print) -> dict:
         w.writeheader()
         w.writerows(out)
 
+    # ALSO write it into the RUN directory. This table is the whole point of the exercise — it
+    # is what makes a coverage claim falsifiable — and it was landing only in the scan's own
+    # output folder, outside the run and outside the shareable package. export_csv's
+    # TABLE_EXPORTS then mirrors it into PACKAGE/01_summary_tables.
+    try:
+        run_copy = Path(run_dir) / "coverage_summary.csv"
+        if run_copy.resolve() != dst.resolve():
+            run_copy.write_text(dst.read_text(encoding="utf-8"), encoding="utf-8")
+            log(f"  -> {run_copy}")
+    except OSError as e:
+        log(f"  (could not copy the coverage summary into the run dir: {e})")
+
     n_yes = sum(1 for r in out if r["searched"] == "yes")
     n_part = sum(1 for r in out if r["searched"] == "partial")
     n_no = sum(1 for r in out if r["searched"] == "no")

@@ -38,6 +38,8 @@ TABLE_EXPORTS = (
     "homolog_stats.csv", "all_runs_hits.csv",
     "family_census.csv", "family_census_members.csv",
     "overprinted_loci.csv", "overprinting_summary.csv",
+    # what WAS and was NOT searched — the table that makes a coverage claim falsifiable
+    "coverage_summary.csv",
 )
 
 

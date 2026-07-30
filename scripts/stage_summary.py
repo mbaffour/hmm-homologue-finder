@@ -385,15 +385,40 @@ def _stage02(discovery: Path) -> list:
             _sys.path.insert(0, _eng)
         from databases.builtin import BUILTIN_DATABASES        # a plain dict, no I/O
         attempted = {str(x) for x in per.get("database", [])}
+        # A follow-up coverage scan (GPD, GVD-AVrC, host genera) searches spaces the main run
+        # did not, and its results live in coverage_summary.csv. Without consulting it this row
+        # kept listing GPD and GVD-AVrC as "NOT searched" after they had been scanned end to
+        # end — a stale claim in the shipped package, which is exactly what this row exists to
+        # prevent. Only a space marked fully searched there is removed; a partial stays listed.
+        covered = set()
+        cov = discovery / "coverage_summary.csv"
+        if cov.exists():
+            for r in _read_table(cov).to_dict("records"):
+                if str(r.get("searched", "")).strip().lower() == "yes":
+                    covered.add(str(r.get("space", "")).strip())
         missing = [str(d.get("name")) for d in BUILTIN_DATABASES
-                   if str(d.get("name")) not in attempted]
+                   if str(d.get("name")) not in attempted
+                   and str(d.get("name")) not in covered]
         if missing:
             out.append(_row(
                 S, N, "catalog_databases_not_searched", len(missing), "databases",
-                "in the catalog but NOT searched in this run, so this run says nothing either "
-                "way about them: " + "; ".join(missing)
-                + " — a homolog present only in one of these would not appear above",
+                "in the catalog but NOT searched, so nothing here says anything either way "
+                "about them: " + "; ".join(missing)
+                + " — a homolog present only in one of these would not appear above"
+                + ("" if not covered else
+                   f" (excludes {len(covered)} space(s) a follow-up coverage scan did search "
+                   f"— see coverage_summary.csv)"),
                 "engine/databases/builtin.py"))
+        # Only spaces the MAIN run did not attempt are "follow-up" — coverage_summary.csv also
+        # lists the main run's own databases, and calling those follow-ups would misdescribe
+        # where the evidence came from.
+        extra = sorted(covered - attempted)
+        if extra:
+            out.append(_row(
+                S, N, "spaces_searched_by_follow_up_scans", len(extra), "spaces",
+                "searched OUTSIDE the main run (metagenome catalogues, seed source genomes, "
+                "host genera) and recorded in coverage_summary.csv: " + "; ".join(extra),
+                "coverage_summary.csv"))
     except Exception:
         pass
 

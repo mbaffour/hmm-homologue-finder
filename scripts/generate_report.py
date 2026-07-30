@@ -423,6 +423,41 @@ def generate(discovery: Path) -> Path:
             "gene of interest. A <b>conservation</b>-coloured version (blue gradient = how many "
             "genomes share each gene) is in <code>downstream/synteny/</code>."))
 
+    # --- what was, and was NOT, searched ------------------------------------------------
+    # The report is what a reader actually opens, and it said nothing about coverage. Without
+    # this, an unsearched database is indistinguishable from one that returned nothing — the
+    # difference between "the gene is absent from the gut phage catalogues" and "we never
+    # looked there", and only one of those is a finding.
+    _cov = _read_csv(discovery / "coverage_summary.csv")
+    if _cov:
+        _ico = {"yes": "searched", "partial": "PARTIAL", "no": "not searched", "n/a": "n/a"}
+        p.append("<h2>Search coverage — what was and was not searched</h2>")
+        n_yes = sum(1 for r in _cov if r.get("searched") == "yes")
+        n_part = sum(1 for r in _cov if r.get("searched") == "partial")
+        n_no = sum(1 for r in _cov if r.get("searched") == "no")
+        p.append(f"<p class='muted'><b>{n_yes}</b> space(s) fully searched"
+                 + (f", <b>{n_part}</b> partial" if n_part else "")
+                 + f", <b>{n_no}</b> not searched (named below, with the reason).</p>")
+        p.append("<table><tr><th>search space</th><th>searched</th><th>extent</th>"
+                 "<th>hits</th><th>note</th></tr>")
+        for r in _cov:
+            st = str(r.get("searched", ""))
+            ext = f"{r.get('n_units','')} {r.get('units','')}".strip()
+            style = (" style='color:#b06000;font-weight:600'" if st == "partial"
+                     else " style='opacity:.65'" if st in ("no", "n/a") else "")
+            p.append(f"<tr{style}><td>{e(str(r.get('space','')))}</td>"
+                     f"<td>{e(_ico.get(st, st))}</td><td>{e(ext)}</td>"
+                     f"<td>{e(str(r.get('n_hits','')))}</td>"
+                     f"<td class='muted'>{e(str(r.get('note',''))[:300])}</td></tr>")
+        p.append("</table>")
+        p.append(_howto(
+            "Each row is a body of sequence the model was searched against. <b>A 0 in a fully "
+            "searched space is a RESULT</b> — the family really is absent from it. A 0 in a "
+            "<b>PARTIAL</b> row is not: only part of it was scanned, so the hit count is a "
+            "lower bound. Rows marked <b>not searched</b> are named with the reason (usually "
+            "that they are server-scale), so a reviewer can see exactly what this run does and "
+            "does not license you to claim. Full table: <code>coverage_summary.csv</code>."))
+
     if paper:
         show = [c for c in ("rank", "representative_organism", "accession", "n_genomes",
                             "n_organisms", "database_records", "domain_aa_len", "full_length_aa",
