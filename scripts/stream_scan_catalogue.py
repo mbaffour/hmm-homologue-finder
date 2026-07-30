@@ -124,19 +124,35 @@ def _scan_batch(hmm: Path, batch: Path, out: Path, min_bit: float, cpu: int, tab
            "--genome", str(batch), "--out", str(bout), "--find-interrupted",
            "--no-neighbours", "--min-bit", str(min_bit), "--cpu", str(cpu),
            "--trans-table", str(table)]
+    # Return (rows, aa, ok). `ok` is load-bearing: a batch whose scan COULD NOT RUN — missing
+    # hmmsearch, an unreadable or 0-byte HMM, a crash — used to be indistinguishable from a
+    # batch that legitimately contained nothing, because the output was sent to DEVNULL with
+    # check=False and a missing scan_hits.tsv simply read as "no hits". The run then reported
+    # status ok / hits 0 / complete true, and coverage_report turned that into "0 hits = the
+    # family is absent from this catalogue". A scan that did not happen must never become a
+    # biological statement.
+    err = ""
     try:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       check=False, timeout=7200)
+        pr = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                            check=False, timeout=7200)
+        ok = pr.returncode == 0
+        err = (pr.stderr or b"").decode("utf-8", "replace")[-400:]
     except subprocess.TimeoutExpired:
-        return []
+        shutil.rmtree(bout, ignore_errors=True)
+        return [], "", False
+    except Exception as e:
+        shutil.rmtree(bout, ignore_errors=True)
+        return [], "", False
     tsv = bout / "scan_hits.tsv"
-    rows = []
-    if tsv.exists():
-        rows = tsv.read_text(encoding="utf-8", errors="replace").splitlines()
+    if not tsv.exists():
+        ok = False                       # the scan produced no table at all
+    rows = tsv.read_text(encoding="utf-8", errors="replace").splitlines() if tsv.exists() else []
     faa = bout / "scan_hits_aa.faa"
     aa = faa.read_text(encoding="utf-8", errors="replace") if faa.exists() else ""
     shutil.rmtree(bout, ignore_errors=True)
-    return [rows, aa]
+    if not ok and err:
+        print(f"    batch scan failed: {err.strip().splitlines()[-1][:160]}")
+    return rows, aa, ok
 
 
 def run(hmm: Path, url: str, out: Path, label: str = "", min_bit: float = 25.0, cpu: int = 4,
@@ -179,6 +195,12 @@ def run(hmm: Path, url: str, out: Path, label: str = "", min_bit: float = 25.0, 
 
     batch = out / "_batch.fna"
     seen = 0
+    # ended_early / failed_batches are what stop a scan that DID NOT FINISH from being written
+    # out as a completed one. The stream can die mid-catalogue (a truncated download, a network
+    # drop) and the old code logged "re-run with --resume" and then fell through to the same
+    # final write as a clean finish — status ok, complete true, exit 0 — so a partial scan was
+    # published as full coverage, and at zero hits as an absence.
+    ended_early, failed_batches, scanned_batches = False, 0, 0
     have_header = agg.stat().st_size > 0 if agg.exists() else False
     try:
         fh = batch.open("w", encoding="utf-8")
@@ -194,7 +216,10 @@ def run(hmm: Path, url: str, out: Path, label: str = "", min_bit: float = 25.0, 
             bases += len(seq)
             if n_in_batch >= batch_contigs or bases >= BATCH_MAX_BASES:
                 fh.close()
-                rows, aa = _scan_batch(hmm, batch, out, min_bit, cpu, table)
+                rows, aa, ok = _scan_batch(hmm, batch, out, min_bit, cpu, table)
+                scanned_batches += 1
+                if not ok:
+                    failed_batches += 1
                 if rows:
                     with agg.open("a", encoding="utf-8") as af:
                         if not have_header:
@@ -221,7 +246,10 @@ def run(hmm: Path, url: str, out: Path, label: str = "", min_bit: float = 25.0, 
         fh.close()
         # the final partial batch
         if n_in_batch:
-            rows, aa = _scan_batch(hmm, batch, out, min_bit, cpu, table)
+            rows, aa, ok = _scan_batch(hmm, batch, out, min_bit, cpu, table)
+            scanned_batches += 1
+            if not ok:
+                failed_batches += 1
             if rows:
                 with agg.open("a", encoding="utf-8") as af:
                     if not have_header:
@@ -236,8 +264,10 @@ def run(hmm: Path, url: str, out: Path, label: str = "", min_bit: float = 25.0, 
             batches += 1
             done_contigs = seen
     except KeyboardInterrupt:
+        ended_early = True
         log("  interrupted — progress is checkpointed; re-run with --resume")
     except Exception as e:
+        ended_early = True
         log(f"  stream ended early ({e}) — progress checkpointed; re-run with --resume")
     finally:
         try:
@@ -256,14 +286,38 @@ def run(hmm: Path, url: str, out: Path, label: str = "", min_bit: float = 25.0, 
             dl.unlink(missing_ok=True)
             log("  deleted the temporary catalogue file")
 
+    # A resume whose checkpoint claims more contigs than the catalogue holds scans NOTHING and
+    # would otherwise report a clean, complete run of that fabricated count.
+    if resume and scanned_batches == 0 and seen < done_contigs:
+        ended_early = True
+        log(f"  ERROR: the checkpoint claims {done_contigs:,} contigs but the catalogue yielded "
+            f"only {seen:,} — nothing was scanned. Wrong --out directory, or the catalogue "
+            f"changed. Not recording this as a completed scan.")
+
+    complete = bool(not max_contigs and not ended_early and failed_batches == 0)
     ckpt.write_text(json.dumps({"contigs_done": done_contigs, "hits": hits,
-                                "batches": batches, "url": url, "complete": not max_contigs},
+                                "batches": batches, "url": url, "complete": complete},
                                indent=2))
     el = (time.time() - started) / 60
-    res = {"status": "ok", "catalogue": label or url, "contigs_scanned": done_contigs,
-           "batches": batches, "hits": hits, "minutes": round(el, 1),
-           "hits_tsv": str(agg), "bounded_test": bool(max_contigs)}
-    log(f"DONE {label or url}: {done_contigs:,} contigs, {hits} hit(s) in {el:.1f} min -> {agg}")
+    status = "ok" if complete else ("bounded" if max_contigs and not ended_early
+                                    and not failed_batches else "incomplete")
+    res = {"status": status, "complete": complete, "catalogue": label or url,
+           "contigs_scanned": done_contigs, "batches": batches, "hits": hits,
+           "minutes": round(el, 1), "hits_tsv": str(agg),
+           "bounded_test": bool(max_contigs), "ended_early": ended_early,
+           "failed_batches": failed_batches, "scanned_batches": scanned_batches}
+    if not complete:
+        res["warning"] = (
+            "THIS SCAN DID NOT COVER THE WHOLE CATALOGUE"
+            + (" — the stream ended early" if ended_early else "")
+            + (f" — {failed_batches} batch scan(s) FAILED" if failed_batches else "")
+            + (" — bounded by --max-contigs" if max_contigs else "")
+            + ". A hit count from it is a LOWER BOUND and a zero is NOT evidence of absence.")
+        log(f"INCOMPLETE {label or url}: {done_contigs:,} contigs, {hits} hit(s) in {el:.1f} min")
+        log(f"  {res['warning']}")
+        log("  re-run with --resume to continue")
+    else:
+        log(f"DONE {label or url}: {done_contigs:,} contigs, {hits} hit(s) in {el:.1f} min -> {agg}")
     (out / "stream_scan_summary.json").write_text(json.dumps(res, indent=2))
     return res
 
@@ -295,7 +349,8 @@ def main() -> int:
     r = run(a.hmm, url, a.out, label=label, min_bit=a.min_bit, cpu=a.cpu,
             batch_contigs=a.batch_contigs, max_contigs=a.max_contigs, resume=a.resume,
             table=a.trans_table, keep_download=a.keep_download)
-    return 0 if r.get("status") == "ok" else 1
+    # Non-zero for an incomplete scan so a wrapper cannot mistake it for full coverage.
+    return 0 if r.get("status") in ("ok", "bounded") else 1
 
 
 if __name__ == "__main__":

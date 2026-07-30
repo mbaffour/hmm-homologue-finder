@@ -99,10 +99,11 @@ def build(run_dir: Path, cov: Path, log=print) -> dict:
     for key, nice in (("gpd", "Gut Phage Database (GPD)"), ("gvd", "GVD-AVrC")):
         d = cov / f"catalogue_{key}"
         summ, prog = d / "stream_scan_summary.json", d / "_progress.json"
-        st = {}
+        st, have_summary = {}, False
         for p in (summ, prog):
             try:
                 st = json.loads(p.read_text(encoding="utf-8"))
+                have_summary = (p == summ)
                 break
             except Exception:
                 continue
@@ -110,13 +111,36 @@ def build(run_dir: Path, cov: Path, log=print) -> dict:
             continue
         n = st.get("contigs_scanned", st.get("contigs_done", 0))
         h = _tsv_n(d / "collection_hits.tsv")
-        partial = bool(st.get("bounded_test")) or st.get("complete") is False
+        # COMPLETION MUST BE POSITIVELY ASSERTED, never inferred from the absence of a flag.
+        # `st.get("complete") is False` treated a MISSING key as complete — and the in-flight
+        # checkpoint has no such key, it is only added by the final write. So a scan that was
+        # still running, or had been killed, was published as fully searched; at zero hits that
+        # became "the family is absent from this catalogue". stream_scan_summary.json is only
+        # written when a scan ends, so its absence alone means the scan did not finish.
+        partial = (bool(st.get("bounded_test"))
+                   or st.get("complete") is not True
+                   or not have_summary
+                   or bool(st.get("ended_early"))
+                   or int(st.get("failed_batches") or 0) > 0)
+        # A hits table that is missing or empty while the checkpoint recorded hits means the
+        # table is the unreliable witness — never silently prefer the 0.
+        h_ckpt = int(st.get("hits") or 0)
+        if h_ckpt and not h:
+            h = h_ckpt
         out.append({
             "space": nice, "searched": "partial" if partial else "yes",
             "n_units": n, "units": "contigs", "n_hits": h,
-            "verdict": ("hits" if h else "no hits"),
-            "note": ("BOUNDED/INCOMPLETE — only the first %s contigs were scanned, so a 0 here "
-                     "is NOT evidence of absence" % f"{n:,}") if partial else
+            "verdict": ("hits (lower bound)" if (h and partial) else
+                        "hits" if h else ("no hits — INCOMPLETE" if partial else "no hits")),
+            "note": (("INCOMPLETE — only %s contig(s) were scanned" % f"{n:,}")
+                     + (" (bounded by --max-contigs)" if st.get("bounded_test") else "")
+                     + (" ; the stream ENDED EARLY" if st.get("ended_early") else "")
+                     + (" ; %d batch scan(s) FAILED" % int(st.get("failed_batches") or 0)
+                        if st.get("failed_batches") else "")
+                     + (" ; no end-of-scan summary was written, so the scan did not finish"
+                        if not have_summary else "")
+                     + ". A hit count here is a LOWER BOUND and a 0 is NOT evidence of absence."
+                     ) if partial else
                     ("streamed, batched and discarded; nothing cached. 0 hits = the family is "
                      "absent from this catalogue" if not h else
                      "streamed, batched and discarded; nothing cached"),

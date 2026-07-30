@@ -7,9 +7,16 @@ VOGDB fallback and the 'virion RNA polymerase' fix), nucleotide detection +
 table-11 translation, protein-vs-nucleotide accession routing, organism parsing,
 and row-label disambiguation. Run:  python3 run_tests.py
 """
+import os
 import sys
 import tempfile
 from pathlib import Path
+
+# The suite must never touch the network — the docstring above promises "no network, no DBs".
+# Without this, a fixture using a `uvig_` accession streams the 1.5 GB Gut Phage Database,
+# which turned an otherwise 33-second run into one taking over ten minutes, with unpredictable
+# runtime and no chance of running in CI.
+os.environ["HMMHF_NO_NETWORK"] = "1"
 
 fails = []
 
@@ -543,6 +550,46 @@ for _neg in ("gp75", "Klebsiella_phage_KP32", "vB_EcoM_AP22", "phage_T4",
 check("accession: pipeline header extractor still works (regression)",
       _exacc("", "MK321214|1_1|Phage name|x").startswith("MK321214"))
 
+# --- a scan that did not finish must never be published as full coverage -----------------
+# Every case below shipped at some point as a confident result from a step that never ran.
+import json  # noqa: E402
+import stream_scan_catalogue as SSC  # noqa: E402  (imported for the module-level guards below)
+import coverage_report as CVR  # noqa: E402
+_ic = Path(tempfile.mkdtemp(prefix="incomplete_"))
+
+def _cov_row(state: dict, summary: bool):
+    """Run coverage_report over a catalogue dir in the given state; return its row."""
+    d = _ic / f"c{abs(hash(str(state)) + summary)}" / "catalogue_gpd"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "_progress.json").write_text(json.dumps(state))
+    if summary:
+        (d / "stream_scan_summary.json").write_text(json.dumps(state))
+    CVR.build(_ic, d.parent, log=lambda *a: None)
+    import csv as _c
+    rows = list(_c.DictReader(open(d.parent / "coverage_summary.csv", encoding="utf-8")))
+    return next((r for r in rows if "GPD" in r["space"]), {})
+
+# An in-flight checkpoint has NO 'complete' key. `st.get("complete") is False` read that as
+# complete, so a running (or killed) scan was published as fully searched — and at zero hits as
+# "the family is absent from this catalogue".
+check("coverage: an in-flight checkpoint (no 'complete' key) is PARTIAL, not searched",
+      _cov_row({"contigs_done": 1000, "hits": 0}, summary=False).get("searched") == "partial")
+check("coverage: a scan with no end-of-scan summary is PARTIAL",
+      _cov_row({"contigs_done": 5, "hits": 0, "complete": True}, summary=False).get("searched")
+      == "partial")
+check("coverage: a scan whose batches FAILED is PARTIAL",
+      _cov_row({"contigs_done": 5, "hits": 0, "complete": False, "failed_batches": 2},
+               summary=True).get("searched") == "partial")
+check("coverage: only an explicitly complete scan is called searched",
+      _cov_row({"contigs_done": 5, "hits": 0, "complete": True, "failed_batches": 0},
+               summary=True).get("searched") == "yes")
+# A partial scan's hit count is a lower bound; a 0 from it must never read as absence.
+_pr = _cov_row({"contigs_done": 9, "hits": 0}, summary=False)
+check("coverage: a PARTIAL zero is explicitly not evidence of absence",
+      "NOT evidence of absence" in _pr.get("note", ""))
+check("coverage: hits recorded in the checkpoint are not lost to an empty hits table",
+      _cov_row({"contigs_done": 9, "hits": 7}, summary=False).get("n_hits") == "7")
+
 # --- missed-seed scan: verdicts, address hygiene, and never claiming an unlooked-for absence -
 import missed_seed_report as MSR  # noqa: E402
 _ms = Path(tempfile.mkdtemp(prefix="missed_"))
@@ -588,6 +635,38 @@ _msh = (Path(__file__).resolve().parent / "scan_missed_seeds.sh").read_text(erro
 check("missed seeds: the driver refuses to write into the database cache",
       "refusing to write into the database cache" in _msh)
 check("missed seeds: no email means a dry run, not a silent fetch", "DRY RUN" in _msh)
+
+# An unreadable seed_status.csv yields zero matching rows, and the caller then announced
+# "every distinct seed protein was re-found" — an all-clear from a file it never understood.
+for _label, _body in (("0 bytes", ""),
+                      ("headers only", "seed_id,status\n"),
+                      ("wrong columns", "a,b,c\n1,2,3\n"),
+                      ("tab-separated", "seed_id\tstatus\ns1\tmissed\n")):
+    _bad = Path(tempfile.mkdtemp(prefix="badseed_"))
+    (_bad / "seed_qc").mkdir()
+    (_bad / "seed_qc" / "seed_status.csv").write_text(_body)
+    try:
+        MSR.missed_seeds(_bad)
+        _raised = False
+    except ValueError:
+        _raised = True
+    check(f"missed seeds: a {_label} seed_status.csv raises, never reports all-clear", _raised)
+
+# A 0-byte collection_hits.tsv is what the collection scanner leaves when every fetch failed,
+# so `.exists()` turned a network outage into "the gene is absent from N seed genomes".
+_ns = Path(tempfile.mkdtemp(prefix="noscan_"))
+(_ns / "seed_qc").mkdir()
+(_ns / "seed_qc" / "seed_status.csv").write_text(
+    "seed_id,organism,accession,accession_prefix,accession_class,status,own_genome_searched\n"
+    "s1,Phage A,OZ035750.1,OZ,genbank,missed,False\n")
+(_ns / "out" / "results").mkdir(parents=True)
+(_ns / "out" / "results" / "collection_hits.tsv").write_text("")     # fetch failed
+MSR.plan(_ns, _ns / "out", log=lambda *a: None)
+MSR.report(_ns, _ns / "out", log=lambda *a: None)
+_nsrow = next(iter(__import__("csv").DictReader(
+    open(_ns / "out" / "missed_seed_scan.csv", encoding="utf-8"))), {})
+check("missed seeds: an empty hits table means not_fetched, NOT gene_absent",
+      _nsrow.get("verdict") == "not_fetched" and _nsrow.get("explains_miss") == "unfetchable")
 
 # --- --clear-cache: reclaim the streamed DBs at the END of the run, not per database ---
 # Per-database discarding would force every iteration to re-download AND re-six-frame-

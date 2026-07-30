@@ -27,19 +27,32 @@ for b in "$HOME/miniforge3" "$HOME/mambaforge" "$HOME/miniconda3" "$HOME/anacond
 done
 conda activate hmm-discovery 2>/dev/null || true
 
-RUN_DIR="${1:?need <run_dir>}"; shift || true
+usage() {
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+  echo
+  echo "Example:"
+  echo "  bash scan_missed_seeds.sh /path/to/discovery_run --email you@inst.edu"
+}
+case "${1:-}" in
+  -h|--help|"") usage; [ -n "${1:-}" ] && exit 0; echo; echo "ERROR: need <run_dir>" >&2; exit 2;;
+esac
+RUN_DIR="$1"; shift
+[ -d "$RUN_DIR" ] || { echo "ERROR: run_dir is not a directory: $RUN_DIR" >&2; exit 2; }
 OUT=""; BATCH=10; MAX=0; EMAIL=""; ONLY_MISSED=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --only-missed) ONLY_MISSED="--only-missed"; shift;;
-    --email) EMAIL="$2"; shift 2;;
-    --max)   MAX="$2";   shift 2;;
-    --batch) BATCH="$2"; shift 2;;
+    --email) EMAIL="${2:?--email needs a value}"; shift 2;;
+    --max)   MAX="${2:?--max needs a value}";     shift 2;;
+    --batch) BATCH="${2:?--batch needs a value}"; shift 2;;
+    -h|--help) usage; exit 0;;
+    # An unknown --flag used to fall through and silently become the OUTPUT DIRECTORY.
+    -*) echo "ERROR: unknown option: $1" >&2; echo; usage >&2; exit 2;;
     *) if [ -z "$OUT" ]; then OUT="$1"; else BATCH="$1"; fi; shift;;
   esac
 done
 [ -z "$OUT" ] && OUT="$RUN_DIR/missed_seed_scan"
-mkdir -p "$OUT"
+mkdir -p "$OUT" || { echo "ERROR: cannot create output directory: $OUT" >&2; exit 2; }
 
 # The cache must not be inside the output tree, or "nothing is cached" stops being true.
 case "$(cd "$OUT" && pwd)" in
@@ -49,6 +62,11 @@ esac
 HMM="$(find "$RUN_DIR" -path '*03_hmm_profile/profile.hmm' 2>/dev/null | head -1)"
 [ -z "$HMM" ] && HMM="$(find "$RUN_DIR" -name 'benchmark_profile.hmm' 2>/dev/null | sort | tail -1)"
 [ -z "$HMM" ] && { echo "ERROR: no profile HMM found under $RUN_DIR"; exit 2; }
+# A 0-byte / non-HMMER profile.hmm passes `-z` and then silently yields 0 hits per seed,
+# which this reports as a per-seed verdict. Refuse the unusable model instead.
+[ -s "$HMM" ] || { echo "ERROR: profile HMM is EMPTY (0 bytes): $HMM"; exit 2; }
+head -c 6 "$HMM" 2>/dev/null | grep -q '^HMMER' || {
+  echo "ERROR: not a HMMER profile: $HMM"; exit 2; }
 echo "model HMM: $HMM"
 
 if [ ! -f "$RUN_DIR/seed_qc/seed_status.csv" ]; then

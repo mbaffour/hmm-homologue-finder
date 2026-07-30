@@ -16,6 +16,7 @@ when a PACKAGE/ exists. Never raises on a single bad file.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 from pathlib import Path
@@ -38,6 +39,28 @@ TABLE_EXPORTS = (
     "family_census.csv", "family_census_members.csv",
     "overprinted_loci.csv", "overprinting_summary.csv",
 )
+
+
+def _write_csv(df, path: Path, **kw) -> None:
+    """Write a table ATOMICALLY: to a sibling .tmp, then os.replace onto the real name.
+
+    A bare to_csv truncates the destination and streams into it, so anything reading the run
+    directory at that moment — the dashboard, stage_summary, coverage_report, family_census,
+    all of which read all_runs_hits.csv — can read a PARTIAL table and get a smaller homolog
+    count with no error at all. os.replace is atomic on POSIX and Windows, so a reader sees
+    either the whole old file or the whole new one.
+    """
+    path = Path(path)
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        df.to_csv(tmp, index=kw.pop("index", False), **kw)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def _canon_org_set(g) -> set:
@@ -368,7 +391,7 @@ def export(discovery: Path) -> list[str]:
         if df.empty:
             continue
         csv = tsv.with_suffix(".csv")
-        df.to_csv(csv, index=False)
+        _write_csv(df, csv)
         written.append(str(csv))
         run_frames.append(df)
         # mirror per-run hits.csv into the package if present
@@ -380,7 +403,7 @@ def export(discovery: Path) -> list[str]:
 
     if run_frames:
         allh = pd.concat(run_frames, ignore_index=True)
-        allh.to_csv(discovery / "all_runs_hits.csv", index=False)
+        _write_csv(allh, discovery / "all_runs_hits.csv")
         written.append(str(discovery / "all_runs_hits.csv"))
 
         # Canonical run = the iteration the WHOLE package describes, chosen by the shared
@@ -397,7 +420,7 @@ def export(discovery: Path) -> list[str]:
         # column. The full all_runs_hits.csv stays as the complete, un-collapsed record.
         dedup = _dedup_hits(best_run, all_rounds=allh)
         if not dedup.empty:
-            dedup.to_csv(discovery / "hits_deduplicated.csv", index=False)
+            _write_csv(dedup, discovery / "hits_deduplicated.csv")
             written.append(str(discovery / "hits_deduplicated.csv"))
 
         # combined multi-FASTAs (all hits + unique homologs) for downstream tools
@@ -421,13 +444,13 @@ def export(discovery: Path) -> list[str]:
             if "db_name" in g.columns:
                 row["databases"] = ";".join(sorted(x for x in g["db_name"].unique() if x))
             rows.append(row)
-        pd.DataFrame(rows).to_csv(discovery / "hit_summary.csv", index=False)
+        _write_csv(pd.DataFrame(rows), discovery / "hit_summary.csv")
         written.append(str(discovery / "hit_summary.csv"))
 
         # Projection of the SAME deduplicated table, so the two exports cannot disagree.
         paper = _paper_table(dedup)
         if not paper.empty:
-            paper.to_csv(discovery / "paper_main_table.csv", index=False)
+            _write_csv(paper, discovery / "paper_main_table.csv")
             written.append(str(discovery / "paper_main_table.csv"))
 
         # Complete per-database summary over EVERY database searched (incl. 0-hit
@@ -437,7 +460,7 @@ def export(discovery: Path) -> list[str]:
         eng = _read_tsv(discovery / f"run{best_label}" / "benchmark" / "results" / "all_database_summary.tsv")
         dbsum = _db_hit_summary(best_run, eng)
         if not dbsum.empty:
-            dbsum.to_csv(discovery / "database_hit_summary.csv", index=False)
+            _write_csv(dbsum, discovery / "database_hit_summary.csv")
             written.append(str(discovery / "database_hit_summary.csv"))
             written += _db_barplot(dbsum, discovery)
 
@@ -460,15 +483,15 @@ def export(discovery: Path) -> list[str]:
                 "source_type": ";".join(sorted(g["source_type"].unique())),
                 "n_hits": len(g),
             })
-        pd.DataFrame(meta).to_csv(discovery / "genome_metadata.csv", index=False)
+        _write_csv(pd.DataFrame(meta), discovery / "genome_metadata.csv")
         written.append(str(discovery / "genome_metadata.csv"))
 
         # Supplementary Table S3 — per-hit homology statistics
         s3_cols = ["hit_id", "organism", "genome_id", "db_name", "source_type",
                    "run_label", "evalue", "bit_score", "orf_aa_len", "domain_aa_len",
                    "domain_coverage", "confidence_tier"]
-        allh[[c for c in s3_cols if c in allh.columns]].to_csv(
-            discovery / "homolog_stats.csv", index=False)
+        _write_csv(allh[[c for c in s3_cols if c in allh.columns]],
+                   discovery / "homolog_stats.csv")
         written.append(str(discovery / "homolog_stats.csv"))
 
     db_frames = []
@@ -479,7 +502,8 @@ def export(discovery: Path) -> list[str]:
         df.insert(0, "run", s.parts[-4])
         db_frames.append(df)
     if db_frames:
-        pd.concat(db_frames, ignore_index=True).to_csv(discovery / "database_summary.csv", index=False)
+        _write_csv(pd.concat(db_frames, ignore_index=True),
+                   discovery / "database_summary.csv")
         written.append(str(discovery / "database_summary.csv"))
 
     # Per-stage summary tables (one shared schema) + the concatenated pipeline table.

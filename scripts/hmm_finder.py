@@ -1403,8 +1403,15 @@ def _pipeline_processes_running() -> int:
         ps = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True,
                             timeout=10)
         me = str(os.getpid())
+        # Must name EVERY long-running entry point. The list previously stopped at
+        # scan_genome.py, so a multi-hour catalogue scan was invisible except during the seconds
+        # its short-lived scan_genome.py child happened to be up — and the shared cache could be
+        # deleted out from under it.
         pat = ("hmm_finder.py", "run_all_database_benchmark", "scan_genome.py",
-               "scan_genome_collection.sh", "preload_databases.py")
+               "scan_genome_collection.sh", "preload_databases.py",
+               "stream_scan_catalogue.py", "scan_full_coverage.sh", "scan_missed_seeds.sh",
+               "scan_host_genera.sh", "family_census.py", "overprint_report.py",
+               "run_pipeline.py")
         n = 0
         for ln in ps.stdout.splitlines()[1:]:
             pid, _, cmd = ln.strip().partition(" ")

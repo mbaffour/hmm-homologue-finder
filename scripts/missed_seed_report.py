@@ -87,6 +87,19 @@ def missed_seeds(run_dir: Path, only_missed: bool = False) -> list:
     """
     p = Path(run_dir) / "seed_qc" / "seed_status.csv"
     rows = _rows(p)
+    # DISTINGUISH "read the file, nothing matched" FROM "could not read the file". A 0-byte,
+    # headers-only, tab-separated or wrong-columns seed_status.csv all yield zero matching rows,
+    # and the caller then announces "every distinct seed protein was re-found" — an all-clear
+    # derived from a file it never understood. Require the columns this function depends on.
+    if not rows:
+        raise ValueError(
+            f"{p} has no data rows (0 bytes, headers only, or unreadable) — cannot tell which "
+            f"seeds were missed. Re-run family_census.py to regenerate it.")
+    cols = set(rows[0])
+    if "seed_id" not in cols or not ({"status", "own_genome_searched"} & cols):
+        raise ValueError(
+            f"{p} does not look like a seed status table (columns: {sorted(cols)[:8]}). "
+            f"Expected seed_id plus status/own_genome_searched. Re-run family_census.py.")
     if only_missed:
         return [r for r in rows if str(r.get("status", "")).strip().lower() == "missed"]
     if rows and "own_genome_searched" in rows[0]:
@@ -140,7 +153,13 @@ def plan(run_dir: Path, out_dir: Path, log=print, only_missed: bool = False) -> 
     # Metagenomic contigs: stream the catalogue, keep only the wanted ids, never store the
     # catalogue itself. Written as a local path so the collection scanner's `cat` branch reads it.
     n_cat_pulled, got = 0, {}
-    if catalogue:
+    # HMMHF_NO_NETWORK is an explicit offline switch, set by the test suite. Pulling contigs
+    # streams a multi-GB catalogue; a unit test that happens to use a `uvig_` id must not turn
+    # into a 1.5 GB download, which is what made the suite take >10 minutes and unusable in CI.
+    if catalogue and os.environ.get("HMMHF_NO_NETWORK"):
+        log(f"  (offline: skipping the catalogue pull for {len(catalogue)} metagenomic id(s) — "
+            f"they will be reported not_fetched, never as absent)")
+    elif catalogue:
         try:
             from build_real_genbanks import CATALOGUES, fetch_catalogue
             wanted = {(r.get("accession") or "").strip() for r in catalogue}
@@ -224,7 +243,19 @@ def report(run_dir: Path, out_dir: Path, log=print, only_missed: bool = False) -
     except Exception:
         pass
     planned |= {_base(a) for a in planned}
-    scan_ran = (out_dir / "results" / "collection_hits.tsv").exists()
+    # A 0-byte collection_hits.tsv is exactly what the collection scanner leaves behind when
+    # every fetch failed, so `.exists()` alone turned a network outage into "the gene is absent
+    # from N seed genomes". Require a real table: non-empty, with a header.
+    _ht = out_dir / "results" / "collection_hits.tsv"
+    scan_ran = False
+    try:
+        scan_ran = _ht.is_file() and _ht.stat().st_size > 0 and \
+            bool(_ht.read_text(encoding="utf-8", errors="replace").strip().splitlines())
+    except OSError:
+        scan_ran = False
+    if not scan_ran:
+        log("  WARNING: no usable hits table from the scan — every seed will be reported "
+            "not_fetched/unfetchable rather than absent, because the search did not happen")
     rows = []
     for r in seeds:
         acc = (r.get("accession") or "").strip()

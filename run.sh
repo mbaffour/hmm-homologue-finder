@@ -28,6 +28,32 @@ case " $* " in
     log="$logdir/hmm_run_console_$(date +%Y%m%d_%H%M%S).log"
     setsid nohup bash "$HERE/run.sh" ${detach_args[@]+"${detach_args[@]}"} </dev/null >"$log" 2>&1 &
     bgpid=$!
+    # Do not announce a background run without checking one started. A bad flag or an
+    # unreadable seed file kills the detached copy — but only AFTER conda activation and the
+    # tool check, i.e. ~20 s in — and printing "your search is now running, you can close this
+    # window" for a run that is already dead is the worst possible message: the user waits for
+    # a result that will never come. Watch it until it is past setup (or gone).
+    printf '\nStarting the background run — checking that it comes up'
+    _alive=0
+    for _i in $(seq 1 45); do
+      if ! kill -0 "$bgpid" 2>/dev/null; then _alive=0; break; fi
+      _alive=1
+      # hmm_finder prints this banner once every argument has been validated and the real
+      # work has begun — past every fast-failure path, so seeing it means the run is real.
+      if grep -q '=== family pipeline:' "$log" 2>/dev/null; then break; fi
+      printf '.'
+      sleep 1
+    done
+    printf '\n'
+    if [ "$_alive" != 1 ]; then
+      printf '\n============================================================\n'
+      printf ' THE BACKGROUND RUN IS NOT RUNNING. Nothing was started.\n\n'
+      printf ' Last lines of %s:\n\n' "$log"
+      tail -12 "$log" 2>/dev/null | sed 's/^/   /'
+      printf '\n Fix the problem above and re-run.\n'
+      printf '============================================================\n\n'
+      exit 1
+    fi
     printf '\n============================================================\n'
     printf ' Your search is now running IN THE BACKGROUND (pid %s).\n' "$bgpid"
     printf ' You can safely CLOSE THIS WINDOW — the run keeps going.\n\n'
