@@ -373,6 +373,30 @@ def _stage02(discovery: Path) -> list:
                  "databases actually completed cannot be established — no 0 here may be read "
                  "as absence", src))
 
+    # State the SEARCH SPACE THAT WAS NOT COVERED. A reviewer asking "did you look in the gut
+    # phage catalogues, or in bacterial genomes for a prophage copy?" otherwise has no answer in
+    # the package: the tables list only what WAS searched, so an unsearched catalogue is
+    # indistinguishable from one that returned nothing. Naming them is what makes the coverage
+    # claim falsifiable.
+    try:
+        import sys as _sys
+        _eng = str(Path(__file__).resolve().parents[1] / "engine")
+        if _eng not in _sys.path:
+            _sys.path.insert(0, _eng)
+        from databases.builtin import BUILTIN_DATABASES        # a plain dict, no I/O
+        attempted = {str(x) for x in per.get("database", [])}
+        missing = [str(d.get("name")) for d in BUILTIN_DATABASES
+                   if str(d.get("name")) not in attempted]
+        if missing:
+            out.append(_row(
+                S, N, "catalog_databases_not_searched", len(missing), "databases",
+                "in the catalog but NOT searched in this run, so this run says nothing either "
+                "way about them: " + "; ".join(missing)
+                + " — a homolog present only in one of these would not appear above",
+                "engine/databases/builtin.py"))
+    except Exception:
+        pass
+
     out += [
         _row(S, N, "databases_with_hits", int(sum(1 for h in per.get("hits", []) if _int(h) > 0)),
              "databases", "", src),

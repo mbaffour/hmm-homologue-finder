@@ -97,13 +97,22 @@ def plan(run_dir: Path, out_dir: Path, log=print) -> dict:
         (out_dir / "missed_seed_sources.txt").write_text("")
         return {"n_missed": 0, "n_ncbi": 0, "n_catalogue": 0, "n_unresolved": 0}
 
+    # Route by the FORM OF THE ACCESSION, not by accession_class. accession_class is derived
+    # from the organism name, and a `MAG: Caudoviricetes sp. ... OR222882.1` seed is classed
+    # metagenome while carrying an ordinary NCBI accession that efetch serves perfectly well.
+    # Routing those to the GPD/GVD catalogues found no prefix match and reported them
+    # "unfetchable" without ever trying — so only a genuine catalogue id goes down that path.
+    try:
+        from build_real_genbanks import CATALOGUES as _CATS
+        cat_prefixes = tuple(_CATS)
+    except Exception:
+        cat_prefixes = ("uvig_", "GutCatV1_")
     ncbi, catalogue, unresolved = [], [], []
     for r in seeds:
         acc = (r.get("accession") or "").strip()
-        cls = (r.get("accession_class") or "").strip().lower()
         if not acc:
             unresolved.append(r)
-        elif cls == "metagenome":
+        elif acc.startswith(cat_prefixes):
             catalogue.append(r)
         else:
             ncbi.append(r)
