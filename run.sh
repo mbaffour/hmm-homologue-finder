@@ -114,4 +114,12 @@ if [ "${1:-}" = "--scan-host-genera" ]; then
   shift
   exec $KEEP_AWAKE bash scripts/scan_host_genera.sh "$@"
 fi
+# `run.sh --scan-missed-seeds <run_dir> …` chases the input seeds the search never re-found by
+# fetching each seed's OWN source genome and scanning the model against it — answering whether
+# the miss was database coverage or a genuine absence. Streams: nothing is cached, no database
+# is added. Combine with the top-of-file --detach to run it in the background.
+if [ "${1:-}" = "--scan-missed-seeds" ]; then
+  shift
+  exec $KEEP_AWAKE bash scripts/scan_missed_seeds.sh "$@"
+fi
 exec $KEEP_AWAKE python3 scripts/hmm_finder.py "$@"

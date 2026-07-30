@@ -543,6 +543,52 @@ for _neg in ("gp75", "Klebsiella_phage_KP32", "vB_EcoM_AP22", "phage_T4",
 check("accession: pipeline header extractor still works (regression)",
       _exacc("", "MK321214|1_1|Phage name|x").startswith("MK321214"))
 
+# --- missed-seed scan: verdicts, address hygiene, and never claiming an unlooked-for absence -
+import missed_seed_report as MSR  # noqa: E402
+_ms = Path(tempfile.mkdtemp(prefix="missed_"))
+(_ms / "seed_qc").mkdir()
+(_ms / "seed_qc" / "seed_status.csv").write_text(
+    "seed_id,organism,accession,accession_prefix,accession_class,status\n"
+    "s1,Phage A,OZ035750.1,OZ,genbank,missed\n"
+    "s2,Phage B,NC_000001.1,NC_,refseq,refound\n"
+    "s3,MAG sp,uvig_999999,uvig_,metagenome,missed\n"
+    "s4,No acc,,,unresolved,missed\n")
+check("missed seeds: only status==missed is chased",
+      [r["seed_id"] for r in MSR.missed_seeds(_ms)] == ["s1", "s3", "s4"])
+_msout = _ms / "out"
+_msplan = MSR.plan(_ms, _msout, log=lambda *a: None)
+_srclist = (_msout / "missed_seed_sources.txt").read_text(encoding="utf-8")
+# The list file is a shipped artefact; NCBI wants an address in the URL, so a placeholder is
+# written and substituted at request time.
+check("missed seeds: the shipped source list carries no address, only the placeholder",
+      "@" not in _srclist and MSR.EMAIL_PLACEHOLDER in _srclist)
+check("missed seeds: a seed with no accession is reported, not silently dropped",
+      _msplan.get("n_unresolved") == 1)
+# accessions batch into few requests rather than one call per seed
+check("missed seeds: accessions are batched per request",
+      len(MSR.EFETCH.format(ids="x").splitlines()) == 1 and MSR.IDS_PER_REQUEST >= 10)
+# THE BUG THIS GUARDS: a seed whose source was never materialised (its catalogue did not hold
+# the id) was reported as gene_absent — a confident "the gene is not there" from a lookup that
+# never happened. It must read not_fetched/unfetchable instead.
+(_msout / "results").mkdir(parents=True, exist_ok=True)
+(_msout / "results" / "collection_hits.tsv").write_text(
+    "contig\tstrand\tframe\tnt_start\tnt_end\tdomain_bit_score\tstatus\toverprinting_support\n"
+    "OZ035750.1\t+\t0\t100\t500\t161.8\tclean\tstrong\n")
+_msrep = MSR.report(_ms, _msout, log=lambda *a: None)
+_msrows = {r["seed_id"]: r for r in __import__("csv").DictReader(
+    open(_msout / "missed_seed_scan.csv", encoding="utf-8"))}
+check("missed seeds: a hit in the seed's own genome is attributed to database coverage",
+      _msrows["s1"]["verdict"] == "present_clean"
+      and _msrows["s1"]["explains_miss"] == "genome_not_in_searched_dbs")
+check("missed seeds: an unfetched seed is NOT reported as gene_absent",
+      _msrows["s3"]["verdict"] == "not_fetched"
+      and _msrows["s3"]["explains_miss"] == "unfetchable"
+      and _msrows["s3"]["fetched"] == "False")
+_msh = (Path(__file__).resolve().parent / "scan_missed_seeds.sh").read_text(errors="replace")
+check("missed seeds: the driver refuses to write into the database cache",
+      "refusing to write into the database cache" in _msh)
+check("missed seeds: no email means a dry run, not a silent fetch", "DRY RUN" in _msh)
+
 # --- --clear-cache: reclaim the streamed DBs at the END of the run, not per database ---
 # Per-database discarding would force every iteration to re-download AND re-six-frame-
 # translate; translation is the expensive step, so the cache is kept for the whole run and
