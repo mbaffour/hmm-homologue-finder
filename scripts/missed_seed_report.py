@@ -71,17 +71,32 @@ def _base(acc: str) -> str:
     return a[: a.rfind(".")] if "." in a and a[a.rfind(".") + 1:].isdigit() else a
 
 
-def missed_seeds(run_dir: Path) -> list:
-    """The seeds to chase: status == 'missed' in seed_qc/seed_status.csv.
+def missed_seeds(run_dir: Path, only_missed: bool = False) -> list:
+    """The seeds to chase, from seed_qc/seed_status.csv (written by family_census, so this
+    cannot drift from the census the report quotes).
 
-    That file is written by family_census and is the single source of truth for which seeds
-    came back, so this cannot drift from the census the report quotes.
+    By DEFAULT this targets every seed whose OWN SOURCE GENOME was never searched
+    (`own_genome_searched` is False), not merely those the search failed to recover. The two
+    are different questions and the gap between them is large: on the reference run 11 seeds
+    were unrecovered, but 34 had never had their own genome searched — the other 23 were
+    credited "refound" on the strength of a near-identical protein in a SIBLING phage. Until
+    a seed's own record has been scanned, "the family is fully accounted for" is not a claim
+    the run can make.
+
+    `only_missed=True` restricts to the unrecovered ones, which is the cheaper check.
     """
     p = Path(run_dir) / "seed_qc" / "seed_status.csv"
-    return [r for r in _rows(p) if str(r.get("status", "")).strip().lower() == "missed"]
+    rows = _rows(p)
+    if only_missed:
+        return [r for r in rows if str(r.get("status", "")).strip().lower() == "missed"]
+    if rows and "own_genome_searched" in rows[0]:
+        return [r for r in rows
+                if str(r.get("own_genome_searched", "")).strip().lower() != "true"]
+    # Older census output has no such column; fall back rather than silently target nothing.
+    return [r for r in rows if str(r.get("status", "")).strip().lower() == "missed"]
 
 
-def plan(run_dir: Path, out_dir: Path, log=print) -> dict:
+def plan(run_dir: Path, out_dir: Path, log=print, only_missed: bool = False) -> dict:
     """Decide what to fetch and write the source list. Returns a summary dict.
 
     Splits the missed seeds by where their genome actually lives:
@@ -91,7 +106,7 @@ def plan(run_dir: Path, out_dir: Path, log=print) -> dict:
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    seeds = missed_seeds(run_dir)
+    seeds = missed_seeds(run_dir, only_missed=only_missed)
     if not seeds:
         log("  no missed seeds to chase (every distinct seed protein was re-found)")
         (out_dir / "missed_seed_sources.txt").write_text("")
@@ -183,10 +198,10 @@ def _f(x, d=0.0):
         return d
 
 
-def report(run_dir: Path, out_dir: Path, log=print) -> dict:
+def report(run_dir: Path, out_dir: Path, log=print, only_missed: bool = False) -> dict:
     """Join the collection scan's hits back onto the missed seeds and write the verdict table."""
     out_dir = Path(out_dir)
-    seeds = missed_seeds(run_dir)
+    seeds = missed_seeds(run_dir, only_missed=only_missed)
     hits = _tsv_rows(out_dir / "results" / "collection_hits.tsv")
 
     # index hits by base accession of the contig they landed on
@@ -282,11 +297,16 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run-dir", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--only-missed", action="store_true",
+                    help="chase only the seeds the search failed to recover, instead of every "
+                         "seed whose own source genome was never searched (the default, and the "
+                         "larger set — a seed can be credited 'refound' from a sibling genome)")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--plan", action="store_true")
     g.add_argument("--report", action="store_true")
     a = ap.parse_args()
-    r = plan(a.run_dir, a.out) if a.plan else report(a.run_dir, a.out)
+    fn = plan if a.plan else report
+    r = fn(a.run_dir, a.out, only_missed=a.only_missed)
     # a plan with nothing to fetch is a valid outcome, not an error
     return 0 if r is not None else 1
 

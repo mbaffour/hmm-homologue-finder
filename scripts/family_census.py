@@ -370,6 +370,13 @@ def accession_prefix(accession: str) -> str:
     return m.group(1) if m else ""
 
 
+def _base_accession(accession: str) -> str:
+    """Drop the version suffix so `NC_023589.1` and `NC_023589` are one genome — the same
+    rule `export_csv._base_acc` applies, so the two agree on genome identity."""
+    a = str(accession or "")
+    return a[: a.rfind(".")] if "." in a and a[a.rfind(".") + 1:].isdigit() else a
+
+
 def _read_seed_recovery(discovery) -> dict:
     """{seed_id: row} from seed_qc/seed_recovery.csv ({} if it was never written).
 
@@ -758,6 +765,27 @@ def _seed_status_frame(discovery: Path, members: list, reps: list,
     """
     recovery = _read_seed_recovery(discovery)
     by_id = {m["member_id"]: m for m in members}
+
+    # Every genome the search actually touched. A seed can be credited "refound" on the
+    # strength of a near-identical protein in a SIBLING phage while its OWN genome was never
+    # in a searched database — 23 of the reference run's 68 re-found seeds are exactly that.
+    # Recording it here is what lets the missed-seed scan target "own source never searched"
+    # rather than only "not recovered", and stops the recovery rate reading as if every seed's
+    # own genome had been looked at.
+    searched_genomes = set()
+    try:
+        import csv as _csv
+        p = Path(discovery) / "all_runs_hits.csv"
+        if p.exists():
+            _csv.field_size_limit(min(sys.maxsize, 2**31 - 1))
+            with open(p, encoding="utf-8", errors="replace", newline="") as fh:
+                for r in _csv.DictReader(fh):
+                    for k in ("genome_id", "contig"):
+                        v = _base_accession(r.get(k, ""))
+                        if v:
+                            searched_genomes.add(v)
+    except Exception:
+        pass
     head = by_threshold.get(HEADLINE_THRESHOLD, {})
     # `status` must never read "missed" for everything just because cd-hit was absent,
     # so it falls back to the tightest threshold that WAS computed. The refound_* columns
@@ -803,6 +831,11 @@ def _seed_status_frame(discovery: Path, members: list, reps: list,
             "refound_95": refound.get(0.95, ""),
             "refound_90": refound.get(0.90, ""),
             "best_homolog_id_95": mates[0] if mates else "",
+            # Was THIS seed's own source genome among those the search touched? False means the
+            # seed was only ever compared against other genomes, so a "refound" verdict rests
+            # on a sibling match, not on its own record being searched.
+            "own_genome_searched": (str(_base_accession(acc) in searched_genomes)
+                                    if acc and searched_genomes else ""),
             # `status` is the HEADLINE verdict, i.e. at 95 % identity — a seed matched
             # only at 90 % is a different protein by any strain-level standard.
             "status": "refound" if refound.get(status_t) else "missed",

@@ -28,9 +28,10 @@ done
 conda activate hmm-discovery 2>/dev/null || true
 
 RUN_DIR="${1:?need <run_dir>}"; shift || true
-OUT=""; BATCH=10; MAX=0; EMAIL=""
+OUT=""; BATCH=10; MAX=0; EMAIL=""; ONLY_MISSED=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --only-missed) ONLY_MISSED="--only-missed"; shift;;
     --email) EMAIL="$2"; shift 2;;
     --max)   MAX="$2";   shift 2;;
     --batch) BATCH="$2"; shift 2;;
@@ -57,7 +58,7 @@ if [ ! -f "$RUN_DIR/seed_qc/seed_status.csv" ]; then
 fi
 
 echo "planning the fetch from seed_qc/seed_status.csv…"
-python3 "$REPO/scripts/missed_seed_report.py" --run-dir "$RUN_DIR" --out "$OUT" --plan || exit 2
+python3 "$REPO/scripts/missed_seed_report.py" --run-dir "$RUN_DIR" --out "$OUT" $ONLY_MISSED --plan || exit 2
 
 nsrc=0; [ -f "$OUT/missed_seed_sources.txt" ] && nsrc=$(grep -cvE '^[[:space:]]*(#|$)' "$OUT/missed_seed_sources.txt" || true)
 if [ "${nsrc:-0}" -eq 0 ]; then
@@ -82,7 +83,7 @@ echo "scanning the model through the missed seeds' own genomes…"
 bash "$REPO/scripts/scan_genome_collection.sh" "$HMM" "$OUT/missed_seed_sources.txt" \
      "$OUT/results" "$BATCH" "$MAX" 25
 
-python3 "$REPO/scripts/missed_seed_report.py" --run-dir "$RUN_DIR" --out "$OUT" --report || exit 2
+python3 "$REPO/scripts/missed_seed_report.py" --run-dir "$RUN_DIR" --out "$OUT" $ONLY_MISSED --report || exit 2
 
 # Prove the claim: no genome data left behind, and the shared cache untouched.
 left=$(find "$OUT" -name '*.fna' -o -name '*.fa' -o -name '*.fna.gz' 2>/dev/null | grep -v _missed_seed_metagenome | wc -l)
