@@ -122,4 +122,18 @@ if [ "${1:-}" = "--scan-missed-seeds" ]; then
   shift
   exec $KEEP_AWAKE bash scripts/scan_missed_seeds.sh "$@"
 fi
+# `run.sh --scan-catalogue gpd|gvd --hmm H --out D` streams one large metagenome catalogue
+# (GPD / GVD-AVrC) through the model, batch by batch, discarding as it goes.
+if [ "${1:-}" = "--scan-catalogue" ]; then
+  shift
+  exec $KEEP_AWAKE python3 scripts/stream_scan_catalogue.py "$@"
+fi
+# `run.sh --scan-full-coverage <run_dir> --email E` closes EVERY coverage gap in one command:
+# the seeds' own source genomes, the GPD + GVD metagenome catalogues, and the host genera
+# (prophage) — then writes a coverage_summary.csv that also NAMES what is still not searched.
+# Hours to run; combine with the top-of-file --detach.
+if [ "${1:-}" = "--scan-full-coverage" ]; then
+  shift
+  exec $KEEP_AWAKE bash scripts/scan_full_coverage.sh "$@"
+fi
 exec $KEEP_AWAKE python3 scripts/hmm_finder.py "$@"
