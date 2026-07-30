@@ -908,8 +908,19 @@ def run(discovery_dir, out_dir=None, email: str = "", cpu: int = 1, log=print) -
             ids = _lookup_ids(ft, r.get("accession", ""), r.get("_host") or {})
             r["host_locus_tag"] = r["host_locus_tag"] or ids.get("locus_tag", "")
             r["host_protein_id"] = r["host_protein_id"] or ids.get("protein_id", "")
-    n_fig = locus_figures(recs, feats, out, log)
-    figs = overview_figure(recs, out, log)
+    # FIGURES go to downstream/overprinting/, which is the directory assemble_package copies
+    # into PACKAGE/10_overprinting. They were previously written beside the CSVs at the run
+    # root, so that copy had no source and the antisense diagrams — the evidence for the most
+    # interesting claim in the run — never reached the shareable bundle at all.
+    # The two CSVs stay at the run root, where export_csv's TABLE_EXPORTS mirror picks them up
+    # into 01_summary_tables. Both destinations are deliberate; neither is a fallback.
+    fig_out = out / "downstream" / "overprinting" if out_dir is None else out
+    try:
+        fig_out.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        fig_out = out
+    n_fig = locus_figures(recs, feats, fig_out, log)
+    figs = overview_figure(recs, fig_out, log)
     for r in recs:
         r.pop("_host", None)                      # private helper field, not a report column
     loci_csv = write_loci_csv(recs, out, log)
@@ -923,7 +934,7 @@ def run(discovery_dir, out_dir=None, email: str = "", cpu: int = 1, log=print) -
             "rows_in": n_raw, "aliases_collapsed": n_raw - len(rows),
             "open_antisense_orfs": open_orf,
             "locus_figures": n_fig, "loci_csv": loci_csv, "summary_csv": summary_csv,
-            "overview": figs, "out_dir": str(out)}
+            "overview": figs, "out_dir": str(out), "figure_dir": str(fig_out)}
 
 
 def main() -> None:

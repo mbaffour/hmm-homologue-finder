@@ -724,6 +724,32 @@ check("collection scan: skips per-batch neighbour calling that was thrown away",
 check("collection scan: keeps the address out of the shipped list file",
       "__EMAIL__" in _sgc and "NCBI_EMAIL" in _sgc)
 
+# --- a regenerated package must not ship machine-identifying data -----------------------
+# The pipeline scrubs once, at the end of a run. Any step re-run on its own afterwards writes
+# files that pass never sees — the reference package carried /mnt/c/Users/<user> in
+# 04_alignment_phylogeny/hits.iqtree and the hostname in hits.log because the phylogeny had
+# been rebuilt separately (IQ-TREE records its working directory and host in its own logs).
+_sr = Path(tempfile.mkdtemp(prefix="scrub_"))
+(_sr / "PACKAGE" / "04_alignment_phylogeny").mkdir(parents=True)
+(_sr / "PACKAGE" / "04_alignment_phylogeny" / "hits.log").write_text(
+    f"dir: {Path.home()}/run\nhost: {__import__('socket').gethostname()}\n")
+H._scrub_env_paths(_sr)
+_scrubbed = (_sr / "PACKAGE" / "04_alignment_phylogeny" / "hits.log").read_text()
+check("scrub: a rebuilt tree's log loses the home path and the hostname",
+      str(Path.home()) not in _scrubbed
+      and __import__("socket").gethostname() not in _scrubbed)
+check("scrub: assemble_package scrubs, so a manual re-assemble cannot ship dirty",
+      "_scrub_env_paths(out)" in _inspect.getsource(H.assemble_package))
+# scrub_run.py --check is the release gate: non-zero while anything would change.
+import subprocess as _sp  # noqa: E402
+_dirty = Path(tempfile.mkdtemp(prefix="dirty_"))
+(_dirty / "PACKAGE").mkdir()
+(_dirty / "PACKAGE" / "x.log").write_text(f"path {Path.home()}/z\n")
+_rc = _sp.run([sys.executable, str(Path(__file__).resolve().parent / "scrub_run.py"),
+               "--discovery-dir", str(_dirty), "--check"],
+              capture_output=True).returncode
+check("scrub_run --check exits non-zero on a package that still leaks", _rc == 1)
+
 # --- PII: exported tables must be inside the redaction sweep ---------------------------
 _hf_src = (Path(__file__).resolve().parent / "hmm_finder.py").read_text(errors="replace")
 _exts_line = next((l for l in _hf_src.splitlines() if l.strip().startswith("exts = {")), "")

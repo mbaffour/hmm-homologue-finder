@@ -1521,6 +1521,18 @@ def assemble_package(out: Path, iterations: int, log, best_i: int = 1) -> None:
     shutil.rmtree(_sdst, ignore_errors=True)
     _sdst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(Path(__file__).resolve().parent, _sdst, ignore=_ignore_scratch)
+
+    # Scrub HERE, not only at the end of a full run. Assembling the package is the moment the
+    # deliverable comes into existence, and any step re-run on its own afterwards — rebuilding
+    # the tree, regenerating the report, re-exporting the tables — writes files the end-of-run
+    # pass never sees. That is how the reference package came to carry /mnt/c/Users/<user> in
+    # 04_alignment_phylogeny/hits.iqtree and the machine's hostname in hits.log: IQ-TREE records
+    # its working directory and host, and the phylogeny had been rebuilt separately. Cheap and
+    # idempotent, so running it twice costs nothing.
+    try:
+        _scrub_env_paths(out)
+    except Exception as e:
+        log(f"  (privacy scrub after packaging skipped: {e})")
     log(f"  package assembled at {pkg}")
 
 
