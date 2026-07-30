@@ -553,7 +553,15 @@ check("accession: pipeline header extractor still works (regression)",
 # --- a scan that did not finish must never be published as full coverage -----------------
 # Every case below shipped at some point as a confident result from a step that never ran.
 import json  # noqa: E402
-import stream_scan_catalogue as SSC  # noqa: E402  (imported for the module-level guards below)
+import inspect as _inspect  # noqa: E402  (also used further down; import once, here)
+import stream_scan_catalogue as SSC  # noqa: E402
+# scan_genome.py exits 1 for "gene not detected" — the NORMAL outcome for most batches of a
+# metagenome catalogue. Treating that as a crash marked 125 of 127 real GVD batches failed and
+# reported a completed scan as incomplete. The discriminator is whether the scan wrote its
+# table: an absent-result run still writes scan_hits.tsv; a setup failure exits before that.
+_ssc_src = _inspect.getsource(SSC._scan_batch)
+check("catalogue scan: exit 1 ('not detected') is not treated as a failed batch",
+      "rc in (0, 1)" in _ssc_src and "tsv.exists()" in _ssc_src)
 import coverage_report as CVR  # noqa: E402
 _ic = Path(tempfile.mkdtemp(prefix="incomplete_"))
 
@@ -707,7 +715,6 @@ check("clear-cache: absent cache is a no-op, not an error",
       H.clear_database_cache(Path(tempfile.mkdtemp()), lambda m: None) == 0)
 # The cache is shared between concurrent runs and has NO lock file, so clearing it while
 # another search is mid-flight would delete a database out from under it.
-import inspect as _inspect  # noqa: E402
 check("clear-cache: guards against a concurrent run before deleting",
       "_pipeline_processes_running" in _inspect.getsource(H.clear_database_cache))
 

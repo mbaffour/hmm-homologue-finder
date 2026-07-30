@@ -135,17 +135,22 @@ def _scan_batch(hmm: Path, batch: Path, out: Path, min_bit: float, cpu: int, tab
     try:
         pr = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                             check=False, timeout=7200)
-        ok = pr.returncode == 0
+        rc = pr.returncode
         err = (pr.stderr or b"").decode("utf-8", "replace")[-400:]
     except subprocess.TimeoutExpired:
         shutil.rmtree(bout, ignore_errors=True)
         return [], "", False
-    except Exception as e:
+    except Exception:
         shutil.rmtree(bout, ignore_errors=True)
         return [], "", False
     tsv = bout / "scan_hits.tsv"
-    if not tsv.exists():
-        ok = False                       # the scan produced no table at all
+    # scan_genome.py EXIT 1 MEANS "gene not detected" — a normal, expected result for most
+    # batches, not a crash. Treating any non-zero exit as a failure marked 125 of 127 GVD
+    # batches failed when they had simply found nothing, and reported a completed scan as
+    # incomplete. Exit 1 is overloaded (argument and fetch errors also use it), so the
+    # discriminator is whether the scan actually produced its table: a real "absent" result
+    # still writes scan_hits.tsv, whereas a setup failure exits before the scan runs.
+    ok = (rc in (0, 1)) and tsv.exists()
     rows = tsv.read_text(encoding="utf-8", errors="replace").splitlines() if tsv.exists() else []
     faa = bout / "scan_hits_aa.faa"
     aa = faa.read_text(encoding="utf-8", errors="replace") if faa.exists() else ""
