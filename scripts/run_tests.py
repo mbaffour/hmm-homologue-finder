@@ -680,9 +680,26 @@ _cc = Path(tempfile.mkdtemp())
 (_cc / "annotation" / "vogdb" / "profiles.hmm").write_bytes(b"keep")
 (_cc / "db_setup").mkdir()
 (_cc / "db_setup" / "pfam.h3i").write_bytes(b"keep")
+# Pin the busy-guard for the reclaim case. Otherwise this test asserts something about whatever
+# ELSE happens to be running on the machine: the guard now recognises every long-running entry
+# point, so a catalogue scan in another terminal makes clear_database_cache correctly refuse —
+# and a correct refusal must not read as a failing test.
+_real_busy = H._pipeline_processes_running
+H._pipeline_processes_running = lambda: 0
 _freed = H.clear_database_cache(_cc, lambda m: None)
+H._pipeline_processes_running = _real_busy
 check("clear-cache: reclaims the downloads + six-frame translations", _freed == 14000
       and not (_cc / "cache").exists())
+
+# ...and the converse: with a pipeline process alive it must refuse and delete nothing.
+_cc2 = Path(tempfile.mkdtemp())
+(_cc2 / "cache" / "DB").mkdir(parents=True)
+(_cc2 / "cache" / "DB" / "genomes.fna").write_bytes(b"z" * 100)
+H._pipeline_processes_running = lambda: 2
+_busy_freed = H.clear_database_cache(_cc2, lambda m: None)
+H._pipeline_processes_running = _real_busy
+check("clear-cache: refuses while another pipeline process is alive (shared cache, no lock)",
+      _busy_freed == 0 and (_cc2 / "cache" / "DB" / "genomes.fna").exists())
 check("clear-cache: keeps annotation/ and db_setup/ (small, slow to rebuild)",
       (_cc / "annotation" / "vogdb" / "profiles.hmm").exists()
       and (_cc / "db_setup" / "pfam.h3i").exists())

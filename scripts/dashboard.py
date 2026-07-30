@@ -48,7 +48,12 @@ PROC_PAT = ("hmm_finder.py", "run_all_database_benchmark", "stream_scan_catalogu
 
 # Expected totals for the two catalogues, so a percentage and an ETA can be shown rather than
 # a bare count that says nothing about how much is left.
-CATALOGUE_TOTALS = {"gpd": 142809, "gvd": 305000}
+# gpd is exact (a completed scan counted 142,809). gvd is approximate — the AVrC catalogue
+# holds roughly 447k contigs, not the 305k first guessed, which made the percentage and the ETA
+# read optimistically. An estimate that is too small is worse than none, because it turns into
+# a confident "nearly finished".
+CATALOGUE_TOTALS = {"gpd": 142809, "gvd": 447000}
+APPROX_TOTALS = {"gvd"}          # shown with a ~ so nobody reads the % as exact
 
 
 def _fmt_dur(sec: float) -> str:
@@ -117,6 +122,10 @@ def _scan_progress(d: Path) -> dict | None:
     return {"done": done, "total": total, "hits": int(st.get("hits", 0)),
             "batches": int(st.get("batches", 0)),
             "pct": round(100.0 * done / total, 1) if total else None,
+            "approx": key in APPROX_TOTALS,
+            # An end-of-scan summary is only written when a scan finishes, so its absence means
+            # this scan did not complete — the same witness coverage_report now requires.
+            "complete": bool(st.get("complete")) and (d / "stream_scan_summary.json").exists(),
             "eta": left, "stale": age > 900, "rate_per_min": round(rate * 60)}
 
 
@@ -308,8 +317,12 @@ def page() -> str:
             p.append(f"<div class=dim style='margin-top:6px'>{html.escape(it['tail'])}</div>")
         for pr in it["progress"]:
             pct = pr["pct"]
-            eta = (f"~{_fmt_dur(pr['eta'])} left" if pr["eta"] else
-                   ("finished" if pct and pct >= 99 else "estimating…"))
+            # "finished" must come from the scan saying so, never from a percentage — a scan
+            # that dies at 99 % is not finished, and calling it so is how a partial result
+            # gets published as complete.
+            eta = ("complete" if pr.get("complete") else
+                   (f"~{_fmt_dur(pr['eta'])} left" if pr["eta"] else
+                    ("incomplete — not finished" if pct and pct >= 99 else "estimating…")))
             width = min(100, pct or 0)
             p.append(f"<div style='margin-top:10px'><div class=row>"
                      f"<span>{html.escape(pr['name'])} · "
@@ -317,7 +330,8 @@ def page() -> str:
                      f"{' · ' + str(pr['rate_per_min']) + '/min' if pr['rate_per_min'] else ''}</span>"
                      f"<span class='{'hits' if pr['hits'] else 'dim'}'>{pr['hits']} hits</span></div>"
                      f"<div class=bar><i style='width:{width}%'></i></div>"
-                     f"<div class=dim>{pct if pct is not None else '—'}% · {eta}"
+                     f"<div class=dim>{'~' if pr.get('approx') else ''}"
+                     f"{pct if pct is not None else '—'}% · {eta}"
                      f"{' · <span class=badge style=\"color:var(--warn)\">stale</span>' if pr['stale'] else ''}"
                      "</div></div>")
         outs = outputs_for(d)
