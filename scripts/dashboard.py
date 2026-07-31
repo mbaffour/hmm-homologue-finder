@@ -329,6 +329,13 @@ def page() -> str:
                                 outroot=html.escape(str(Path.home() / "hmm_runs")),
                                 dbs=_db_checkboxes()))
 
+    # Follow-up scans, offered only when there is a finished run to point them at.
+    _finished = [it["path"] for it in items if it.get("done")]
+    if _finished:
+        p.append(SCAN_FORM.format(runopts="".join(
+            f"<option value=\"{html.escape(d)}\">{html.escape(Path(d).name)}</option>"
+            for d in _finished)))
+
     p.append("<div class=card><div class=row><b>Active processes</b>"
              f"<span class='badge {"run" if procs else ""}'>{len(procs)} running</span></div>")
     if procs:
@@ -543,6 +550,118 @@ LAUNCH_FORM = """
 """
 
 
+SCAN_FORM = """
+<div class=card>
+  <div class=row><b>Follow-up scans on a finished run</b>
+    <span class=badge>closes the coverage gaps a discovery run leaves</span></div>
+  <form method=post action=/scan style='margin-top:10px'>
+    <div class=fgrid>
+      <label>Finished run folder<select name=rundir>{runopts}</select></label>
+      <label>NCBI e-mail <span class=dim>(needed for seed sources)</span>
+        <input name=email placeholder="you@inst.edu"></label>
+      <label>CPU<input name=cpu type=number min=1 max=32 value=4></label>
+    </div>
+    <div style='margin-top:12px'><b style='font-size:13px'>What to scan</b>
+      <div class=dbgrid style='margin-top:6px'>
+        <label class=dbrow><input type=radio name=kind value=hosts checked>
+          <span><b>Host genera (prophage)</b><span class=dim> · the RefSeq representative
+          genomes of YOUR phages' host genera — where a prophage copy would actually be</span>
+          <span class=warn> · ~1.5 h</span></span></label>
+        <label class=dbrow><input type=radio name=kind value=genera>
+          <span><b>Named genera</b><span class=dim> · type your own list below instead of
+          auto-detecting them from the run's hits</span></span></label>
+        <label class=dbrow><input type=radio name=kind value=seeds>
+          <span><b>Seed source genomes</b><span class=dim> · fetch each seed whose own genome
+          was never searched and scan it — answers whether a miss was coverage or absence
+          </span></span></label>
+        <label class=dbrow heavy><input type=radio name=kind value=catalogue>
+          <span><b>Metagenome catalogue</b><span class=dim> · GPD or GVD-AVrC, streamed and
+          discarded</span><span class=warn> · 2–5 h</span></span></label>
+      </div>
+    </div>
+    <div class=fgrid style='margin-top:10px'>
+      <label>Genera <span class=dim>(for "Named genera" only)</span>
+        <input name=genera placeholder="Escherichia,Klebsiella,Pseudomonas"></label>
+      <label>Catalogue <span class=dim>(for "Metagenome catalogue")</span>
+        <select name=catalogue><option value=gpd>GPD — gut phages, ~2 h</option>
+        <option value=gvd>GVD-AVrC, ~5 h</option></select></label>
+      <label>Limit <span class=dim>(0 = no limit; use a few for a trial)</span>
+        <input name=maxn type=number min=0 value=0></label>
+    </div>
+    <button type=submit>Start scan</button>
+  </form>
+</div>
+"""
+
+
+def launch_scan(form: dict) -> tuple:
+    """Start one of the follow-up scans against a finished run. Returns (ok, message).
+
+    These are the coverage-closing steps: a discovery run searches the sequence databases, and
+    these answer the questions it leaves open — is there a prophage copy in the hosts, were the
+    unrecovered seeds a coverage problem, is the family in the metagenome catalogues.
+    """
+    run = Path((form.get("rundir") or "").strip()).expanduser()
+    if not run.is_dir():
+        return False, f"Not a run folder: {run}"
+    kind = (form.get("kind") or "hosts").strip()
+    cpu = str(int(form.get("cpu") or 4))
+    email = (form.get("email") or "").strip()
+    maxn = str(int(form.get("maxn") or 0))
+    here = Path(__file__).resolve().parent
+    repo = here.parent
+
+    if kind in ("hosts", "genera"):
+        out = run / "host_genera_scan"
+        argv = ["bash", str(here / "scan_host_genera.sh"), str(run), str(out)]
+        if kind == "genera":
+            g = (form.get("genera") or "").strip()
+            if not g:
+                return False, "Named-genera scan needs a comma-separated genus list"
+            argv += ["--genera", g]
+        if maxn != "0":
+            argv += ["--max", maxn]
+        label = f"host-genera scan of {run.name}"
+    elif kind == "seeds":
+        if not email:
+            return False, ("Scanning seed source genomes fetches them from NCBI, which needs "
+                           "an e-mail address.")
+        out = run / "missed_seed_scan"
+        argv = ["bash", str(here / "scan_missed_seeds.sh"), str(run), str(out),
+                "--email", email]
+        label = f"seed-source scan of {run.name}"
+    elif kind == "catalogue":
+        cat = (form.get("catalogue") or "gpd").strip()
+        if cat not in ("gpd", "gvd"):
+            return False, f"Unknown catalogue: {cat}"
+        hmm = next(iter(sorted(run.glob("PACKAGE/03_hmm_profile/profile.hmm"))), None) \
+            or next(iter(sorted(run.glob("run*/benchmark/hmm/benchmark_profile.hmm"))), None)
+        if not hmm:
+            return False, f"No profile HMM found under {run}"
+        out = run / f"catalogue_{cat}"
+        argv = [sys.executable, str(here / "stream_scan_catalogue.py"),
+                "--hmm", str(hmm), "--catalogue", cat, "--out", str(out),
+                "--cpu", cpu, "--resume"]
+        if maxn != "0":
+            argv += ["--max-contigs", maxn]
+        label = f"{cat.upper()} catalogue scan of {run.name}"
+    else:
+        return False, f"Unknown scan type: {kind}"
+
+    log = run / f"{kind}_scan.log"
+    env = dict(os.environ)
+    if email:
+        env["NCBI_EMAIL"] = email
+    try:
+        with log.open("wb") as fh:
+            subprocess.Popen(argv, stdout=fh, stderr=subprocess.STDOUT,
+                             stdin=subprocess.DEVNULL, start_new_session=True,
+                             cwd=str(repo), env=env)
+    except Exception as e:
+        return False, f"Could not start: {e}"
+    return True, f"Started {label} → {out} (log: {log})"
+
+
 def launch_run(form: dict) -> tuple:
     """Start a discovery run detached. Returns (ok, message).
 
@@ -668,7 +787,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         """Only one action exists: start a discovery run. There is no generic command endpoint."""
         u = urllib.parse.urlparse(self.path)
-        if u.path != "/launch":
+        if u.path not in ("/launch", "/scan"):
             return self.send_error(404)
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -678,7 +797,7 @@ class Handler(SimpleHTTPRequestHandler):
             form = {k: (v if k == "db" else v[0]) for k, v in parsed.items()}
         except Exception:
             form = {}
-        ok, msg = launch_run(form)
+        ok, msg = launch_run(form) if u.path == "/launch" else launch_scan(form)
         if ok:
             _rebuild()            # so the new run appears immediately rather than in 12s
         colour = "var(--ok)" if ok else "var(--bad)"
