@@ -290,6 +290,11 @@ color:var(--fg)}
 button{margin-top:12px;background:var(--accent);color:#fff;border:0;border-radius:7px;
 padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer}
 button:hover{filter:brightness(1.1)}
+.dbgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:4px}
+.dbrow{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;padding:5px 7px;
+border:1px solid var(--line);border-radius:6px}
+.dbrow.heavy{border-color:rgba(210,153,34,.5)}
+.warn{color:var(--warn)}
 """
 
 
@@ -321,7 +326,8 @@ def page() -> str:
             _seed = str(cands[0])
             break
     p.append(LAUNCH_FORM.format(fasta=html.escape(_seed),
-                                outroot=html.escape(str(Path.home() / "hmm_runs"))))
+                                outroot=html.escape(str(Path.home() / "hmm_runs")),
+                                dbs=_db_checkboxes()))
 
     p.append("<div class=card><div class=row><b>Active processes</b>"
              f"<span class='badge {"run" if procs else ""}'>{len(procs)} running</span></div>")
@@ -455,6 +461,55 @@ def _render_table(p: Path, limit: int = 400) -> str:
     return "".join(out)
 
 
+# The set the reference and poster-trial runs used, and the one whose numbers are validated.
+# Pre-ticking it matters: a run launched with NO --databases falls back to the generic default
+# of three, silently dropping "RefSeq viral genomes" — which contributed 39 of the 155 hits.
+# A GUI that quietly searches less than the run you validated is worse than no GUI.
+VALIDATED_SET = ("INPHARED genomes", "RefSeq viral genomes", "INPHARED proteins",
+                 "SwissProt", "RefSeq viral proteins", "VOGDB VFAM (annotation)")
+# Flagged in the UI rather than hidden: these are real but not laptop jobs.
+HEAVY = {"RefSeq bacterial genomes": "~21 DAYS on 4 cores — server-scale",
+         "RefSeq bacterial proteins": "~80 GB download",
+         "Pfam (sequences)": "~6 GB",
+         "GVD-AVrC": "~5 h", "Gut Phage Database (GPD)": "~2 h"}
+
+
+def catalogue() -> list:
+    """The database catalog as [(name, type, size_hint, default_on, warning)]."""
+    try:
+        eng = str(Path(__file__).resolve().parents[1] / "engine")
+        if eng not in sys.path:
+            sys.path.insert(0, eng)
+        from databases.builtin import BUILTIN_DATABASES
+    except Exception:
+        return []
+    out = []
+    for d in BUILTIN_DATABASES:
+        n = str(d.get("name", ""))
+        out.append((n, str(d.get("db_type", "") or ""), str(d.get("size_hint", "") or ""),
+                    n in VALIDATED_SET, HEAVY.get(n, "")))
+    return out
+
+
+def _db_checkboxes() -> str:
+    rows = catalogue()
+    if not rows:
+        return "<div class=dim>database catalog unavailable</div>"
+    out = ["<div class=dbgrid>"]
+    for name, typ, size, on, warn in rows:
+        cid = "db_" + re.sub(r"[^A-Za-z0-9]", "_", name)
+        cls = " heavy" if warn else ""
+        out.append(
+            f"<label class='dbrow{cls}'><input type=checkbox name=db value=\"{html.escape(name)}\""
+            f"{' checked' if on else ''} id={cid}>"
+            f"<span><b>{html.escape(name)}</b>"
+            f"<span class=dim> · {html.escape(size)}</span>"
+            + (f"<span class=warn> · {html.escape(warn)}</span>" if warn else "")
+            + "</span></label>")
+    out.append("</div>")
+    return "".join(out)
+
+
 LAUNCH_FORM = """
 <div class=card>
   <div class=row><b>Start a discovery run</b>
@@ -474,6 +529,12 @@ LAUNCH_FORM = """
       overprinted homologs</label>
     <label class=cb><input type=checkbox name=clear_cache> clear the database cache when the
       run finishes</label>
+    <div style='margin-top:14px'><b style='font-size:13px'>Databases to search</b>
+      <div class=dim style='margin:2px 0 8px'>Pre-ticked is the validated set the reference and
+        poster runs used. Leaving every box unticked falls back to the built-in default of
+        three, which drops <i>RefSeq viral genomes</i> — 39 of 155 hits came from it.</div>
+      {dbs}
+    </div>
     <button type=submit>Start run</button>
   </form>
   <div class=dim style='margin-top:8px'>Writes to a Linux path by default: more space, and no
@@ -514,6 +575,16 @@ def launch_run(form: dict) -> tuple:
             "--fasta", fasta, "--out-dir", str(out),
             "--iterations", str(int(form.get("iterations") or 3)),
             "--cpu", str(int(form.get("cpu") or 4)), "--no-overwrite"]
+    # Databases: pass the tick-box selection through explicitly. Without --databases the engine
+    # uses its built-in default set, which is SMALLER than the validated one — a run launched
+    # here would then quietly search less than the run these results were validated against.
+    dbs = [d for d in (form.get("db") or []) if d]
+    known = {n for n, *_ in catalogue()}
+    unknown = [d for d in dbs if known and d not in known]
+    if unknown:
+        return False, f"Unknown database(s): {', '.join(unknown)}"
+    if dbs:
+        argv += ["--databases", ",".join(dbs)]
     if (form.get("email") or "").strip():
         argv += ["--email", form["email"].strip()]
     if form.get("find_interrupted"):
@@ -602,7 +673,9 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(min(n, 65536)).decode("utf-8", "replace")
-            form = {k: v[0] for k, v in urllib.parse.parse_qs(body).items()}
+            # `db` is a multi-value field (one per ticked database), so it must keep its list.
+            parsed = urllib.parse.parse_qs(body)
+            form = {k: (v if k == "db" else v[0]) for k, v in parsed.items()}
         except Exception:
             form = {}
         ok, msg = launch_run(form)
