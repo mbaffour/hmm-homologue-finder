@@ -26,11 +26,13 @@ the --root directories — so a crafted path cannot walk out of them.
 from __future__ import annotations
 
 import argparse
+import csv
 import html
 import json
 import mimetypes
 import os
 import re
+import shutil
 import socketserver
 import subprocess
 import sys
@@ -279,6 +281,15 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--dim)}
 .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
 .hits{color:var(--ok);font-weight:600}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.fgrid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
+input[type=text],input:not([type]),input[type=number]{background:var(--bg);color:var(--fg);
+border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-size:13px;width:100%}
+.cb{display:inline-flex;align-items:center;gap:6px;margin:10px 14px 0 0;font-size:13px;
+color:var(--fg)}
+button{margin-top:12px;background:var(--accent);color:#fff;border:0;border-radius:7px;
+padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer}
+button:hover{filter:brightness(1.1)}
 """
 
 
@@ -292,6 +303,25 @@ def page() -> str:
          "<header><h1>HMM Homologue Finder</h1>",
          f"<span class=dim>live run monitor · refreshed {now} · auto every 15s</span></header>",
          "<div class=wrap>"]
+
+    # Prefill the seed field with a FASTA already on disk, so the commonest case is one click.
+    # Look in the served roots AND in Downloads, which is where seed files usually arrive.
+    _seed = ""
+    _look = list(ROOTS) + [Path.home() / "Downloads", Path("/mnt/c/Users") / os.environ.get(
+        "WINUSER", "") / "Downloads"]
+    for r in _look:
+        try:
+            if not r.is_dir():
+                continue
+            cands = sorted(list(r.glob("*.fasta")) + list(r.glob("*.faa"))
+                           + list(r.glob("*.fa")), key=lambda x: -x.stat().st_mtime)
+        except OSError:
+            continue
+        if cands:
+            _seed = str(cands[0])
+            break
+    p.append(LAUNCH_FORM.format(fasta=html.escape(_seed),
+                                outroot=html.escape(str(Path.home() / "hmm_runs"))))
 
     p.append("<div class=card><div class=row><b>Active processes</b>"
              f"<span class='badge {"run" if procs else ""}'>{len(procs)} running</span></div>")
@@ -397,6 +427,112 @@ _WAIT = ("<!doctype html><meta charset=utf-8><title>collecting…</title>"
          "</div></div>")
 
 
+def _render_table(p: Path, limit: int = 400) -> str:
+    """Render a CSV/TSV as an HTML table. Viewing a results table as raw text is close to
+    useless for the tables this pipeline produces — 23-column homolog rows with embedded
+    sequences — so the point of a viewer is to make them readable."""
+    delim = "\t" if p.suffix.lower() in (".tsv", ".tbl") else ","
+    try:
+        with p.open("r", encoding="utf-8", errors="replace", newline="") as fh:
+            rows = list(csv.reader(fh, delimiter=delim))
+    except OSError as e:
+        return f"<p>could not read: {html.escape(str(e))}</p>"
+    if not rows:
+        return "<p class=dim>empty file</p>"
+    head, body = rows[0], rows[1:]
+    out = [f"<h1>{html.escape(p.name)}</h1>",
+           f"<p class=dim>{len(body):,} row(s) × {len(head)} column(s)"
+           + (f" — showing the first {limit}" if len(body) > limit else "") + " · "
+           f"<a href='/download?path={urllib.parse.quote(str(p))}'>download</a></p>",
+           "<div style='overflow-x:auto'><table><tr>"]
+    out += [f"<th>{html.escape(c)}</th>" for c in head]
+    out.append("</tr>")
+    for r in body[:limit]:
+        out.append("<tr>" + "".join(
+            # long cells are almost always a sequence; truncate so the table stays readable
+            f"<td>{html.escape(c[:120] + ('…' if len(c) > 120 else ''))}</td>" for c in r) + "</tr>")
+    out.append("</table></div>")
+    return "".join(out)
+
+
+LAUNCH_FORM = """
+<div class=card>
+  <div class=row><b>Start a discovery run</b>
+    <span class=badge>runs detached — closing this page will not stop it</span></div>
+  <form method=post action=/launch style='margin-top:10px'>
+    <div class=fgrid>
+      <label>Seed FASTA (full path)<input name=fasta required
+        placeholder="/mnt/c/Users/you/Downloads/seeds.fasta" value="{fasta}"></label>
+      <label>Run name<input name=name required placeholder="my_family" value=""></label>
+      <label>Output folder<input name=outdir value="{outroot}"></label>
+      <label>NCBI e-mail <span class=dim>(blank = offline)</span><input name=email
+        placeholder="you@inst.edu"></label>
+      <label>Iterations<input name=iterations type=number min=1 max=6 value=3></label>
+      <label>CPU<input name=cpu type=number min=1 max=32 value=4></label>
+    </div>
+    <label class=cb><input type=checkbox name=find_interrupted checked> find interrupted /
+      overprinted homologs</label>
+    <label class=cb><input type=checkbox name=clear_cache> clear the database cache when the
+      run finishes</label>
+    <button type=submit>Start run</button>
+  </form>
+  <div class=dim style='margin-top:8px'>Writes to a Linux path by default: more space, and no
+    /mnt/c filesystem bridge. The run appears below within a few seconds.</div>
+</div>
+"""
+
+
+def launch_run(form: dict) -> tuple:
+    """Start a discovery run detached. Returns (ok, message).
+
+    Every value goes into an explicit argv list — never a shell string — so nothing a browser
+    field contains can become a command. The seed path must exist before anything is started.
+    """
+    fasta = (form.get("fasta") or "").strip()
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", (form.get("name") or "").strip())
+    if not fasta or not Path(fasta).is_file():
+        return False, f"Seed FASTA not found: {fasta or '(blank)'}"
+    if not name:
+        return False, "Run name is required"
+    outroot = Path((form.get("outdir") or str(Path.home() / "hmm_runs")).strip()).expanduser()
+    out = outroot / name
+    try:
+        outroot.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return False, f"Cannot create {outroot}: {e}"
+    # Refuse to start a run that will die on the engine's own disk check 5 minutes in.
+    try:
+        free_gb = shutil.disk_usage(outroot).free / 1e9
+        if free_gb < 25:
+            return False, (f"Only {free_gb:.1f} GB free at {outroot} — the engine requires 20 GB "
+                           f"and will abort. Choose a location with more space.")
+    except OSError:
+        pass
+
+    here = Path(__file__).resolve().parent
+    argv = [sys.executable, str(here / "hmm_finder.py"),
+            "--fasta", fasta, "--out-dir", str(out),
+            "--iterations", str(int(form.get("iterations") or 3)),
+            "--cpu", str(int(form.get("cpu") or 4)), "--no-overwrite"]
+    if (form.get("email") or "").strip():
+        argv += ["--email", form["email"].strip()]
+    if form.get("find_interrupted"):
+        argv.append("--find-interrupted")
+    if form.get("clear_cache"):
+        argv.append("--clear-cache")
+
+    log = outroot / f"{name}.log"
+    try:
+        with log.open("wb") as fh:
+            subprocess.Popen(argv, stdout=fh, stderr=subprocess.STDOUT,
+                             stdin=subprocess.DEVNULL,
+                             start_new_session=True,      # survives this server exiting
+                             cwd=str(here.parent))
+    except Exception as e:
+        return False, f"Could not start: {e}"
+    return True, f"Started “{name}” → {out} (log: {log})"
+
+
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self, *a):        # keep the console readable
         pass
@@ -439,12 +575,48 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
             if u.path == "/view":
-                if p.suffix.lower() in (".csv", ".tsv", ".json", ".txt", ".log", ".md"):
+                sfx = p.suffix.lower()
+                # Render, don't dump. A 23-column homolog table or a genome map is unreadable
+                # as raw bytes, and being able to LOOK at an output is the point of a viewer.
+                if sfx in (".csv", ".tsv", ".tbl"):
+                    page_ = (f"<!doctype html><meta charset=utf-8><title>{html.escape(p.name)}"
+                             f"</title><style>{CSS}</style><div class=wrap>"
+                             f"<p><a href='/'>&larr; back</a></p>{_render_table(p)}</div>")
+                    return self._send(page_.encode("utf-8"))
+                if sfx in (".png", ".svg", ".pdf", ".jpg", ".jpeg"):
+                    return self._send(p.read_bytes(), ctype)     # browser renders these
+                if sfx in (".html", ".htm"):
+                    return self._send(p.read_bytes(), "text/html; charset=utf-8")
+                if sfx in (".json", ".txt", ".log", ".md", ".sto", ".faa", ".fna", ".treefile"):
                     ctype = "text/plain; charset=utf-8"
                 return self._send(p.read_bytes(), ctype)
             return self._send(p.read_bytes(), ctype,
                               {"Content-Disposition": f'attachment; filename="{p.name}"'})
         self.send_error(404)
+
+    def do_POST(self):
+        """Only one action exists: start a discovery run. There is no generic command endpoint."""
+        u = urllib.parse.urlparse(self.path)
+        if u.path != "/launch":
+            return self.send_error(404)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(min(n, 65536)).decode("utf-8", "replace")
+            form = {k: v[0] for k, v in urllib.parse.parse_qs(body).items()}
+        except Exception:
+            form = {}
+        ok, msg = launch_run(form)
+        if ok:
+            _rebuild()            # so the new run appears immediately rather than in 12s
+        colour = "var(--ok)" if ok else "var(--bad)"
+        body = (f"<!doctype html><meta charset=utf-8><title>{'started' if ok else 'not started'}"
+                f"</title><meta http-equiv=refresh content='4;url=/'>"
+                f"<style>{CSS}</style><div class=wrap><div class=card>"
+                f"<b style='color:{colour}'>{'Run started' if ok else 'Could not start'}</b>"
+                f"<div style='margin-top:8px'>{html.escape(msg)}</div>"
+                f"<div class=dim style='margin-top:10px'>returning to the dashboard…</div>"
+                f"</div></div>")
+        self._send(body.encode("utf-8"))
 
 
 def main() -> int:
