@@ -1301,9 +1301,22 @@ def main() -> None:
         except Exception as _e:
             log(f"  (overprinting report skipped: {_e})")
 
-    # Re-export so the census / overprinting tables are picked up by the stage summaries and
-    # mirrored into PACKAGE (export_csv is idempotent and pure-filesystem).
-    if census_summary or overprint_summary:
+    # Coverage statement: what this run searched, and — just as important — what it did NOT.
+    # Written for EVERY run, not only after a follow-up coverage scan, because the spaces a run
+    # leaves untouched are part of what its results do and do not license. Without it an
+    # unsearched database is indistinguishable from one that returned nothing.
+    if not args.smoke:
+        try:
+            import coverage_report
+            coverage_report.build(out, out, log=lambda m: None)
+            log("  coverage statement written: coverage_summary.csv "
+                "(what was searched, and what was not)")
+        except Exception as e:
+            log(f"  (coverage summary skipped: {e})")
+
+    # Re-export so the census / overprinting / coverage tables are picked up by the stage
+    # summaries and mirrored into PACKAGE (export_csv is idempotent and pure-filesystem).
+    if census_summary or overprint_summary or not args.smoke:
         write_csv_exports(out, log)
 
     if args.smoke:
